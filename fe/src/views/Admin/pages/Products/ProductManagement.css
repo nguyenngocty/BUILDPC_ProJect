@@ -1,0 +1,32 @@
+:root {
+  --primary: #ef233c;
+  --primary-dark: #c9182b;
+
+  --dark: #0f172a;
+
+  --text: #1f2937;
+
+  --muted: #64748b;
+
+  --bg: #f8fafc;
+
+  --glass: rgba(255, 255, 255, 0.7);
+
+  --border: rgba(15, 23, 42, 0.08);
+
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+}
+
+.product-page {
+  min-height: 100vh;
+
+  background: linear-gradient(135deg, #f8fafc, #eef2f7);
+
+  padding: 30px;
+}
+
+.product-content {
+  max-width: 1650px;
+
+  margin: auto;
+}

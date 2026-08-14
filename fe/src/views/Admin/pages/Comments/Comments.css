@@ -1,0 +1,442 @@
+/* =====================================================
+   COMMENTS MANAGEMENT
+===================================================== */
+
+.cm-page {
+  padding: 28px;
+  background: #f5f7fb;
+  min-height: 100vh;
+  color: #1f2937;
+  font-family: inherit;
+}
+
+/* ================= HEADER ================= */
+
+.cm-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 25px;
+}
+
+.cm-title h1 {
+  margin: 5px 0;
+  font-size: 28px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.cm-eyebrow {
+  font-size: 13px;
+  color: #2563eb;
+  font-weight: 700;
+  letter-spacing: .5px;
+  margin: 0;
+}
+
+.cm-desc {
+  color: #6b7280;
+  margin-top: 8px;
+  font-size: 15px;
+}
+
+
+/* ================= STATISTICS ================= */
+
+.cm-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 20px;
+  margin-bottom: 25px;
+}
+
+.cm-stat-card {
+  background: white;
+  border-radius: 18px;
+  padding: 22px;
+  box-shadow: 0 8px 25px rgba(0,0,0,.06);
+  border-left: 5px solid #2563eb;
+}
+
+.cm-stat-card.success {
+  border-color: #16a34a;
+}
+
+.cm-stat-card.warning {
+  border-color: #f59e0b;
+}
+
+.cm-stat-card h3 {
+  margin:0;
+  font-size:14px;
+  color:#6b7280;
+  font-weight:600;
+}
+
+.cm-stat-card span {
+  display:block;
+  margin-top:10px;
+  font-size:32px;
+  font-weight:700;
+}
+
+
+/* ================= PANEL ================= */
+
+.cm-panel {
+  background:white;
+  padding:25px;
+  border-radius:18px;
+  box-shadow:0 10px 30px rgba(0,0,0,.06);
+}
+
+
+/* ================= TOOLBAR ================= */
+
+.cm-toolbar {
+  display:flex;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-bottom:22px;
+}
+
+
+.cm-toolbar input,
+.cm-toolbar select {
+  height:42px;
+  border:1px solid #d1d5db;
+  border-radius:10px;
+  padding:0 14px;
+  outline:none;
+  background:white;
+  font-size:14px;
+}
+
+
+.cm-toolbar input {
+  min-width:220px;
+}
+
+
+.cm-toolbar input:focus,
+.cm-toolbar select:focus {
+  border-color:#2563eb;
+}
+
+
+/* ================= BUTTON ================= */
+
+.cm-toolbar button,
+.cm-actions button,
+.cm-pagination button {
+  border:none;
+  border-radius:9px;
+  padding:9px 15px;
+  cursor:pointer;
+  font-size:14px;
+  font-weight:600;
+  transition:.2s;
+}
+
+
+.cm-btn-search {
+  background:#2563eb;
+  color:white;
+}
+
+.cm-btn-search:hover {
+  background:#1d4ed8;
+}
+
+
+.cm-btn-danger {
+  background:#ef4444;
+  color:white;
+}
+
+.cm-btn-danger:hover {
+  background:#dc2626;
+}
+
+
+.cm-btn-success {
+  background:#16a34a;
+  color:white;
+}
+
+.cm-btn-success:hover {
+  background:#15803d;
+}
+
+
+.cm-btn-warning {
+  background:#f59e0b;
+  color:white;
+}
+
+.cm-btn-warning:hover {
+  background:#d97706;
+}
+
+
+.cm-btn-info {
+  background:#0ea5e9;
+  color:white;
+}
+
+.cm-btn-info:hover {
+  background:#0284c7;
+}
+
+
+.cm-btn-secondary {
+  background:#6b7280;
+  color:white;
+}
+
+
+/* ================= TABLE ================= */
+
+
+.cm-table-wrapper {
+  overflow-x:auto;
+}
+
+
+.cm-table {
+  width:100%;
+  border-collapse:collapse;
+  min-width:1000px;
+}
+
+
+.cm-table thead {
+  background:#f3f4f6;
+}
+
+
+.cm-table th {
+  padding:14px;
+  text-align:left;
+  font-size:14px;
+  color:#374151;
+}
+
+
+.cm-table td {
+  padding:14px;
+  border-bottom:1px solid #e5e7eb;
+  font-size:14px;
+}
+
+
+.cm-table tbody tr:hover {
+  background:#f9fafb;
+}
+
+
+/* ================= CONTENT ================= */
+
+.cm-content {
+  max-width:250px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+
+/* ================= RATING ================= */
+
+.cm-rating {
+  display:flex;
+  gap:4px;
+  align-items:center;
+}
+
+
+.cm-rating i {
+  font-size:18px;
+  color:#d1d5db;
+}
+
+
+.cm-rating i.active {
+  color:#fbbf24;
+}
+
+
+/* ================= BADGE ================= */
+
+.cm-badge-approved,
+.cm-badge-pending {
+  padding:6px 12px;
+  border-radius:20px;
+  font-size:13px;
+  font-weight:600;
+}
+
+
+.cm-badge-approved {
+  background:#dcfce7;
+  color:#15803d;
+}
+
+
+.cm-badge-pending {
+  background:#fef3c7;
+  color:#b45309;
+}
+
+
+/* ================= ACTION ================= */
+
+.cm-actions {
+  display:flex;
+  gap:8px;
+}
+
+
+/* ================= EMPTY ================= */
+
+.cm-empty {
+  text-align:center;
+  padding:40px!important;
+  color:#6b7280;
+}
+
+
+/* ================= PAGINATION ================= */
+
+.cm-pagination {
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  gap:20px;
+  margin-top:25px;
+}
+
+
+.cm-pagination button {
+  background:#2563eb;
+  color:white;
+}
+
+
+.cm-pagination button:disabled {
+  background:#d1d5db;
+  cursor:not-allowed;
+}
+
+
+/* ================= MODAL ================= */
+
+.cm-modal-overlay {
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.45);
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  z-index:999;
+}
+
+
+.cm-modal {
+  background:white;
+  width:600px;
+  max-width:90%;
+  border-radius:18px;
+  overflow:hidden;
+  box-shadow:0 20px 50px rgba(0,0,0,.2);
+}
+
+
+.cm-modal-header {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:18px 22px;
+  border-bottom:1px solid #eee;
+}
+
+
+.cm-modal-header h2 {
+  margin:0;
+  font-size:20px;
+}
+
+
+.cm-close {
+  border:none;
+  background:none;
+  font-size:28px;
+  cursor:pointer;
+}
+
+
+.cm-modal-body {
+  padding:22px;
+}
+
+
+.cm-detail-row {
+  display:flex;
+  gap:10px;
+  margin-bottom:14px;
+}
+
+
+.cm-detail-row strong {
+  width:120px;
+}
+
+
+.cm-detail-content {
+  margin-top:20px;
+}
+
+
+.cm-content-box {
+  background:#f9fafb;
+  border-radius:12px;
+  padding:15px;
+  margin-top:10px;
+  line-height:1.6;
+}
+
+
+.cm-modal-footer {
+  padding:15px 22px;
+  display:flex;
+  justify-content:flex-end;
+  border-top:1px solid #eee;
+}
+
+
+
+/* ================= RESPONSIVE ================= */
+
+@media(max-width:900px){
+
+  .cm-stat-grid {
+    grid-template-columns:1fr;
+  }
+
+
+  .cm-page {
+    padding:15px;
+  }
+
+
+  .cm-toolbar {
+    flex-direction:column;
+  }
+
+
+  .cm-toolbar input,
+  .cm-toolbar select,
+  .cm-toolbar button {
+    width:100%;
+  }
+
+}

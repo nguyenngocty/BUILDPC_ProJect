@@ -1,0 +1,194 @@
+.product-filter {
+  background: white;
+
+  padding: 22px;
+
+  border-radius: 22px;
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 15px;
+
+  flex-wrap: wrap;
+
+  border: 1px solid var(--border);
+
+  box-shadow: var(--shadow);
+
+  margin-bottom: 22px;
+}
+
+.filter-search {
+  height: 48px;
+
+  width: 320px;
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 12px;
+
+  padding: 0 18px;
+
+  background: #ffffff;
+
+  border: 1px solid #e5e7eb;
+
+  border-radius: 16px;
+
+  transition: all 0.25s ease;
+
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+}
+
+/* Icon */
+
+.filter-search i {
+  font-size: 18px;
+
+  color: #94a3b8;
+
+  transition: 0.25s;
+}
+
+.filter-search input {
+  flex: 1;
+
+  height: 100%;
+
+  border: none !important;
+
+  outline: none !important;
+
+  background: transparent;
+
+  font-size: 14px;
+
+  color: var(--text);
+
+  box-shadow: none !important;
+}
+
+.filter-search input:focus {
+  border: none !important;
+
+  outline: none !important;
+
+  box-shadow: none !important;
+}
+
+.filter-search input::placeholder {
+  color: #94a3b8;
+}
+
+/* Khi click vào input */
+
+.filter-search:focus-within {
+  border-color: #cbd5e1;
+
+  box-shadow:
+    0 0 0 4px rgba(239, 35, 60, 0.08),
+    0 8px 20px rgba(15, 23, 42, 0.08);
+}
+
+.filter-search:focus-within i {
+  color: var(--primary);
+}
+.product-filter select {
+  height: 46px;
+
+  padding: 0 16px;
+
+  border-radius: 14px;
+
+  border: 1px solid #e2e8f0;
+
+  background: white;
+
+  font-size: 14px;
+
+  color: var(--text);
+
+  outline: none;
+
+  cursor: pointer;
+
+  transition: 0.25s;
+}
+
+.product-filter select:hover {
+  border-color: var(--primary);
+}
+
+.product-filter select:focus {
+  border-color: var(--primary);
+
+  box-shadow: 0 0 0 4px rgba(239, 35, 60, 0.12);
+}
+
+.btn-reset-filter {
+  height: 46px;
+
+  padding: 0 20px;
+
+  border: none;
+
+  border-radius: 14px;
+
+  background: #f1f5f9;
+
+  font-weight: 700;
+
+  color: #334155;
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 8px;
+
+  cursor: pointer;
+
+  transition: 0.25s;
+}
+
+.btn-reset-filter:hover {
+  background: #e2e8f0;
+}
+.filter-search {
+  position: relative;
+}
+
+.filter-search input {
+  padding-right: 40px;
+}
+
+.filter-search-clear {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+
+  width: 26px;
+  height: 26px;
+
+  border: none;
+  background: transparent;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  cursor: pointer;
+
+  color: var(--muted);
+
+  transition: 0.2s;
+}
+
+.filter-search-clear:hover {
+  color: var(--primary);
+}

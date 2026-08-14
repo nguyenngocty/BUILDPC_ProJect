@@ -1,0 +1,67 @@
+.gallery-preview {
+  display: flex;
+
+  gap: 15px;
+
+  flex-wrap: wrap;
+
+  margin-top: 20px;
+}
+
+.gallery-item {
+  position: relative;
+}
+
+.gallery-item img {
+  width: 130px;
+
+  height: 130px;
+
+  object-fit: cover;
+
+  border-radius: 8px;
+
+  border: 1px solid #ddd;
+}
+
+.gallery-item button {
+  position: absolute;
+
+  right: -6px;
+
+  top: -6px;
+
+  width: 24px;
+
+  height: 24px;
+
+  border: none;
+
+  background: red;
+
+  color: #fff;
+
+  border-radius: 50%;
+
+  cursor: pointer;
+}
+.pc-gallery-empty {
+  width: 100%;
+  min-height: 120px;
+  border: 2px dashed #d1d5db;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  color: #9ca3af;
+  gap: 8px;
+}
+
+.pc-gallery-empty i {
+  font-size: 36px;
+}
+
+.pc-gallery-empty span {
+  font-size: 14px;
+}

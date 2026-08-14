@@ -1,0 +1,66 @@
+.product-action {
+  position: relative;
+}
+
+.action-button {
+  width: 36px;
+
+  height: 36px;
+
+  border: none;
+
+  border-radius: 8px;
+
+  cursor: pointer;
+
+  background: #f3f4f6;
+}
+
+.action-menu {
+  position: absolute;
+
+  top: 42px;
+
+  right: 0;
+
+  width: 210px;
+
+  background: #fff;
+
+  border-radius: 12px;
+
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+
+  overflow: hidden;
+
+  z-index: 100;
+}
+
+.action-menu button {
+  width: 100%;
+
+  border: none;
+
+  background: none;
+
+  display: flex;
+
+  gap: 12px;
+
+  padding: 14px 18px;
+
+  cursor: pointer;
+
+  align-items: center;
+}
+
+.action-menu button:hover {
+  background: #f5f5f5;
+}
+
+.action-menu .danger {
+  color: #dc2626;
+}
+.product-table td:last-child {
+  position: relative;
+}

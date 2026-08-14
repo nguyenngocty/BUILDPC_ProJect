@@ -1,0 +1,263 @@
+/* =====================================================
+   CATEGORY BULK TOOLBAR
+===================================================== */
+
+.cbt-wrapper {
+  display: flex;
+
+  justify-content: space-between;
+
+  align-items: center;
+
+  gap: 24px;
+
+  margin: 24px 0;
+
+  padding: 18px 24px;
+
+  background: #fff;
+
+  border: 1px solid var(--border);
+
+  border-radius: 22px;
+
+  box-shadow: var(--shadow);
+
+  animation: cbtFade 0.25s ease;
+}
+
+/* =====================================================
+   LEFT
+===================================================== */
+
+.cbt-left {
+  display: flex;
+
+  align-items: center;
+}
+
+.cbt-selected {
+  display: flex;
+
+  align-items: center;
+
+  gap: 12px;
+}
+
+.cbt-selected i {
+  width: 42px;
+
+  height: 42px;
+
+  border-radius: 12px;
+
+  display: flex;
+
+  justify-content: center;
+
+  align-items: center;
+
+  color: #fff;
+
+  font-size: 18px;
+
+  background: var(--primary);
+}
+
+.cbt-selected span {
+  color: var(--text);
+
+  font-size: 15px;
+
+  font-weight: 500;
+}
+
+.cbt-selected strong {
+  color: var(--primary);
+
+  font-size: 17px;
+
+  font-weight: 800;
+}
+
+/* =====================================================
+   RIGHT
+===================================================== */
+
+.cbt-right {
+  display: flex;
+
+  flex-wrap: wrap;
+
+  align-items: center;
+
+  justify-content: flex-end;
+
+  gap: 12px;
+}
+
+/* =====================================================
+   BUTTON
+===================================================== */
+
+.cbt-btn {
+  height: 46px;
+
+  padding: 0 18px;
+
+  border: none;
+
+  border-radius: 14px;
+
+  cursor: pointer;
+
+  display: inline-flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  gap: 10px;
+
+  font-size: 14px;
+
+  font-weight: 700;
+
+  transition: all 0.25s ease;
+}
+
+.cbt-btn i {
+  font-size: 16px;
+}
+
+.cbt-btn:hover {
+  transform: translateY(-2px);
+}
+
+/* =====================================================
+   COLORS
+===================================================== */
+
+/* Danger */
+
+.cbt-danger {
+  color: #fff;
+
+  background: #dc2626;
+}
+
+.cbt-danger:hover {
+  background: #b91c1c;
+}
+
+/* Success */
+
+.cbt-success {
+  color: #fff;
+
+  background: #16a34a;
+}
+
+.cbt-success:hover {
+  background: #15803d;
+}
+
+/* Warning */
+
+.cbt-warning {
+  color: #fff;
+
+  background: #d97706;
+}
+
+.cbt-warning:hover {
+  background: #b45309;
+}
+
+/* Primary */
+
+.cbt-primary {
+  color: #fff;
+
+  background: var(--primary);
+}
+
+.cbt-primary:hover {
+  background: var(--primary-dark);
+}
+
+/* Light */
+
+.cbt-light {
+  color: var(--text);
+
+  background: #eef2f7;
+}
+
+.cbt-light:hover {
+  background: #dde5ee;
+}
+
+/* =====================================================
+   ANIMATION
+===================================================== */
+
+@keyframes cbtFade {
+  from {
+    opacity: 0;
+
+    transform: translateY(-12px);
+  }
+
+  to {
+    opacity: 1;
+
+    transform: translateY(0);
+  }
+}
+
+/* =====================================================
+   RESPONSIVE
+===================================================== */
+
+@media (max-width: 992px) {
+  .cbt-wrapper {
+    flex-direction: column;
+
+    align-items: flex-start;
+  }
+
+  .cbt-right {
+    width: 100%;
+
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 768px) {
+  .cbt-btn {
+    flex: 1;
+
+    min-width: 170px;
+  }
+}
+
+@media (max-width: 576px) {
+  .cbt-wrapper {
+    padding: 18px;
+  }
+
+  .cbt-selected {
+    width: 100%;
+  }
+
+  .cbt-right {
+    flex-direction: column;
+
+    width: 100%;
+  }
+
+  .cbt-btn {
+    width: 100%;
+  }
+}

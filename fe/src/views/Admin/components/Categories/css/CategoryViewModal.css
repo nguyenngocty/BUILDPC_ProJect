@@ -1,0 +1,447 @@
+/* =====================================================
+   CATEGORY VIEW MODAL
+===================================================== */
+
+.cvm-overlay {
+  position: fixed;
+  inset: 0;
+
+  z-index: 9999;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  padding: 40px;
+
+  overflow-y: auto;
+
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(8px);
+}
+
+.cvm-container {
+  width: 100%;
+
+  max-width: 900px;
+
+  max-height: 90vh;
+
+  display: flex;
+
+  flex-direction: column;
+
+  overflow: hidden;
+
+  background: #fff;
+
+  border-radius: 28px;
+}
+
+/* =====================================================
+   HEADER
+===================================================== */
+
+.cvm-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  padding: 28px 34px;
+
+  border-bottom: 1px solid var(--border);
+
+  background: linear-gradient(135deg, #ffffff, #fafafa);
+}
+
+.cvm-heading h2 {
+  margin: 0;
+
+  color: var(--dark);
+
+  font-size: 28px;
+
+  font-weight: 800;
+}
+
+.cvm-heading p {
+  margin-top: 8px;
+
+  color: var(--muted);
+
+  font-size: 14px;
+}
+
+.cvm-close {
+  width: 46px;
+
+  height: 46px;
+
+  border: none;
+
+  border-radius: 14px;
+
+  cursor: pointer;
+
+  color: #475569;
+
+  background: #f8fafc;
+
+  transition: 0.25s;
+}
+
+.cvm-close:hover {
+  color: #fff;
+
+  background: var(--primary);
+
+  transform: rotate(90deg);
+}
+
+/* =====================================================
+   BODY
+===================================================== */
+
+.cvm-body {
+  display: grid;
+
+  grid-template-columns: 280px 1fr;
+
+  gap: 34px;
+
+  padding: 34px;
+
+  overflow-y: auto;
+
+  flex: 1;
+}
+
+.cvm-header {
+  position: sticky;
+
+  top: 0;
+
+  z-index: 5;
+
+  background: white;
+}
+
+.cvm-footer {
+  position: sticky;
+
+  bottom: 0;
+
+  background: #fff;
+
+  z-index: 5;
+}
+/* =====================================================
+   IMAGE
+===================================================== */
+
+.cvm-image-box {
+  display: flex;
+
+  justify-content: center;
+
+  align-items: flex-start;
+}
+
+.cvm-image {
+  width: 240px;
+
+  height: 240px;
+
+  object-fit: cover;
+
+  border-radius: 24px;
+
+  background: white;
+
+  border: 1px solid var(--border);
+
+  box-shadow: var(--shadow);
+}
+
+.cvm-no-image {
+  width: 240px;
+
+  height: 240px;
+
+  border-radius: 24px;
+
+  background: #f8fafc;
+
+  border: 2px dashed #dbe3ea;
+
+  display: flex;
+
+  justify-content: center;
+
+  align-items: center;
+
+  color: #cbd5e1;
+
+  font-size: 70px;
+}
+
+/* =====================================================
+   INFO
+===================================================== */
+
+.cvm-content {
+  display: flex;
+
+  flex-direction: column;
+
+  gap: 18px;
+}
+
+.cvm-item {
+  display: flex;
+
+  justify-content: space-between;
+
+  align-items: center;
+
+  gap: 20px;
+
+  padding: 18px 22px;
+
+  border-radius: 18px;
+
+  background: #fbfcfe;
+
+  border: 1px solid #eef2f7;
+}
+
+.cvm-item span {
+  color: var(--muted);
+
+  font-size: 14px;
+
+  font-weight: 600;
+}
+
+.cvm-item strong {
+  color: var(--dark);
+
+  font-size: 15px;
+
+  font-weight: 700;
+
+  text-align: right;
+}
+
+/* =====================================================
+   STATUS
+===================================================== */
+
+.cvm-status {
+  display: inline-flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  min-width: 110px;
+
+  padding: 8px 18px;
+
+  border-radius: 999px;
+
+  font-size: 13px;
+
+  font-weight: 700;
+}
+
+.cvm-status.active {
+  color: #166534;
+
+  background: #dcfce7;
+}
+
+.cvm-status.inactive {
+  color: #b91c1c;
+
+  background: #fee2e2;
+}
+
+/* =====================================================
+   DESCRIPTION
+===================================================== */
+
+.cvm-description {
+  padding: 22px;
+
+  border-radius: 18px;
+
+  background: #fbfcfe;
+
+  border: 1px solid #eef2f7;
+}
+
+.cvm-description span {
+  display: block;
+
+  margin-bottom: 12px;
+
+  color: var(--muted);
+
+  font-size: 14px;
+
+  font-weight: 700;
+}
+
+.cvm-description p {
+  margin: 0;
+
+  line-height: 1.8;
+
+  color: var(--text);
+
+  white-space: pre-wrap;
+
+  word-break: break-word;
+}
+
+/* =====================================================
+   FOOTER
+===================================================== */
+
+.cvm-footer {
+  display: flex;
+
+  justify-content: flex-end;
+
+  gap: 14px;
+
+  padding: 24px 34px;
+
+  border-top: 1px solid var(--border);
+
+  background: #fafafa;
+}
+
+.cvm-btn {
+  min-width: 140px;
+
+  height: 48px;
+
+  border: none;
+
+  border-radius: 14px;
+
+  cursor: pointer;
+
+  display: inline-flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  gap: 10px;
+
+  font-size: 15px;
+
+  font-weight: 700;
+
+  transition: 0.25s;
+}
+.cvm-btn-close {
+  color: #fff;
+
+  background: var(--primary);
+}
+
+.cvm-btn-close:hover {
+  background: var(--primary-dark);
+
+  transform: translateY(-2px);
+}
+
+/* =====================================================
+   ANIMATION
+===================================================== */
+
+@keyframes cvmFade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes cvmScale {
+  from {
+    opacity: 0;
+
+    transform: scale(0.92);
+  }
+
+  to {
+    opacity: 1;
+
+    transform: scale(1);
+  }
+}
+
+/* =====================================================
+   RESPONSIVE
+===================================================== */
+
+@media (max-width: 900px) {
+  .cvm-container {
+    max-width: 95%;
+  }
+
+  .cvm-body {
+    grid-template-columns: 1fr;
+  }
+
+  .cvm-image {
+    width: 220px;
+
+    height: 220px;
+  }
+
+  .cvm-no-image {
+    width: 220px;
+
+    height: 220px;
+  }
+
+  .cvm-item {
+    flex-direction: column;
+
+    align-items: flex-start;
+  }
+
+  .cvm-item strong {
+    text-align: left;
+  }
+}
+
+@media (max-width: 600px) {
+  .cvm-overlay {
+    padding: 18px;
+  }
+
+  .cvm-header {
+    padding: 22px;
+  }
+
+  .cvm-body {
+    padding: 22px;
+  }
+
+  .cvm-footer {
+    padding: 22px;
+  }
+
+  .cvm-heading h2 {
+    font-size: 22px;
+  }
+}

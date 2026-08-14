@@ -1,0 +1,418 @@
+/* =====================================================
+   CATEGORY CONFIRM MODAL
+===================================================== */
+
+.ccm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  padding: 30px;
+
+  background: rgba(15, 23, 42, 0.45);
+
+  backdrop-filter: blur(8px);
+
+  animation: ccmFade 0.25s ease;
+}
+
+.ccm-container {
+  width: 100%;
+  max-width: 520px;
+
+  background: #fff;
+
+  border-radius: 28px;
+
+  border: 1px solid var(--border);
+
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.22);
+
+  overflow: hidden;
+
+  animation: ccmScale 0.25s ease;
+
+  text-align: center;
+}
+
+/* =====================================================
+   ICON
+===================================================== */
+
+.ccm-icon {
+  width: 90px;
+  height: 90px;
+
+  margin: 34px auto 24px;
+
+  border-radius: 50%;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  font-size: 42px;
+}
+
+.ccm-icon.danger {
+  color: #dc2626;
+  background: #fee2e2;
+}
+
+.ccm-icon.success {
+  color: #16a34a;
+  background: #dcfce7;
+}
+
+.ccm-icon.warning {
+  color: #d97706;
+  background: #fef3c7;
+}
+
+.ccm-icon.primary {
+  color: var(--primary);
+  background: rgba(239, 35, 60, 0.12);
+}
+
+/* =====================================================
+   TITLE
+===================================================== */
+
+.ccm-title {
+  margin: 0;
+
+  color: var(--dark);
+
+  font-size: 28px;
+
+  font-weight: 800;
+}
+
+/* =====================================================
+   MESSAGE
+===================================================== */
+
+.ccm-message {
+  margin: 18px auto 0;
+
+  width: 90%;
+
+  color: var(--muted);
+
+  font-size: 15px;
+
+  line-height: 1.7;
+}
+
+/* =====================================================
+   CATEGORY CARD
+===================================================== */
+
+.ccm-card {
+  display: flex;
+
+  align-items: center;
+
+  gap: 18px;
+
+  margin: 32px;
+
+  padding: 18px;
+
+  border-radius: 18px;
+
+  background: #fbfcfe;
+
+  border: 1px solid #eef2f7;
+
+  text-align: left;
+}
+
+.ccm-image,
+.ccm-image-empty {
+  width: 78px;
+
+  height: 78px;
+
+  border-radius: 18px;
+
+  flex-shrink: 0;
+}
+
+.ccm-image {
+  object-fit: cover;
+
+  border: 1px solid var(--border);
+}
+
+.ccm-image-empty {
+  display: flex;
+
+  justify-content: center;
+
+  align-items: center;
+
+  font-size: 30px;
+
+  color: #cbd5e1;
+
+  background: #f8fafc;
+
+  border: 2px dashed #dbe3ea;
+}
+
+.ccm-info {
+  flex: 1;
+}
+
+.ccm-info h3 {
+  margin: 0;
+
+  color: var(--dark);
+
+  font-size: 18px;
+
+  font-weight: 700;
+}
+
+.ccm-info span {
+  display: block;
+
+  margin-top: 8px;
+
+  color: var(--muted);
+
+  font-size: 14px;
+
+  word-break: break-word;
+}
+
+/* =====================================================
+   FOOTER
+===================================================== */
+
+.ccm-footer {
+  display: flex;
+
+  justify-content: flex-end;
+
+  gap: 14px;
+
+  padding: 28px 32px;
+
+  background: #fafafa;
+
+  border-top: 1px solid var(--border);
+}
+
+/* =====================================================
+   BUTTON
+===================================================== */
+
+.ccm-btn {
+  min-width: 150px;
+
+  height: 50px;
+
+  border: none;
+
+  border-radius: 14px;
+
+  cursor: pointer;
+
+  display: inline-flex;
+
+  justify-content: center;
+
+  align-items: center;
+
+  gap: 10px;
+
+  font-size: 15px;
+
+  font-weight: 700;
+
+  transition: 0.25s;
+}
+
+.ccm-btn i {
+  font-size: 17px;
+}
+
+/* Cancel */
+
+.ccm-btn-cancel {
+  color: var(--text);
+
+  background: #eef2f7;
+}
+
+.ccm-btn-cancel:hover {
+  background: #e2e8f0;
+
+  transform: translateY(-2px);
+}
+
+/* Danger */
+
+.ccm-btn-danger {
+  color: white;
+
+  background: #dc2626;
+}
+
+.ccm-btn-danger:hover {
+  background: #b91c1c;
+
+  transform: translateY(-2px);
+}
+
+/* Success */
+
+.ccm-btn-success {
+  color: white;
+
+  background: #16a34a;
+}
+
+.ccm-btn-success:hover {
+  background: #15803d;
+
+  transform: translateY(-2px);
+}
+
+/* Warning */
+
+.ccm-btn-warning {
+  color: white;
+
+  background: #d97706;
+}
+
+.ccm-btn-warning:hover {
+  background: #b45309;
+
+  transform: translateY(-2px);
+}
+
+/* Primary */
+
+.ccm-btn-primary {
+  color: white;
+
+  background: var(--primary);
+}
+
+.ccm-btn-primary:hover {
+  background: var(--primary-dark);
+
+  transform: translateY(-2px);
+}
+
+/* Disabled */
+
+.ccm-btn:disabled {
+  opacity: 0.7;
+
+  cursor: not-allowed;
+
+  transform: none;
+}
+
+/* =====================================================
+   SPIN
+===================================================== */
+
+.ccm-spin {
+  animation: ccmSpin 1s linear infinite;
+}
+
+/* =====================================================
+   ANIMATION
+===================================================== */
+
+@keyframes ccmFade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ccmScale {
+  from {
+    opacity: 0;
+
+    transform: scale(0.92);
+  }
+
+  to {
+    opacity: 1;
+
+    transform: scale(1);
+  }
+}
+
+@keyframes ccmSpin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* =====================================================
+   RESPONSIVE
+===================================================== */
+
+@media (max-width: 768px) {
+  .ccm-overlay {
+    padding: 20px;
+  }
+
+  .ccm-container {
+    max-width: 100%;
+  }
+
+  .ccm-card {
+    margin: 24px;
+
+    flex-direction: column;
+
+    text-align: center;
+  }
+
+  .ccm-footer {
+    flex-direction: column-reverse;
+  }
+
+  .ccm-btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .ccm-title {
+    font-size: 22px;
+  }
+
+  .ccm-message {
+    font-size: 14px;
+  }
+
+  .ccm-icon {
+    width: 78px;
+
+    height: 78px;
+
+    font-size: 34px;
+  }
+}

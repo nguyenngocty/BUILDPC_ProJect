@@ -1,0 +1,289 @@
+/* ==================================================
+   POST MANAGEMENT PAGE STYLES (100% PURE CSS)
+================================================== */
+.admin-post-management {
+  padding: 24px;
+  background-color: var(--light);
+  font-family: inherit;
+  color: var(--text);
+}
+
+/* --- Header --- */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.header-title h2 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--dark);
+}
+
+.header-title p {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.btn-create-post {
+  background-color: var(--primary);
+  color: #fff;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.btn-create-post:hover {
+  background-color: var(--primary-dark);
+}
+
+/* --- Filter Bar --- */
+.filter-bar {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  gap: 16px;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  flex: 1;
+  max-width: 300px;
+}
+
+.search-box i {
+  color: var(--muted);
+  margin-right: 8px;
+}
+
+.search-box input {
+  border: none;
+  outline: none;
+  width: 100%;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.filter-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.filter-select {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background-color: var(--card);
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  cursor: pointer;
+}
+
+/* --- Table --- */
+.table-container {
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.admin-table th {
+  padding: 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  background-color: #fafafa;
+}
+
+.admin-table td {
+  padding: 16px;
+  font-size: 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.admin-table tbody tr:hover {
+  background-color: #f9fafb;
+}
+
+/* Table - Post Info (Thumbnail + Text) */
+.post-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.post-thumb {
+  width: 60px;
+  height: 60px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid #ddd;
+}
+
+.thumb-red { background-color: #5c0000; border: 2px solid var(--primary); }
+.thumb-pink { background-color: #fce8e9; }
+.thumb-dark { background-color: var(--dark); }
+
+.post-meta h4 {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--dark);
+}
+
+.post-meta span {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Table - Tags & Badges */
+.category-tag {
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+}
+
+.status-badge {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 50px;
+  font-weight: 500;
+  display: inline-block;
+}
+
+.status-badge.published {
+  background-color: #eff6ff;
+  color: var(--secondary);
+}
+
+.status-badge.draft {
+  background-color: #fce8e9;
+  color: var(--primary);
+}
+
+/* --- Pagination --- */
+.pagination-wrapper {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.pagination-info {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.page-btn {
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.page-btn:hover:not(.active) {
+  background-color: #f3f4f6;
+}
+
+.page-btn.active {
+  background-color: var(--primary-dark);
+  color: #fff;
+  border-color: var(--primary-dark);
+}
+
+.page-dots {
+  color: var(--muted);
+  padding: 0 4px;
+}
+
+/* ==================================================
+   TABLE ACTIONS - NÚT SỬA & XÓA (HOVER ĐẶC SẮC)
+================================================== */
+.action-btns {
+  display: flex;
+  gap: 12px;
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  text-decoration: none;
+  /* Hiệu ứng chuyển động nảy mượt mà */
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+}
+
+/* --- Hiệu ứng cho nút Edit (Màu xanh) --- */
+.btn-icon.edit-btn:hover {
+  color: var(--secondary);
+  background-color: #eff6ff;
+  transform: translateY(-4px) scale(1.15); /* Nảy lên và phóng to nhẹ */
+  box-shadow: 0 6px 12px rgba(37, 99, 235, 0.25); /* Đổ bóng xanh */
+  z-index: 10;
+}
+
+/* --- Hiệu ứng cho nút Delete (Màu đỏ) --- */
+.btn-icon.delete-btn:hover {
+  color: var(--primary);
+  background-color: #fce8e9;
+  transform: translateY(-4px) scale(1.15); /* Nảy lên và phóng to nhẹ */
+  box-shadow: 0 6px 12px rgba(239, 35, 60, 0.25); /* Đổ bóng đỏ */
+  z-index: 10;
+}
+.admin-table td {
+  vertical-align: middle;
+}

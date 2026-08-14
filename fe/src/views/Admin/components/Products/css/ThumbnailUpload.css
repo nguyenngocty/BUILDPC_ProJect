@@ -1,0 +1,11 @@
+.thumb-preview {
+  margin-top: 20px;
+}
+
+.thumb-preview img {
+  width: 180px;
+
+  border-radius: 10px;
+
+  border: 1px solid #ddd;
+}
