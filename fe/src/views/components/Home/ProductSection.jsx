@@ -3,14 +3,20 @@ import { Link } from "react-router-dom";
 
 function ProductSection({ products = [] }) {
   // Khai báo sẵn domain của backend (hoặc lấy từ biến môi trường)
-  const API_URL = "http://localhost:5000"; // Thay đổi nếu cổng backend của bạn khác
+  const API_URL = "http://localhost:5000";
+
+  // 1. Sắp xếp sản phẩm theo số lượng bán (sold) giảm dần và lấy tối đa 8 sản phẩm
+  const bestSellingProducts = [...products]
+    .sort((a, b) => (Number(b.sold) || 0) - (Number(a.sold) || 0))
+    .slice(0, 8);
 
   return (
     <section className="product-section my-4">
       <SectionTitle title="Sản phẩm bán chạy" link="Xem tất cả" />
 
+      {/* 2. Dùng mảng đã sắp xếp và lọc (bestSellingProducts) thay vì products gốc */}
       <div className="d-flex flex-nowrap overflow-x-auto gap-3 pb-3" style={{ scrollSnapType: 'x mandatory' }}>
-        {products.map((item, index) => {
+        {bestSellingProducts.map((item, index) => {
           const hasSale = item.sale_price && Number(item.sale_price) < Number(item.price);
           const discountPercent = hasSale
             ? Math.round(((item.price - item.sale_price) / item.price) * 100)
@@ -18,10 +24,9 @@ function ProductSection({ products = [] }) {
 
           const productLink = `/products/${item.slug || item.id}`;
 
-          // Xử lý đường dẫn ảnh: Nếu thumbnail không bắt đầu bằng http, tự động nối thêm domain backend
+          // Xử lý đường dẫn ảnh
           let imageUrl = item.thumbnail;
           if (imageUrl && !imageUrl.startsWith("http")) {
-            // Đảm bảo không bị thừa dấu gạch chéo
             imageUrl = `${API_URL}${imageUrl.startsWith("/") ? "" : "/"}${imageUrl}`;
           }
 
@@ -35,16 +40,14 @@ function ProductSection({ products = [] }) {
                 <span className="badge bg-danger position-absolute m-2 z-1">-{discountPercent}%</span>
               )}
 
-              {/* Bọc ảnh bằng Link dẫn tới chi tiết sản phẩm */}
               <Link to={productLink} className="product-card__image text-center py-2 d-block text-decoration-none">
                 <img 
-                  src={item.thumbnail ? (item.thumbnail.startsWith('http') ? item.thumbnail : `http://localhost:5000${item.thumbnail}`) : ""} 
+                  src={imageUrl} 
                   alt={item.name} 
                   className="img-fluid" 
                   style={{ height: "140px", objectFit: "contain" }} 
-                  // Xóa hoặc thay sự kiện onError để tránh bị lặp vô tận
                   onError={(e) => {
-                    e.target.style.display = 'none'; // Ẩn luôn ảnh bị lỗi đi thay vì bắt nó load lại trang ngoài
+                    e.target.style.display = 'none';
                   }}
                 />
               </Link>
@@ -79,7 +82,6 @@ function ProductSection({ products = [] }) {
                   <span>Đã bán {item.sold || 0}</span>
                 </div>
 
-                {/* Thay đổi từ <button> thành <Link> để xem chi tiết */}
                 <Link 
                   to={productLink} 
                   className="product-card__button btn btn-outline-primary btn-sm w-100 text-decoration-none"
@@ -95,4 +97,4 @@ function ProductSection({ products = [] }) {
   );
 }
 
-export default ProductSection;  
+export default ProductSection;
