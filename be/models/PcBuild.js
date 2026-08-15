@@ -9,17 +9,18 @@ class PcBuild {
       for (let build of builds) {
         const [items] = await pool.query(
           `SELECT 
-            pbi.part_id AS id, 
+            pp.id AS id,             -- Lấy ID của bảng pc_parts làm định danh item
             pbi.quantity, 
             p.price AS price,          
             (p.price * pbi.quantity) AS total_price, 
             p.name,
             p.thumbnail AS image,
-            pt.type_code AS category
+            c.slug AS category,
+            c.slug AS category_key
            FROM pc_build_items pbi
            JOIN pc_parts pp ON pbi.part_id = pp.id
            JOIN products p ON pp.product_id = p.id
-           LEFT JOIN pc_part_types pt ON pp.type_id = pt.id
+           LEFT JOIN categories c ON p.category_id = c.id
            WHERE pbi.build_id = ?`,
           [build.id]
         );
@@ -36,11 +37,19 @@ class PcBuild {
     const connection = await pool.getConnection(); 
     try {
       await connection.beginTransaction();
-      const { name, description, total_price, status, items } = data;
-
+      
+      const { name, description, total_price, user_id, items } = data;
+      
+      // 🛠️ Ép kiểu status về dạng số 1 (Hoạt động) hoặc 0 (Ẩn)
+      let parsedStatus = 1; // Mặc định là hiện
+      if (data.status !== undefined && data.status !== null) {
+        // Nếu gửi lên là chuỗi 'active' hoặc số 1 thì quy về 1, ngược lại về 0
+        parsedStatus = (data.status === 'active' || data.status == 1 || data.status === true) ? 1 : 0;
+      }
+ 
       const [buildResult] = await connection.query(
-        "INSERT INTO pc_builds (name, description, total_price, status) VALUES (?, ?, ?, ?)",
-        [name, description, total_price, status || "active"]
+        "INSERT INTO pc_builds (name, description, total_price, status, user_id) VALUES (?, ?, ?, ?, ?)",
+        [name, description, total_price, parsedStatus, user_id || null]
       );
       const buildId = buildResult.insertId;
 
@@ -49,7 +58,7 @@ class PcBuild {
         
         const values = items.map(item => [
           buildId, 
-          item.id, // Lưu chính xác id linh kiện đại diện từ bảng pc_parts
+          item.id, 
           item.quantity || 1, 
           item.price || 0, 
           (item.price || 0) * (item.quantity || 1)
@@ -59,7 +68,7 @@ class PcBuild {
       }
 
       await connection.commit();
-      return { id: buildId, ...data };
+      return { id: buildId, ...data, status: parsedStatus };
     } catch (error) {
       await connection.rollback();
       throw error;

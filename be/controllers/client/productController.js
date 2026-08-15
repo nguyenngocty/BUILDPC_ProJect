@@ -91,3 +91,21 @@ exports.getProductBySlug = async (req, res, next) => {
     return next(error);
   }
 };
+// ======================================================
+// GET /api/client/products/best-sellers
+// ======================================================
+
+exports.getTopSellingProducts = async (req, res, next) => {
+  try {
+    const limit = Number(req.query.limit) || 10;
+    const products = await Product.getTopSelling(limit);
+
+    return res.status(200).json({
+      success: true,
+      message: "Lấy danh sách sản phẩm bán chạy thành công.",
+      data: products,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};

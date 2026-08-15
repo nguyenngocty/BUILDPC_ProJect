@@ -1,6 +1,12 @@
 import api from "./api";
 
 const pcPartService = {
+  // Lấy danh sách linh kiện đã JOIN với Products (Dùng cho Build PC / Auto Pick)
+  getBuildComponents: (params = {}) => {
+    return api.get("/admin/pc-builds/components", { params });
+  },
+
+  // CRUD gốc của pc-parts
   getAll: (params = {}) => {
     return api.get("/admin/pc-parts", { params });
   },

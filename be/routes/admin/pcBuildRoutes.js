@@ -2,17 +2,13 @@ const express = require("express");
 const router = express.Router();
 const pcBuildController = require("../../controllers/admin/pcBuildController");
 
-// ==========================================
-// ĐƯA ROUTE NÀY LÊN ĐẦU TIÊN ĐỂ TRÁNH BỊ ĐÈ
-// ==========================================
-router.get("/components", pcBuildController.getProductsByCategory);
-// GET: http://localhost:5000/api/admin/pc-builds/categories
+// Trỏ đúng về hàm getAllComponents thay vì getProductsByCategory
+router.get("/components", pcBuildController.getAllComponents);
 router.get("/categories", pcBuildController.getBuildCategories);
-
-// Các routes còn lại giữ nguyên bên dưới
+router.put("/components/:id/visibility", pcBuildController.toggleVisibility);
 router.get("/", pcBuildController.getAllBuilds);
 router.post("/", pcBuildController.createBuild);
 router.put("/:id", pcBuildController.updateBuild);
 router.delete("/:id", pcBuildController.deleteBuild);
-
+router.put("/:id/status", pcBuildController.updateBuildStatus);
 module.exports = router;

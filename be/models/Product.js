@@ -449,46 +449,31 @@ class Product {
   }
 
   static async getTopSelling(limit = 10) {
-    const sql = `
-        SELECT
-
-            p.id,
-
-            p.name,
-
-            p.sku,
-
-            p.thumbnail,
-
-            p.price,
-
-            p.sale_price,
-
-            p.quantity,
-
-            IFNULL(
-                SUM(oi.quantity),
-                0
-            ) AS sold
-
+    try {
+      const sql = `
+        SELECT 
+          p.id,
+          p.name,
+          p.slug,
+          p.thumbnail,
+          p.price,
+          p.sale_price,
+          p.quantity,
+          IFNULL(SUM(oi.quantity), 0) AS sold
         FROM products p
-
-        LEFT JOIN order_items oi
-
-            ON oi.product_id = p.id
-
+        LEFT JOIN order_items oi ON oi.product_id = p.id
         WHERE p.deleted_at IS NULL
-
         GROUP BY p.id
-
         ORDER BY sold DESC
-
         LIMIT ?
-    `;
-
-    const [rows] = await pool.execute(sql, [Number(limit)]);
-
-    return rows;
+      `;
+      // Lưu ý: Nếu bạn dùng pool.query hoặc pool.execute tùy vào cấu hình kết nối mysql2
+      const [rows] = await pool.query(sql, [Number(limit)]);
+      return rows;
+    } catch (error) {
+      console.error("Lỗi truy vấn getTopSelling:", error);
+      throw error;
+    }
   }
 
   static async getNewestProducts(limit = 10) {
