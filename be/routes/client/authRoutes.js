@@ -1,8 +1,12 @@
-// V4: bổ sung quên mật khẩu và đặt lại mật khẩu.
+// V5: bổ sung đăng nhập bằng Google.
 const express = require("express");
 
 const controller = require(
   "../../controllers/client/authController"
+);
+
+const googleAuthController = require(
+  "../../controllers/client/googleAuthController"
 );
 
 const {
@@ -27,6 +31,19 @@ router.post(
 router.post(
   "/login",
   controller.login
+);
+
+/*
+ * Đăng nhập bằng Google.
+ *
+ * Frontend gửi:
+ * {
+ *   credential: "Google ID Token"
+ * }
+ */
+router.post(
+  "/google",
+  googleAuthController.googleLogin
 );
 
 router.post(

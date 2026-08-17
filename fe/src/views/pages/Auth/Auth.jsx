@@ -2,9 +2,12 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 
 import useAuth from "../../../hooks/useAuth";
+
 import {
   forgotPassword as requestPasswordReset,
 } from "../../../controllers/authController";
+
+import GoogleSignInButton from "../../components/GoogleSignInButton";
 
 import "./css/style.css";
 import "./css/login_register.css";
@@ -15,23 +18,29 @@ function Auth({
   onClose,
   onAuthenticated,
 }) {
-  const { login, register } = useAuth();
+  const {
+    login,
+    register,
+  } = useAuth();
 
   const [activeTab, setActiveTab] =
     useState("login");
 
-  const [message, setMessage] = useState("");
+  const [message, setMessage] =
+    useState("");
+
   const [messageType, setMessageType] =
     useState("error");
 
   const [isSubmitting, setIsSubmitting] =
     useState(false);
 
-  const [loginData, setLoginData] = useState({
-    email: "",
-    password: "",
-    remember: false,
-  });
+  const [loginData, setLoginData] =
+    useState({
+      email: "",
+      password: "",
+      remember: false,
+    });
 
   const [registerData, setRegisterData] =
     useState({
@@ -47,7 +56,9 @@ function Auth({
     });
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      return;
+    }
 
     const nextTab =
       initialTab === "register"
@@ -82,10 +93,16 @@ function Auth({
         handleEscape
       );
     };
-  }, [isOpen, isSubmitting, onClose]);
+  }, [
+    isOpen,
+    isSubmitting,
+    onClose,
+  ]);
 
   const changeTab = (tabName) => {
-    if (isSubmitting) return;
+    if (isSubmitting) {
+      return;
+    }
 
     setActiveTab(tabName);
     setMessage("");
@@ -102,6 +119,7 @@ function Auth({
 
     setLoginData((previousData) => ({
       ...previousData,
+
       [name]:
         type === "checkbox"
           ? checked
@@ -111,30 +129,46 @@ function Auth({
     setMessage("");
   };
 
-  const handleRegisterChange = (event) => {
-    const { name, value } = event.target;
+  const handleRegisterChange = (
+    event
+  ) => {
+    const {
+      name,
+      value,
+    } = event.target;
 
-    setRegisterData((previousData) => ({
-      ...previousData,
-      [name]: value,
-    }));
+    setRegisterData(
+      (previousData) => ({
+        ...previousData,
+        [name]: value,
+      })
+    );
 
     setMessage("");
   };
 
-  const handleForgotChange = (event) => {
-    const { name, value } = event.target;
+  const handleForgotChange = (
+    event
+  ) => {
+    const {
+      name,
+      value,
+    } = event.target;
 
-    setForgotData((previousData) => ({
-      ...previousData,
-      [name]: value,
-    }));
+    setForgotData(
+      (previousData) => ({
+        ...previousData,
+        [name]: value,
+      })
+    );
 
     setMessage("");
   };
 
   const openForgotPassword = () => {
-    if (isSubmitting) return;
+    if (isSubmitting) {
+      return;
+    }
 
     setForgotData({
       email: loginData.email,
@@ -145,17 +179,27 @@ function Auth({
     setMessageType("error");
   };
 
-  const handleLoginSubmit = async (event) => {
+  /*
+   * ========================================
+   * ĐĂNG NHẬP EMAIL + PASSWORD
+   * ========================================
+   */
+  const handleLoginSubmit = async (
+    event
+  ) => {
     event.preventDefault();
 
-    if (isSubmitting) return;
+    if (isSubmitting) {
+      return;
+    }
 
     setMessage("");
     setMessageType("error");
     setIsSubmitting(true);
 
     try {
-      const result = await login(loginData);
+      const result =
+        await login(loginData);
 
       toast.success(
         result.message ||
@@ -163,9 +207,12 @@ function Auth({
       );
 
       if (
-        typeof onAuthenticated === "function"
+        typeof onAuthenticated ===
+        "function"
       ) {
-        onAuthenticated(result.user);
+        onAuthenticated(
+          result.user
+        );
       }
 
       onClose();
@@ -181,12 +228,81 @@ function Auth({
     }
   };
 
+  /*
+   * ========================================
+   * ĐĂNG NHẬP / ĐĂNG KÝ BẰNG GOOGLE
+   * ========================================
+   *
+   * GoogleSignInButton đã gọi:
+   *
+   * useAuth()
+   *   ↓
+   * googleAuthController
+   *   ↓
+   * googleAuthService
+   *   ↓
+   * Backend
+   *
+   * Khi backend thành công, component
+   * GoogleSignInButton gọi hàm này.
+   */
+  const handleGoogleSuccess = (
+    result
+  ) => {
+    setMessage("");
+    setMessageType("success");
+
+    toast.success(
+      result?.message ||
+        "Đăng nhập bằng Google thành công!"
+    );
+
+    if (
+      typeof onAuthenticated ===
+      "function"
+    ) {
+      onAuthenticated(
+        result?.user || null
+      );
+    }
+
+    onClose();
+  };
+
+  /*
+   * Google login lỗi.
+   */
+  const handleGoogleError = (
+    error
+  ) => {
+    const errorMessage =
+      error?.message ||
+      "Không thể đăng nhập bằng Google.";
+
+    setMessage(errorMessage);
+    setMessageType("error");
+
+    toast.error(
+      errorMessage,
+      {
+        id: "google-login-error",
+      }
+    );
+  };
+
+  /*
+   * ========================================
+   * ĐĂNG KÝ EMAIL + PASSWORD
+   * ========================================
+   */
   const handleRegisterSubmit = async (
     event
   ) => {
     event.preventDefault();
 
-    if (isSubmitting) return;
+    if (isSubmitting) {
+      return;
+    }
 
     setMessage("");
     setMessageType("error");
@@ -194,16 +310,22 @@ function Auth({
 
     try {
       const result =
-        await register(registerData);
+        await register(
+          registerData
+        );
 
-      setLoginData((previousData) => ({
-        ...previousData,
-        email: registerData.email
-          .trim()
-          .toLowerCase(),
+      setLoginData(
+        (previousData) => ({
+          ...previousData,
 
-        password: "",
-      }));
+          email:
+            registerData.email
+              .trim()
+              .toLowerCase(),
+
+          password: "",
+        })
+      );
 
       setRegisterData({
         name: "",
@@ -232,12 +354,19 @@ function Auth({
     }
   };
 
+  /*
+   * ========================================
+   * QUÊN MẬT KHẨU
+   * ========================================
+   */
   const handleForgotSubmit = async (
     event
   ) => {
     event.preventDefault();
 
-    if (isSubmitting) return;
+    if (isSubmitting) {
+      return;
+    }
 
     setMessage("");
     setMessageType("error");
@@ -253,12 +382,21 @@ function Auth({
         result.message ||
         "Đã gửi liên kết đặt lại mật khẩu đến Gmail. Vui lòng kiểm tra Hộp thư đến hoặc Thư rác.";
 
-      setMessage(successMessage);
-      setMessageType("success");
+      setMessage(
+        successMessage
+      );
 
-      toast.success(successMessage, {
-        id: "forgot-password-success",
-      });
+      setMessageType(
+        "success"
+      );
+
+      toast.success(
+        successMessage,
+        {
+          id:
+            "forgot-password-success",
+        }
+      );
     } catch (error) {
       setMessage(
         error.message ||
@@ -271,7 +409,9 @@ function Auth({
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    return null;
+  }
 
   const isForgotTab =
     activeTab === "forgot";
@@ -328,38 +468,50 @@ function Auth({
           >
             <button
               className={`auth-tab ${
-                activeTab === "login"
+                activeTab ===
+                "login"
                   ? "active"
                   : ""
               }`}
               type="button"
               role="tab"
               aria-selected={
-                activeTab === "login"
+                activeTab ===
+                "login"
               }
               onClick={() =>
-                changeTab("login")
+                changeTab(
+                  "login"
+                )
               }
-              disabled={isSubmitting}
+              disabled={
+                isSubmitting
+              }
             >
               Đăng nhập
             </button>
 
             <button
               className={`auth-tab ${
-                activeTab === "register"
+                activeTab ===
+                "register"
                   ? "active"
                   : ""
               }`}
               type="button"
               role="tab"
               aria-selected={
-                activeTab === "register"
+                activeTab ===
+                "register"
               }
               onClick={() =>
-                changeTab("register")
+                changeTab(
+                  "register"
+                )
               }
-              disabled={isSubmitting}
+              disabled={
+                isSubmitting
+              }
             >
               Đăng ký
             </button>
@@ -375,17 +527,25 @@ function Auth({
           </p>
         )}
 
+        {/* =========================
+            FORM ĐĂNG NHẬP
+        ========================== */}
         <form
           className={`auth-form ${
-            activeTab === "login"
+            activeTab ===
+            "login"
               ? "active"
               : ""
           }`}
-          onSubmit={handleLoginSubmit}
+          onSubmit={
+            handleLoginSubmit
+          }
           noValidate
         >
           <div className="auth-field">
-            <label htmlFor="loginEmail">
+            <label
+              htmlFor="loginEmail"
+            >
               Email
             </label>
 
@@ -395,14 +555,22 @@ function Auth({
               type="email"
               placeholder="Nhập email của bạn"
               autoComplete="email"
-              value={loginData.email}
-              onChange={handleLoginChange}
-              disabled={isSubmitting}
+              value={
+                loginData.email
+              }
+              onChange={
+                handleLoginChange
+              }
+              disabled={
+                isSubmitting
+              }
             />
           </div>
 
           <div className="auth-field">
-            <label htmlFor="loginPassword">
+            <label
+              htmlFor="loginPassword"
+            >
               Mật khẩu
             </label>
 
@@ -412,9 +580,15 @@ function Auth({
               type="password"
               placeholder="Nhập mật khẩu"
               autoComplete="current-password"
-              value={loginData.password}
-              onChange={handleLoginChange}
-              disabled={isSubmitting}
+              value={
+                loginData.password
+              }
+              onChange={
+                handleLoginChange
+              }
+              disabled={
+                isSubmitting
+              }
             />
           </div>
 
@@ -422,18 +596,28 @@ function Auth({
             <input
               name="remember"
               type="checkbox"
-              checked={loginData.remember}
-              onChange={handleLoginChange}
-              disabled={isSubmitting}
+              checked={
+                loginData.remember
+              }
+              onChange={
+                handleLoginChange
+              }
+              disabled={
+                isSubmitting
+              }
             />
 
-            <span>Ghi nhớ đăng nhập</span>
+            <span>
+              Ghi nhớ đăng nhập
+            </span>
           </label>
 
           <button
             className="auth-submit"
             type="submit"
-            disabled={isSubmitting}
+            disabled={
+              isSubmitting
+            }
           >
             {isSubmitting &&
             activeTab === "login"
@@ -441,12 +625,35 @@ function Auth({
               : "Đăng nhập"}
           </button>
 
+          {/* ========= GOOGLE ========= */}
+          <div className="auth-social">
+            <div className="auth-divider">
+              <span>Hoặc</span>
+            </div>
+
+            <GoogleSignInButton
+              disabled={
+                isSubmitting
+              }
+              onSuccess={
+                handleGoogleSuccess
+              }
+              onError={
+                handleGoogleError
+              }
+            />
+          </div>
+
           <div className="auth-links">
             <button
               className="auth-link-button"
               type="button"
-              onClick={openForgotPassword}
-              disabled={isSubmitting}
+              onClick={
+                openForgotPassword
+              }
+              disabled={
+                isSubmitting
+              }
             >
               Quên mật khẩu?
             </button>
@@ -455,26 +662,38 @@ function Auth({
               className="auth-link-button"
               type="button"
               onClick={() =>
-                changeTab("register")
+                changeTab(
+                  "register"
+                )
               }
-              disabled={isSubmitting}
+              disabled={
+                isSubmitting
+              }
             >
               Tạo tài khoản mới
             </button>
           </div>
         </form>
 
+        {/* =========================
+            FORM ĐĂNG KÝ
+        ========================== */}
         <form
           className={`auth-form ${
-            activeTab === "register"
+            activeTab ===
+            "register"
               ? "active"
               : ""
           }`}
-          onSubmit={handleRegisterSubmit}
+          onSubmit={
+            handleRegisterSubmit
+          }
           noValidate
         >
           <div className="auth-field">
-            <label htmlFor="registerName">
+            <label
+              htmlFor="registerName"
+            >
               Họ và tên
             </label>
 
@@ -484,14 +703,22 @@ function Auth({
               type="text"
               placeholder="Nhập họ tên của bạn"
               autoComplete="name"
-              value={registerData.name}
-              onChange={handleRegisterChange}
-              disabled={isSubmitting}
+              value={
+                registerData.name
+              }
+              onChange={
+                handleRegisterChange
+              }
+              disabled={
+                isSubmitting
+              }
             />
           </div>
 
           <div className="auth-field">
-            <label htmlFor="registerEmail">
+            <label
+              htmlFor="registerEmail"
+            >
               Email
             </label>
 
@@ -501,14 +728,22 @@ function Auth({
               type="email"
               placeholder="Nhập email của bạn"
               autoComplete="email"
-              value={registerData.email}
-              onChange={handleRegisterChange}
-              disabled={isSubmitting}
+              value={
+                registerData.email
+              }
+              onChange={
+                handleRegisterChange
+              }
+              disabled={
+                isSubmitting
+              }
             />
           </div>
 
           <div className="auth-field">
-            <label htmlFor="registerPassword">
+            <label
+              htmlFor="registerPassword"
+            >
               Mật khẩu
             </label>
 
@@ -518,14 +753,22 @@ function Auth({
               type="password"
               placeholder="Tạo mật khẩu"
               autoComplete="new-password"
-              value={registerData.password}
-              onChange={handleRegisterChange}
-              disabled={isSubmitting}
+              value={
+                registerData.password
+              }
+              onChange={
+                handleRegisterChange
+              }
+              disabled={
+                isSubmitting
+              }
             />
           </div>
 
           <div className="auth-field">
-            <label htmlFor="registerConfirm">
+            <label
+              htmlFor="registerConfirm"
+            >
               Nhập lại mật khẩu
             </label>
 
@@ -536,63 +779,113 @@ function Auth({
               placeholder="Nhập lại mật khẩu"
               autoComplete="new-password"
               value={
-                registerData.confirmPassword
+                registerData
+                  .confirmPassword
               }
-              onChange={handleRegisterChange}
-              disabled={isSubmitting}
+              onChange={
+                handleRegisterChange
+              }
+              disabled={
+                isSubmitting
+              }
             />
           </div>
 
           <button
             className="auth-submit"
             type="submit"
-            disabled={isSubmitting}
+            disabled={
+              isSubmitting
+            }
           >
             {isSubmitting &&
-            activeTab === "register"
+            activeTab ===
+              "register"
               ? "Đang đăng ký..."
               : "Đăng ký"}
           </button>
+
+          {/*
+           * Google cũng có thể tạo tài khoản mới.
+           *
+           * Nếu Gmail chưa tồn tại:
+           * backend tự tạo CUSTOMER.
+           *
+           * Nếu Gmail đã tồn tại:
+           * backend liên kết Google vào user cũ.
+           */}
+          <div className="auth-social">
+            <div className="auth-divider">
+              <span>Hoặc</span>
+            </div>
+
+            <GoogleSignInButton
+              disabled={
+                isSubmitting
+              }
+              onSuccess={
+                handleGoogleSuccess
+              }
+              onError={
+                handleGoogleError
+              }
+            />
+          </div>
 
           <div className="auth-links single">
             <button
               className="auth-link-button"
               type="button"
               onClick={() =>
-                changeTab("login")
+                changeTab(
+                  "login"
+                )
               }
-              disabled={isSubmitting}
+              disabled={
+                isSubmitting
+              }
             >
-              Đã có tài khoản? Đăng nhập
+              Đã có tài khoản?
+              Đăng nhập
             </button>
           </div>
         </form>
 
+        {/* =========================
+            FORM QUÊN MẬT KHẨU
+        ========================== */}
         <form
           className={`auth-form ${
-            activeTab === "forgot"
+            activeTab ===
+            "forgot"
               ? "active"
               : ""
           }`}
-          onSubmit={handleForgotSubmit}
+          onSubmit={
+            handleForgotSubmit
+          }
           noValidate
         >
           <div className="auth-forgot-intro">
             <div>
               <strong>
-                Nhận liên kết qua Gmail
+                Nhận liên kết qua
+                Gmail
               </strong>
 
               <p>
-                Liên kết có hiệu lực trong
-                15 phút và chỉ sử dụng được
-                một lần.
+                Liên kết có hiệu
+                lực trong 15 phút
+                và chỉ sử dụng
+                được một lần.
               </p>
             </div>
           </div>
 
           <div className="auth-field">
-            <label htmlFor="forgotEmail">
+            <label
+              htmlFor="forgotEmail"
+            >
               Email tài khoản
             </label>
 
@@ -602,9 +895,15 @@ function Auth({
               type="email"
               placeholder="Nhập email đã đăng ký"
               autoComplete="email"
-              value={forgotData.email}
-              onChange={handleForgotChange}
-              disabled={isSubmitting}
+              value={
+                forgotData.email
+              }
+              onChange={
+                handleForgotChange
+              }
+              disabled={
+                isSubmitting
+              }
               autoFocus
             />
           </div>
@@ -612,10 +911,13 @@ function Auth({
           <button
             className="auth-submit"
             type="submit"
-            disabled={isSubmitting}
+            disabled={
+              isSubmitting
+            }
           >
             {isSubmitting &&
-            activeTab === "forgot"
+            activeTab ===
+              "forgot"
               ? "Đang gửi email..."
               : "Gửi liên kết đặt lại mật khẩu"}
           </button>
@@ -625,11 +927,16 @@ function Auth({
               className="auth-link-button auth-back-login"
               type="button"
               onClick={() =>
-                changeTab("login")
+                changeTab(
+                  "login"
+                )
               }
-              disabled={isSubmitting}
+              disabled={
+                isSubmitting
+              }
             >
               <i className="bi bi-arrow-left" />
+
               Quay lại đăng nhập
             </button>
           </div>

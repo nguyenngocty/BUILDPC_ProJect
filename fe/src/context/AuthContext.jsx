@@ -6,19 +6,44 @@ import {
   useMemo,
   useState,
 } from "react";
+
 import * as authController from "../controllers/authController";
 
-export const AuthContext = createContext(null);
+import {
+  loginWithGoogle as loginWithGoogleController,
+} from "../controllers/googleAuthController";
 
-export function AuthProvider({ children }) {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
+export const AuthContext =
+  createContext(null);
 
-  const clearSession = useCallback(() => {
-    authController.logout();
-    setCurrentUser(null);
-  }, []);
+export function AuthProvider({
+  children,
+}) {
+  const [
+    currentUser,
+    setCurrentUser,
+  ] = useState(null);
 
+  const [
+    isAuthLoading,
+    setIsAuthLoading,
+  ] = useState(true);
+
+  /**
+   * Xóa phiên đăng nhập hiện tại.
+   */
+  const clearSession = useCallback(
+    () => {
+      authController.logout();
+      setCurrentUser(null);
+    },
+    []
+  );
+
+  /**
+   * Khôi phục phiên đăng nhập
+   * khi người dùng reload trang.
+   */
   useEffect(() => {
     let active = true;
 
@@ -28,17 +53,24 @@ export function AuthProvider({ children }) {
           setCurrentUser(null);
           setIsAuthLoading(false);
         }
+
         return;
       }
 
       try {
-        const user = await authController.getCurrentUser();
+        const user =
+          await authController.getCurrentUser();
 
         if (active) {
-          setCurrentUser(user || null);
+          setCurrentUser(
+            user || null
+          );
         }
       } catch (error) {
-        console.error("Lỗi restore session:", error);
+        console.error(
+          "Lỗi restore session:",
+          error
+        );
 
         if (active) {
           setCurrentUser(null);
@@ -57,50 +89,129 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
+  /**
+   * Khi API trả 401,
+   * api.js phát event auth:unauthorized.
+   *
+   * Context sẽ xóa phiên đăng nhập.
+   */
   useEffect(() => {
-    window.addEventListener("auth:unauthorized", clearSession);
+    window.addEventListener(
+      "auth:unauthorized",
+      clearSession
+    );
 
     return () => {
-      window.removeEventListener("auth:unauthorized", clearSession);
+      window.removeEventListener(
+        "auth:unauthorized",
+        clearSession
+      );
     };
   }, [clearSession]);
 
-  const login = useCallback(async (formData) => {
-    const result = await authController.login(formData);
+  /**
+   * Đăng nhập bằng email + mật khẩu.
+   */
+  const login = useCallback(
+    async (formData) => {
+      const result =
+        await authController.login(
+          formData
+        );
 
-    setCurrentUser(result.user || null);
+      setCurrentUser(
+        result.user || null
+      );
 
-    return result;
-  }, []);
+      return result;
+    },
+    []
+  );
 
-  const register = useCallback((formData) => {
-    return authController.register(formData);
-  }, []);
+  /**
+   * Đăng nhập bằng Google.
+   *
+   * credential là Google ID Token
+   * được Google Identity Services
+   * trả về cho frontend.
+   */
+  const loginWithGoogle =
+    useCallback(
+      async (credential) => {
+        const result =
+          await loginWithGoogleController(
+            credential
+          );
 
+        setCurrentUser(
+          result.user || null
+        );
+
+        return result;
+      },
+      []
+    );
+
+  /**
+   * Đăng ký tài khoản.
+   */
+  const register = useCallback(
+    (formData) => {
+      return authController.register(
+        formData
+      );
+    },
+    []
+  );
+
+  /**
+   * Đăng xuất.
+   */
   const logout = useCallback(() => {
     clearSession();
   }, [clearSession]);
 
-  const refreshCurrentUser = useCallback(async () => {
-    const user = await authController.getCurrentUser();
+  /**
+   * Lấy lại thông tin user
+   * sau khi cập nhật profile/avatar...
+   */
+  const refreshCurrentUser =
+    useCallback(async () => {
+      const user =
+        await authController.getCurrentUser();
 
-    setCurrentUser(user || null);
+      setCurrentUser(
+        user || null
+      );
 
-    return user;
-  }, []);
+      return user;
+    }, []);
 
-  const roleCode = String(currentUser?.roleCode || currentUser?.role_code || "")
-    .toUpperCase();
+  const roleCode = String(
+    currentUser?.roleCode ||
+      currentUser?.role_code ||
+      ""
+  ).toUpperCase();
 
   const value = useMemo(
     () => ({
       currentUser,
       setCurrentUser,
+
       isAuthLoading,
-      isAuthenticated: Boolean(currentUser),
-      isAdmin: roleCode === "ADMIN" || roleCode === "SUPER_ADMIN",
-      isSuperAdmin: roleCode === "SUPER_ADMIN",
+
+      isAuthenticated:
+        Boolean(currentUser),
+
+      isAdmin:
+        roleCode === "ADMIN" ||
+        roleCode === "SUPER_ADMIN",
+
+      isSuperAdmin:
+        roleCode === "SUPER_ADMIN",
+
       login,
+      loginWithGoogle,
       register,
       logout,
       refreshCurrentUser,
@@ -110,20 +221,30 @@ export function AuthProvider({ children }) {
       isAuthLoading,
       roleCode,
       login,
+      loginWithGoogle,
       register,
       logout,
       refreshCurrentUser,
     ]
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider
+      value={value}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export const useAuth = () => {
-  const context = useContext(AuthContext);
+  const context =
+    useContext(AuthContext);
 
   if (!context) {
-    throw new Error("useAuth phải được dùng bên trong AuthProvider");
+    throw new Error(
+      "useAuth phải được dùng bên trong AuthProvider"
+    );
   }
 
   return context;
