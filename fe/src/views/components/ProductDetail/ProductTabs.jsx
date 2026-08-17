@@ -1,4 +1,6 @@
 import { useState } from "react";
+import toast from "react-hot-toast";
+import { createProductComment } from "../../../services/commentService";
 
 function ProductTabs({
   product,
@@ -6,8 +8,51 @@ function ProductTabs({
   rating,
   reviews = [],
   isAuthenticated,
+  onReviewSubmitted, // 👈 Thêm prop callback để làm mới danh sách sau khi gửi
 }) {
   const [activeTab, setActiveTab] = useState("description");
+
+  // 👇 State cho Form đánh giá
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewContent, setReviewContent] = useState("");
+  const [submitLoading, setSubmitLoading] = useState(false);
+
+  // 👇 Hàm xử lý gửi đánh giá
+  const handleSubmitReview = async (e) => {
+    e.preventDefault();
+    if (!isAuthenticated) {
+      toast.error("Vui lòng đăng nhập để đánh giá sản phẩm.");
+      return;
+    }
+    if (reviewRating === 0) {
+      toast.error("Vui lòng chọn số sao đánh giá.");
+      return;
+    }
+    if (reviewContent.trim() === "") {
+      toast.error("Vui lòng nhập nội dung đánh giá.");
+      return;
+    }
+
+    try {
+      setSubmitLoading(true);
+      // Gọi API gửi bình luận (đã có ở service)
+      await createProductComment({
+        product_id: product.id,
+        rating: reviewRating,
+        content: reviewContent,
+      });
+      toast.success("Gửi đánh giá thành công! Chờ admin duyệt nhé.");
+      // Reset form
+      setReviewRating(0);
+      setReviewContent("");
+      // Gọi callback làm mới danh sách nếu có
+      if (onReviewSubmitted) onReviewSubmitted();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Có lỗi xảy ra khi gửi đánh giá.");
+    } finally {
+      setSubmitLoading(false);
+    }
+  };
 
   return (
     <section className="product-tabs">
@@ -20,7 +65,6 @@ function ProductTabs({
           onClick={() => setActiveTab("description")}
         >
           <i className="bi bi-file-text"></i>
-
           <span>Mô tả</span>
         </button>
 
@@ -32,7 +76,6 @@ function ProductTabs({
           onClick={() => setActiveTab("specifications")}
         >
           <i className="bi bi-cpu"></i>
-
           <span>Thông số</span>
         </button>
 
@@ -44,7 +87,6 @@ function ProductTabs({
           onClick={() => setActiveTab("reviews")}
         >
           <i className="bi bi-chat-dots"></i>
-
           <span>Đánh giá ({Number(rating?.total || reviews.length || 0)})</span>
         </button>
       </div>
@@ -72,7 +114,6 @@ function ProductTabs({
                     key={item.id ?? `${item.spec_key}-${index}`}
                   >
                     <span>{item.spec_key}</span>
-
                     <span>{item.spec_value}</span>
                   </div>
                 ))}
@@ -87,18 +128,84 @@ function ProductTabs({
 
         {activeTab === "reviews" && (
           <div className="review-section">
+            {/* ========== BẮT ĐẦU FORM KHÁCH HÀNG TỰ ĐÁNH GIÁ ========== */}
+            {isAuthenticated ? (
+              <div className="review-form-container" style={{ marginBottom: '24px', padding: '16px', border: '1px solid #e5e7eb', borderRadius: '12px', background: '#fafafa' }}>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: '700', color: '#1f2937' }}>Viết đánh giá của bạn</h4>
+                <form onSubmit={handleSubmitReview}>
+                  <div className="rating-input" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                    <span style={{ fontWeight: '600', fontSize: '14px' }}>Chất lượng:</span>
+                    <div className="stars-selector" style={{ display: 'flex', gap: '4px' }}>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <i
+                          key={star}
+                          className={`bi ${star <= reviewRating ? "bi-star-fill" : "bi-star"}`}
+                          style={{
+                            cursor: "pointer",
+                            fontSize: "22px",
+                            color: star <= reviewRating ? "#fbbf24" : "#d1d5db",
+                            transition: "color 0.2s",
+                          }}
+                          onClick={() => setReviewRating(star)}
+                          onMouseEnter={() => {}}
+                        ></i>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="review-content-input">
+                    <textarea
+                      rows="3"
+                      placeholder="Chia sẻ trải nghiệm của bạn về sản phẩm này..."
+                      value={reviewContent}
+                      onChange={(e) => setReviewContent(e.target.value)}
+                      style={{ width: '100%', padding: '10px', border: '1px solid #d1d5db', borderRadius: '8px', outline: 'none', fontSize: '14px', resize: 'vertical' }}
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={submitLoading}
+                    style={{
+                      marginTop: '12px',
+                      padding: '10px 24px',
+                      border: 'none',
+                      borderRadius: '8px',
+                      background: '#ef233c',
+                      color: '#fff',
+                      fontWeight: '600',
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                      transition: 'background 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.target.style.background = '#c9182b'}
+                    onMouseLeave={(e) => e.target.style.background = '#ef233c'}
+                  >
+                    {submitLoading ? "Đang gửi..." : "Gửi đánh giá"}
+                  </button>
+                </form>
+              </div>
+            ) : (
+              <div className="review-login-box">
+                <div className="review-login-icon">
+                  <i className="bi bi-person-lock"></i>
+                </div>
+                <h3>Đăng nhập để đánh giá sản phẩm</h3>
+                <p>
+                  Chỉ khách hàng đã mua và hoàn thành đơn hàng mới có thể gửi
+                  đánh giá.
+                </p>
+              </div>
+            )}
+            {/* ========== KẾT THÚC FORM ========== */}
+
+            {/* ========== HIỂN THỊ THỐNG KÊ ========== */}
             <div className="review-summary">
               <div className="review-summary-score">
                 <strong>{Number(rating?.average || 0).toFixed(1)}</strong>
-
                 <span>/ 5</span>
               </div>
-
               <div>
                 <div className="review-stars">
-                  {Array.from({
-                    length: 5,
-                  }).map((_, index) => (
+                  {Array.from({ length: 5 }).map((_, index) => (
                     <i
                       key={index}
                       className={`bi ${
@@ -109,7 +216,6 @@ function ProductTabs({
                     ></i>
                   ))}
                 </div>
-
                 <p>
                   Dựa trên {Number(rating?.total || reviews.length || 0)} đánh
                   giá.
@@ -117,21 +223,7 @@ function ProductTabs({
               </div>
             </div>
 
-            {!isAuthenticated && (
-              <div className="review-login-box">
-                <div className="review-login-icon">
-                  <i className="bi bi-person-lock"></i>
-                </div>
-
-                <h3>Đăng nhập để đánh giá sản phẩm</h3>
-
-                <p>
-                  Chỉ khách hàng đã mua và hoàn thành đơn hàng mới có thể gửi
-                  đánh giá.
-                </p>
-              </div>
-            )}
-
+            {/* ========== DANH SÁCH ĐÁNH GIÁ ========== */}
             <div className="review-list">
               {reviews.length > 0 ? (
                 reviews.map((review, index) => {
@@ -151,12 +243,10 @@ function ProductTabs({
                       <div className="review-avatar">
                         {name.charAt(0).toUpperCase()}
                       </div>
-
                       <div className="review-content">
                         <div className="review-header">
                           <div>
                             <h4>{name}</h4>
-
                             {review.verified_purchase && (
                               <span className="review-verified">
                                 <i className="bi bi-patch-check-fill"></i> Đã
@@ -164,11 +254,8 @@ function ProductTabs({
                               </span>
                             )}
                           </div>
-
                           <div className="review-stars">
-                            {Array.from({
-                              length: 5,
-                            }).map((_, star) => (
+                            {Array.from({ length: 5 }).map((_, star) => (
                               <i
                                 key={star}
                                 className={`bi ${
@@ -178,7 +265,6 @@ function ProductTabs({
                             ))}
                           </div>
                         </div>
-
                         <p>{comment}</p>
                       </div>
                     </article>
@@ -187,9 +273,7 @@ function ProductTabs({
               ) : (
                 <div className="review-empty">
                   <i className="bi bi-chat-square-text"></i>
-
                   <h4>Chưa có đánh giá nào</h4>
-
                   <p>
                     Hãy là khách hàng đầu tiên chia sẻ trải nghiệm sau khi mua
                     sản phẩm.

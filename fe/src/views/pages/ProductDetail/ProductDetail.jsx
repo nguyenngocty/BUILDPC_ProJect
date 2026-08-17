@@ -187,6 +187,7 @@ function ProductDetail() {
                 rating={rating}
                 reviews={reviews}
                 isAuthenticated={isAuthenticated}
+                onReviewSubmitted={refresh}
               />
             </div>
           </div>

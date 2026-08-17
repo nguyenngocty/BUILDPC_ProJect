@@ -1,6 +1,18 @@
 /* ==================================================
    POST FORM STYLES (100% PURE CSS)
 ================================================== */
+:root {
+  --primary: #ef233c;
+  --primary-dark: #d11a2f;
+  --primary-light: #fce8e9;
+  --dark: #1f2937;
+  --text: #374151;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --card: #ffffff;
+  --light: #f9fafb;
+}
+
 .admin-post-form {
   padding: 24px;
   background-color: var(--light);
@@ -8,7 +20,7 @@
   color: var(--text);
 }
 
-/* --- Header --- */
+/* ===== Header ===== */
 .page-header {
   display: flex;
   justify-content: space-between;
@@ -71,14 +83,19 @@
   background-color: var(--primary-dark);
 }
 
-/* --- Form Layout (Grid) --- */
+.btn-save:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* ===== Form Layout ===== */
 .form-container {
   display: grid;
   grid-template-columns: 2fr 1fr;
   gap: 24px;
 }
 
-/* --- Form Elements --- */
+/* ===== Form Elements ===== */
 .form-group {
   margin-bottom: 20px;
 }
@@ -104,7 +121,7 @@
   color: var(--text);
   font-size: 14px;
   outline: none;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .form-control:focus {
@@ -118,36 +135,7 @@
   cursor: not-allowed;
 }
 
-/* --- Editor Fake Toolbar --- */
-.editor-wrapper {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
-  background-color: var(--card);
-}
-
-.editor-toolbar {
-  display: flex;
-  gap: 4px;
-  padding: 8px;
-  border-bottom: 1px solid var(--border);
-  background-color: #f9fafb;
-}
-
-.editor-toolbar button {
-  background: none;
-  border: none;
-  padding: 6px;
-  border-radius: 4px;
-  color: var(--text);
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.editor-toolbar button:hover {
-  background-color: #e5e7eb;
-}
-
+/* ===== Editor ===== */
 .editor-textarea {
   border: none;
   border-radius: 0;
@@ -159,7 +147,7 @@
   box-shadow: none;
 }
 
-/* --- Sidebar Cards --- */
+/* ===== Sidebar Cards ===== */
 .sidebar-card {
   background-color: var(--card);
   border: 1px solid var(--border);
@@ -177,7 +165,7 @@
   border-bottom: 1px solid var(--border);
 }
 
-/* --- Thumbnail Upload --- */
+/* ===== Thumbnail Upload ===== */
 .upload-placeholder {
   border: 2px dashed var(--border);
   border-radius: 6px;
@@ -212,9 +200,337 @@
   color: var(--muted);
 }
 
-/* --- Responsive --- */
+/* ===== SEO Box ===== */
+.seo-box {
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  margin-top: 20px;
+}
+
+.seo-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--dark);
+  margin: 0 0 16px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ===== CKEditor ===== */
+.ck-editor__editable {
+  min-height: 300px;
+}
+
+/* ===== Tag Input ===== */
+.tag-input-wrapper {
+  margin-top: 8px;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+  min-height: 30px;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  background-color: #e5e7eb;
+  padding: 4px 10px 4px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  color: #1f2937;
+}
+
+.tag-chip .tag-remove {
+  background: none;
+  border: none;
+  margin-left: 6px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  color: #6b7280;
+  padding: 0 2px;
+  transition: color 0.2s;
+}
+
+.tag-chip .tag-remove:hover {
+  color: #ef4444;
+}
+
+.tag-input-group {
+  display: flex;
+  gap: 8px;
+}
+
+.tag-input-group .form-control {
+  flex: 1;
+}
+
+.btn-add-tag {
+  padding: 8px 16px;
+  background-color: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-add-tag:hover {
+  background-color: var(--primary-dark);
+}
+
+/* ===== Button thêm danh mục ===== */
+.btn-add-category {
+  background-color: var(--primary);
+  color: #fff;
+  border: none;
+  padding: 0 14px;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 38px;
+}
+
+.btn-add-category:hover {
+  background-color: var(--primary-dark);
+}
+
+/* ===== Modal thêm danh mục ===== */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(2px);
+  animation: modalOverlayFadeIn 0.25s ease;
+}
+
+@keyframes modalOverlayFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.modal-content {
+  background: #ffffff;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  animation: modalContentFadeIn 0.3s ease;
+}
+
+@keyframes modalContentFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px 16px 24px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.modal-header h5 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2937;
+  letter-spacing: -0.3px;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  color: #9ca3af;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.modal-close:hover {
+  background: #f3f4f6;
+  color: #ef4444;
+}
+
+.modal-body {
+  padding: 24px 24px 16px 24px;
+}
+
+.modal-body .form-group {
+  margin-bottom: 0;
+}
+
+.modal-body label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 6px;
+}
+
+.modal-body .form-control {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.modal-body .form-control:focus {
+  border-color: #ef233c;
+  box-shadow: 0 0 0 3px rgba(239, 35, 60, 0.12);
+  outline: none;
+}
+
+.modal-footer {
+  padding: 16px 24px 24px 24px;
+  border-top: none;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.btn-cancel-modal {
+  background: #f3f4f6;
+  border: none;
+  padding: 9px 22px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #4b5563;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-cancel-modal:hover {
+  background: #e5e7eb;
+}
+
+.btn-save-modal {
+  background: #ef233c;
+  border: none;
+  padding: 9px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.btn-save-modal:hover {
+  background: #d11a2f;
+}
+
+.btn-save-modal:active {
+  transform: scale(0.97);
+}
+
+.btn-save-modal:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ===== Responsive ===== */
 @media (max-width: 992px) {
   .form-container {
     grid-template-columns: 1fr;
   }
+}
+
+@media (max-width: 640px) {
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .header-actions {
+    width: 100%;
+  }
+
+  .header-actions .btn-cancel,
+  .header-actions .btn-save {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .modal-content {
+    max-width: 95%;
+    margin: 0 10px;
+  }
+
+  .modal-header {
+    padding: 16px 18px 12px 18px;
+  }
+
+  .modal-body {
+    padding: 18px;
+  }
+
+  .modal-footer {
+    padding: 12px 18px 18px 18px;
+    flex-direction: column;
+  }
+
+  .modal-footer button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+/* ==================================================
+   VALIDATION ERROR STYLES
+================================================== */
+/* Tin nhắn lỗi màu đỏ */
+.error-text {
+  color: #dc3545; /* Màu đỏ cảnh báo */
+  font-size: 13px;
+  margin-top: 6px;
+  font-weight: 500;
+}
+
+/* Viền đỏ khi ô input bị lỗi */
+.form-control.error {
+  border-color: #dc3545 !important;
+  box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25) !important;
 }

@@ -64,3 +64,12 @@ export const getProducts = () => {
 export const getUsers = () => {
   return api.get("/admin/comments/users");
 };
+// ======================================
+// LẤY BÌNH LUẬN THEO SẢN PHẨM (CLIENT) file mới
+// ======================================
+export const getProductComments = (productId) => {
+  return api.get(`/client/products/comments/${productId}`);  
+};
+export const createProductComment = (data) => {
+  return api.post("/client/products/comments", data);  
+};

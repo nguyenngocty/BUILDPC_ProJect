@@ -17,4 +17,5 @@ router.post(
     upload.single("thumbnail"),
     controller.uploadThumbnail
 );
+router.post("/upload-image", upload.single("image"), controller.uploadImage);
 module.exports = router;

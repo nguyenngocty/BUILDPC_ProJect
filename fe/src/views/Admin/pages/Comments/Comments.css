@@ -248,20 +248,28 @@
 /* ================= RATING ================= */
 
 .cm-rating {
-  display:flex;
-  gap:4px;
-  align-items:center;
+  display: flex;
+  align-items: center;
+  gap: 4px; /* Khoảng cách giữa các sao */
 }
-
 
 .cm-rating i {
-  font-size:18px;
-  color:#d1d5db;
+  font-size: 18px;         /* Tăng kích thước sao lên cho rõ */
+  color: #e5e7eb;          /* Màu nền xám nhạt cho sao chưa đánh giá */
+  transition: transform 0.2s ease; /* Thêm hiệu ứng chuyển động mượt */
 }
 
+/* Sao được tích đánh giá */
+.cm-rating i.bi-star-fill.active {
+  color: #fbbf24;          /* Màu vàng cam đậm đẹp mắt */
+  
+  /* 👇 Tạo hiệu ứng bóng đổ nhẹ khiến sao trông nổi khối 3D như icon */
+  filter: drop-shadow(0 2px 4px rgba(251, 191, 36, 0.4));
+}
 
-.cm-rating i.active {
-  color:#fbbf24;
+/* Hiệu ứng khi rê chuột vào cả dải sao */
+.cm-rating:hover i {
+  transform: scale(1.15);
 }
 
 
@@ -440,3 +448,128 @@
   }
 
 }
+
+/* ==========================================================
+   BULK ACTION BAR (GIỐNG POST)
+========================================================== */
+.cm-bulk-action-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fff;
+  padding: 16px 24px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  border: 1px solid #e5e7eb;
+}
+.cm-bulk-info { display: flex; align-items: center; gap: 16px; }
+.cm-bulk-icon-box {
+  width: 48px; height: 48px;
+  background: #fef2f2; color: #dc2626;
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center; font-size: 24px;
+}
+.cm-bulk-text h4 { margin: 0 0 2px 0; font-size: 15px; font-weight: 700; color: #1f2937; }
+.cm-bulk-text h4 span { background: #dc2626; color: #fff; padding: 0 8px; border-radius: 4px; font-size: 14px; }
+.cm-bulk-text p { margin: 0; font-size: 13px; color: #6b7280; }
+.cm-bulk-actions { display: flex; gap: 12px; }
+.cm-bulk-delete-btn {
+  background: #dc2626; color: #fff; border: none; padding: 10px 20px;
+  border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer;
+  display: flex; align-items: center; gap: 8px; transition: background 0.2s;
+}
+.cm-bulk-delete-btn:hover { background: #b91c1c; }
+.cm-bulk-cancel-btn {
+  background: #fff; border: 1px solid #e5e7eb; color: #374151; padding: 10px 20px;
+  border-radius: 8px; font-weight: 500; font-size: 14px; cursor: pointer;
+  display: flex; align-items: center; gap: 8px; transition: background 0.2s;
+}
+.cm-bulk-cancel-btn:hover { background: #f9fafb; }
+
+/* ==========================================================
+   ACTION DROPDOWN 3 CHẤM (GIỐNG POST)
+========================================================== */
+.cm-action-dropdown { position: relative; display: inline-block; }
+.cm-action-trigger {
+  width: 36px; height: 36px; border: none; border-radius: 8px;
+  background-color: transparent; color: #6b7280; font-size: 18px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease;
+}
+.cm-action-trigger:hover { background-color: #f3f4f6; color: #111827; }
+
+.cm-action-menu {
+  position: absolute; top: 110%; right: 0; min-width: 140px; background: #ffffff;
+  border: 1px solid #e5e7eb; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.10);
+  padding: 6px 0; z-index: 50; display: flex; flex-direction: column;
+  animation: fadeInDown 0.2s ease forwards;
+}
+@keyframes fadeInDown { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+
+.cm-action-item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 16px; text-decoration: none;
+  font-size: 14px; font-weight: 500; color: #374151; background: transparent;
+  border: none; width: 100%; text-align: left; cursor: pointer; transition: background-color 0.2s ease;
+}
+.cm-action-item:hover { background-color: #f9fafb; }
+.cm-action-item.success-item { color: #16a34a; }
+.cm-action-item.warning-item { color: #d97706; }
+.cm-action-item.delete-item { color: #dc2626; }
+.cm-action-item.delete-item:hover { background-color: #fef2f2; }
+
+/* ==========================================================
+   PAGINATION MỚI (GIỐNG HẾT ẢNH POST)
+========================================================== */
+.cm-pagination-box {
+  display: flex; justify-content: space-between; align-items: center;
+  width: fit-content; margin: 0 auto; padding: 8px 0; gap: 30px;
+}
+.cm-pagination-info { font-size: 13px; color: #6b7280; }
+.cm-pagination-controls { display: flex; align-items: center; gap: 4px; }
+.cm-page-btn {
+  background-color: #ffffff; border: 1px solid #e5e7eb; color: #374151;
+  width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+  border-radius: 4px; cursor: pointer; font-size: 13px; transition: all 0.2s;
+}
+.cm-page-btn:hover:not(.active) { background-color: #f3f4f6; }
+/* 👇 Tinh chỉnh màu Active đúng chuẩn đỏ (giống ảnh bạn gửi) */
+.cm-page-btn.active { 
+  background-color: #ef233c; /* Màu đỏ chuẩn */
+  color: #fff; 
+  border-color: #ef233c; 
+  box-shadow: 0 4px 10px rgba(239, 35, 60, 0.35); /* Bóng đổ đỏ mờ tạo chiều sâu */
+}
+.cm-page-btn:disabled { opacity: 0.5; cursor: not-allowed; background: #f9fafb; }
+
+/* ==========================================================
+   CUSTOM CONFIRM MODAL (GIỐNG POST)
+========================================================== */
+.custom-confirm-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background-color: rgba(0, 0, 0, 0.45); display: flex; align-items: center; justify-content: center;
+  z-index: 9999; backdrop-filter: blur(4px);
+}
+.custom-confirm-box {
+  background: #ffffff; width: 100%; max-width: 420px; padding: 32px 28px;
+  border-radius: 20px; box-shadow: 0 25px 50px rgba(0,0,0,0.2); text-align: center;
+  animation: fadeInUp 0.2s ease;
+}
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(15px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.custom-confirm-icon {
+  width: 72px; height: 72px; background-color: #fee2e2; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto;
+}
+.custom-confirm-icon i { color: #ef4444; font-size: 34px; }
+.custom-confirm-title { color: #ef4444; font-size: 20px; font-weight: 700; margin: 0 0 12px 0; }
+.custom-confirm-message { color: #64748b; font-size: 15px; margin: 0 0 32px 0; line-height: 1.6; }
+.custom-confirm-actions { display: flex; gap: 14px; justify-content: center; }
+.custom-btn-cancel {
+  padding: 10px 28px; border: 1px solid #e2e8f0; border-radius: 10px; background-color: #ffffff;
+  color: #1e293b; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.2s ease; flex: 1;
+}
+.custom-btn-cancel:hover { background-color: #f8fafc; }
+.custom-btn-delete {
+  padding: 10px 28px; border: none; border-radius: 10px; background-color: #ef4444;
+  color: #ffffff; font-weight: 600; font-size: 14px; cursor: pointer; transition: background-color 0.2s ease; flex: 1;
+}
+.custom-btn-delete:hover { background-color: #dc2626; }
