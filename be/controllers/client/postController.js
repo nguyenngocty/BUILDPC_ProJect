@@ -1,114 +1,29 @@
-const { pool } = require("../../config/database");
+const Post = require("../../models/Post");
 
-// =====================================
-// LẤY DANH SÁCH BÀI VIẾT
-// =====================================
 exports.getPosts = async (req, res) => {
   try {
-    const {
-      search = "",
-      category = "",
-      sort = "latest",
-    } = req.query;
+    const { search = "", category_id = "", sort = "latest", page = 1, limit = 6 } = req.query;
+    const pageNum = Math.max(1, parseInt(page, 10));
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10)));
+    const catId = category_id && category_id !== "all" ? parseInt(category_id, 10) : null;
 
-    let sql = `
-      SELECT
-        p.id,
-        p.title,
-        p.slug,
-        p.content,
-        p.thumbnail,
-        p.created_at,
-        c.name AS category
-      FROM posts p
-      LEFT JOIN categories c
-        ON c.id = p.category_id
-      WHERE 1=1
-    `;
+    const rows = await Post.getClientList({ search, category_id: catId, sort, page: pageNum, limit: limitNum });
+    const total = await Post.countClientList({ search, category_id: catId });
 
-    const params = [];
-
-    // tìm kiếm
-    if (search) {
-      sql += " AND p.title LIKE ?";
-      params.push(`%${search}%`);
-    }
-
-    // lọc danh mục
-    if (category && category !== "Tất cả") {
-      sql += " AND c.name = ?";
-      params.push(category);
-    }
-
-    // sắp xếp
-    switch (sort) {
-      case "oldest":
-        sql += " ORDER BY p.created_at ASC";
-        break;
-
-      default:
-        sql += " ORDER BY p.created_at DESC";
-        break;
-    }
-
-    const [rows] = await pool.query(sql, params);
-
-    res.json({
-      success: true,
-      data: rows,
-    });
-  } catch (err) {
-    console.log(err);
-
-    res.status(500).json({
-      success: false,
-      message: err.message,
-    });
-  }
+    res.json({ success: true, data: { posts: rows, pagination: { total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) } } });
+  } catch (err) { console.log(err); res.status(500).json({ success: false, message: err.message }); }
 };
 
-// =====================================
-// CHI TIẾT BÀI VIẾT
-// =====================================
 exports.getPostById = async (req, res) => {
   try {
     const { id } = req.params;
-
-    const sql = `
-      SELECT
-        p.id,
-        p.title,
-        p.slug,
-        p.content,
-        p.thumbnail,
-        p.created_at,
-        c.name AS category
-      FROM posts p
-      LEFT JOIN categories c
-        ON c.id = p.category_id
-      WHERE p.id = ?
-      LIMIT 1
-    `;
-
-    const [rows] = await pool.query(sql, [id]);
-
-    if (rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Không tìm thấy bài viết",
-      });
+    await Post.incrementView(id);
+    const post = await Post.getClientDetail(id);
+    if (!post) return res.status(404).json({ success: false, message: "Không tìm thấy bài viết" });
+    
+    if (post.excerpt) {
+      post.excerpt = post.excerpt.replace(/<[^>]+>|&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
     }
-
-    res.json({
-      success: true,
-      data: rows[0],
-    });
-  } catch (err) {
-    console.log(err);
-
-    res.status(500).json({
-      success: false,
-      message: err.message,
-    });
-  }
+    res.json({ success: true, data: post });
+  } catch (err) { console.log(err); res.status(500).json({ success: false, message: err.message }); }
 };
