@@ -7,6 +7,7 @@ import React, {
 import { useNavigate } from "react-router-dom";
 
 import dashboardService from "../../../../services/admin/dashboardService";
+
 const RANGE_LABELS = {
   "7d": "7 ngày",
   "30d": "30 ngày",
@@ -104,6 +105,24 @@ function shouldShowChartLabel(index, totalItems) {
   return index % 15 === 0 || index === totalItems - 1;
 }
 
+function getOrderUpdateTime(order) {
+  const value =
+    order?.updatedAt ||
+    order?.updated_at ||
+    order?.statusUpdatedAt ||
+    order?.status_updated_at ||
+    order?.createdAt ||
+    order?.created_at;
+
+  if (!value) {
+    return 0;
+  }
+
+  const timestamp = new Date(value).getTime();
+
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
 function AdminDashboard() {
   const navigate = useNavigate();
 
@@ -171,12 +190,41 @@ function AdminDashboard() {
   const recentOrders = dashboardData?.recentOrders || [];
   const revenueChart = dashboardData?.revenueChart || [];
 
+  /*
+   * Đơn hàng nào vừa được cập nhật trạng thái
+   * sẽ được đưa lên đầu danh sách.
+   */
+  const sortedRecentOrders = useMemo(() => {
+    return [...recentOrders].sort((a, b) => {
+      const timeA = getOrderUpdateTime(a);
+      const timeB = getOrderUpdateTime(b);
+
+      if (timeA !== timeB) {
+        return timeB - timeA;
+      }
+
+      /*
+       * Nếu thời gian bằng nhau hoặc backend chưa trả updatedAt,
+       * ưu tiên đơn có id lớn hơn.
+       */
+      return Number(b?.id || 0) - Number(a?.id || 0);
+    });
+  }, [recentOrders]);
+
   const maximumRevenue = useMemo(() => {
     return Math.max(
       1,
       ...revenueChart.map((item) => Number(item.revenue || 0))
     );
   }, [revenueChart]);
+
+  const chartMinWidth = useMemo(() => {
+    if (revenueChart.length <= 7) {
+      return "100%";
+    }
+
+    return `${revenueChart.length * 58}px`;
+  }, [revenueChart.length]);
 
   const revenueComparison = getComparisonData(
     revenue.comparisonPercent,
@@ -211,6 +259,7 @@ function AdminDashboard() {
         </div>
 
         <h2>Không thể tải Dashboard</h2>
+
         <p>{error}</p>
 
         <button
@@ -254,13 +303,19 @@ function AdminDashboard() {
             <i className="bi bi-exclamation-circle" /> {error}
           </span>
 
-          <button type="button" onClick={() => fetchDashboard()}>
+          <button
+            type="button"
+            onClick={() => fetchDashboard()}
+          >
             Tải lại
           </button>
         </div>
       )}
 
-      <section className="stats-grid" aria-label="Chỉ số nhanh">
+      <section
+        className="stats-grid"
+        aria-label="Chỉ số nhanh"
+      >
         <article className="stat-card">
           <div className="stat-icon">
             <i className="bi bi-cash-stack" />
@@ -313,7 +368,9 @@ function AdminDashboard() {
 
           <span>Sản phẩm cần chú ý</span>
 
-          <strong>{formatNumber(products.needAttentionProducts)}</strong>
+          <strong>
+            {formatNumber(products.needAttentionProducts)}
+          </strong>
 
           <small className="down">
             <i className="bi bi-exclamation-circle" />{" "}
@@ -353,6 +410,7 @@ function AdminDashboard() {
           {revenueChart.length === 0 ? (
             <div className="dashboard-empty">
               <i className="bi bi-bar-chart" />
+
               <p>Chưa có dữ liệu doanh thu.</p>
             </div>
           ) : (
@@ -361,12 +419,8 @@ function AdminDashboard() {
                 className="bar-chart"
                 aria-label="Biểu đồ doanh thu"
                 style={{
-                  minWidth: `${Math.max(
-                    revenueChart.length * 52,
-                    580
-                  )}px`,
-
-                  gridTemplateColumns: `repeat(${revenueChart.length}, minmax(32px, 1fr))`,
+                  width: chartMinWidth,
+                  minWidth: chartMinWidth,
                 }}
               >
                 {revenueChart.map((item, index) => {
@@ -385,6 +439,7 @@ function AdminDashboard() {
                   return (
                     <div
                       key={item.date}
+                      className="bar-chart-item"
                       style={{
                         "--value": barValue,
                       }}
@@ -395,7 +450,9 @@ function AdminDashboard() {
                       {shouldShowChartLabel(
                         index,
                         revenueChart.length
-                      ) && <span>{item.label}</span>}
+                      ) && (
+                        <span>{item.label}</span>
+                      )}
                     </div>
                   );
                 })}
@@ -470,7 +527,9 @@ function AdminDashboard() {
               <i className="bi bi-receipt" /> Đơn hàng gần đây
             </h2>
 
-            <p>Danh sách đơn hàng mới nhất trong hệ thống.</p>
+            <p>
+              Đơn vừa thay đổi trạng thái sẽ được ưu tiên hiển thị lên đầu.
+            </p>
           </div>
 
           <button
@@ -495,27 +554,55 @@ function AdminDashboard() {
             </thead>
 
             <tbody>
-              {recentOrders.length === 0 ? (
+              {sortedRecentOrders.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="admin-table-empty">
+                  <td
+                    colSpan="5"
+                    className="admin-table-empty"
+                  >
                     Chưa có đơn hàng nào.
                   </td>
                 </tr>
               ) : (
-                recentOrders.map((order) => {
+                sortedRecentOrders.map((order) => {
                   const statusMeta = getOrderStatusMeta(
                     order.orderStatus
                   );
 
                   return (
                     <tr key={order.id}>
-                      <td>#{order.orderCode}</td>
+                      <td title={`#${order.orderCode}`}>
+                        #{order.orderCode}
+                      </td>
 
-                      <td>{order.customerName || "Khách hàng"}</td>
+                      <td
+                        title={
+                          order.customerName ||
+                          "Khách hàng"
+                        }
+                      >
+                        {order.customerName ||
+                          "Khách hàng"}
+                      </td>
 
-                      <td>{order.productSummary}</td>
+                      <td
+                        title={
+                          order.productSummary ||
+                          ""
+                        }
+                      >
+                        {order.productSummary}
+                      </td>
 
-                      <td>{formatCurrency(order.totalAmount)}</td>
+                      <td
+                        title={formatCurrency(
+                          order.totalAmount
+                        )}
+                      >
+                        {formatCurrency(
+                          order.totalAmount
+                        )}
+                      </td>
 
                       <td>
                         <span

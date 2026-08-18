@@ -4,10 +4,7 @@ import useAuth from "../../../hooks/useAuth";
 import { getInitials, getRoleLabel } from "../../../models/UserModel";
 
 const topMenuItems = [
-  { label: "Dashboard", to: "/admin", end: true },
-  { label: "Đơn hàng", to: "/admin/orders" },
-  { label: "Sản phẩm", to: "/admin/products" },
-  { label: "Khách hàng", to: "/admin/users" },
+  
 ];
 
 function AdminTopbar({ isAccountOpen, onToggleSidebar, onToggleAccount, onCloseAccount, onOpenAccountInfo, onOpenChangePassword, onGoToClient, onOpenLogout }) {

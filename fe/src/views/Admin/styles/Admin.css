@@ -1,4 +1,4 @@
-/* ===== ADMIN STYLE TOKENS START: dong bo theo client/css/style.css ===== */
+/* ===== ADMIN STYLE TOKENS START ===== */
 :root {
   --primary: #ef233c;
   --primary-dark: #c9182b;
@@ -10,18 +10,42 @@
   --card: #ffffff;
   --border: #e5e7eb;
   --yellow: #f59e0b;
+
+  /* Kích thước layout */
+  --admin-topbar-height: 72px;
+  --admin-sidebar-width: 260px;
 }
 /* ===== ADMIN STYLE TOKENS END ===== */
+
+
+/* =========================================================
+   GLOBAL
+   ========================================================= */
 
 * {
   box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+}
+
+html {
+  overflow-x: hidden;
+}
+
 body {
   min-height: 100vh;
   margin: 0;
+
+  overflow-x: hidden;
+
   color: var(--text);
   background: var(--light);
+
   font-family: "Be Vietnam Pro", "Segoe UI", Arial, sans-serif;
 }
 
@@ -35,33 +59,60 @@ select {
   font: inherit;
 }
 
-/* ===== ADMIN LAYOUT START ===== */
+
+/* =========================================================
+   ADMIN LAYOUT
+   ========================================================= */
+
 .admin-layout {
+  width: 100%;
+  min-width: 0;
   min-height: 100vh;
-  padding-top: 72px;
-  padding-left: 260px;
+
+  padding-top: var(--admin-topbar-height);
+  padding-left: var(--admin-sidebar-width);
+
+  overflow-x: hidden;
 }
 
 .admin-main {
-  padding: 28px;
-}
-/* ===== ADMIN LAYOUT END ===== */
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 
-/* ===== ADMIN TOP MENU START ===== */
+  padding: 28px;
+
+  overflow-x: hidden;
+}
+
+
+/* =========================================================
+   ADMIN TOPBAR
+   ========================================================= */
+
 .admin-topbar {
   position: fixed;
   top: 0;
   right: 0;
   left: 0;
-  z-index: 20;
+
+  z-index: 100;
+
   display: flex;
   align-items: center;
   justify-content: space-between;
+
   gap: 18px;
-  height: 72px;
+
+  width: 100%;
+  height: var(--admin-topbar-height);
+
   padding: 0 24px;
+
   border-bottom: 1px solid var(--border);
+
   background: var(--card);
+
   box-shadow: 0 10px 25px rgba(15, 23, 42, 0.05);
 }
 
@@ -70,6 +121,8 @@ select {
 .top-menu {
   display: flex;
   align-items: center;
+
+  min-width: 0;
 }
 
 .topbar-left {
@@ -79,38 +132,61 @@ select {
 .sidebar-toggle,
 .icon-btn {
   display: grid;
+
   width: 40px;
   height: 40px;
+
+  flex: 0 0 40px;
+
   place-items: center;
+
   border: 1px solid var(--border);
   border-radius: 8px;
+
   color: var(--dark);
   background: var(--light);
+
   font-weight: 800;
+
+  cursor: pointer;
 }
 
 .sidebar-toggle:hover,
 .icon-btn:hover {
   border-color: var(--primary);
+
   color: var(--primary);
   background: rgba(239, 35, 60, 0.08);
 }
 
 .admin-brand {
   display: inline-flex;
-  gap: 10px;
   align-items: center;
+
+  gap: 10px;
+
+  min-width: 0;
+
   color: var(--dark);
+
   font-size: 20px;
   font-weight: 800;
+
+  white-space: nowrap;
 }
 
 .brand-mark {
   display: grid;
+
   width: 38px;
   height: 38px;
+
+  flex: 0 0 38px;
+
   place-items: center;
+
   border-radius: 8px;
+
   color: #ffffff;
   background: var(--primary);
 }
@@ -121,9 +197,14 @@ select {
 
 .top-menu a {
   padding: 10px 14px;
+
   border-radius: 8px;
+
   color: var(--muted);
+
   font-weight: 700;
+
+  white-space: nowrap;
 }
 
 .top-menu a:hover,
@@ -134,83 +215,194 @@ select {
 
 .topbar-actions {
   gap: 12px;
+
+  flex-shrink: 0;
+}
+
+.admin-search {
+  flex-shrink: 0;
 }
 
 .admin-search input {
   width: 230px;
   height: 42px;
+
   padding: 0 14px;
+
   border: 1px solid var(--border);
   border-radius: 8px;
+
   color: var(--dark);
   background: var(--light);
+
   outline: none;
 }
 
 .admin-search input:focus {
   border-color: var(--secondary);
+
   box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.12);
 }
 
+
+/* =========================================================
+   ADMIN USER
+   ========================================================= */
+
 .admin-user {
   display: inline-flex;
-  gap: 10px;
   align-items: center;
+
+  gap: 10px;
+
+  min-width: 0;
   min-height: 42px;
+
+  padding: 3px 6px;
+
   border: 0;
+  border-radius: 8px;
+
   color: var(--dark);
   background: transparent;
+
   font-weight: 800;
+
+  cursor: pointer;
+
+  transition: 0.2s ease;
+}
+
+.admin-user:hover,
+.admin-user.active {
+  color: var(--primary);
+  background: rgba(239, 35, 60, 0.08);
 }
 
 .admin-user span {
   display: grid;
+
   width: 36px;
   height: 36px;
+
+  flex: 0 0 36px;
+
   place-items: center;
+
   border-radius: 50%;
+
   color: #ffffff;
   background: var(--secondary);
+
   font-size: 13px;
 }
-/* ===== ADMIN TOP MENU END ===== */
 
-/* ===== ADMIN SIDEBAR START ===== */
+.admin-user strong {
+  max-width: 180px;
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+/* =========================================================
+   ADMIN SIDEBAR
+   ========================================================= */
+
 .admin-sidebar {
   position: fixed;
-  top: 72px;
+
+  top: var(--admin-topbar-height);
   bottom: 0;
   left: 0;
-  z-index: 15;
-  width: 260px;
-  padding: 22px 16px;
+
+  z-index: 90;
+
+  width: var(--admin-sidebar-width);
+  height: calc(100vh - var(--admin-topbar-height));
+
+  padding: 14px 12px 36px;
+
+  overflow-x: hidden;
+  overflow-y: auto;
+
   border-right: 1px solid var(--border);
-  background: var(--card);
-  transition: transform 0.2s ease;
+
+  background: #ffffff;
+
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+
+  transition: transform 0.25s ease;
+}
+
+/* Chrome / Edge / Safari */
+.admin-sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.admin-sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.admin-sidebar::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+
+  background: #cbd5e1;
+}
+
+.admin-sidebar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 .sidebar-title {
+  display: block;
+
+  margin: 0;
+
   padding: 0 12px 14px;
+
   color: var(--muted);
+
   font-size: 13px;
   font-weight: 800;
+
+  line-height: 1.4;
+
   text-transform: uppercase;
 }
 
 .sidebar-menu {
   display: grid;
+
   gap: 8px;
+
+  width: 100%;
+
+  padding-bottom: 14px;
 }
 
 .sidebar-menu a {
   display: flex;
-  gap: 12px;
   align-items: center;
+
+  gap: 12px;
+
+  width: 100%;
+  min-width: 0;
   min-height: 46px;
+
   padding: 10px 12px;
+
   border-radius: 8px;
+
   color: var(--text);
+
   font-weight: 700;
+
+  overflow: hidden;
 }
 
 .sidebar-menu a:hover,
@@ -221,14 +413,30 @@ select {
 
 .menu-icon {
   display: grid;
+
   width: 28px;
   height: 28px;
+
+  flex: 0 0 28px;
+
   place-items: center;
+
   border-radius: 8px;
+
   color: var(--secondary);
   background: rgba(37, 99, 235, 0.1);
+
   font-size: 14px;
   font-weight: 800;
+}
+
+.sidebar-menu a > span:not(.menu-icon) {
+  min-width: 0;
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-collapsed .admin-sidebar {
@@ -238,53 +446,86 @@ select {
 .sidebar-collapsed.admin-layout {
   padding-left: 0;
 }
-/* ===== ADMIN SIDEBAR END ===== */
 
-/* ===== ADMIN DASHBOARD CONTENT START ===== */
+
+/* =========================================================
+   DASHBOARD HEADING
+   ========================================================= */
+
 .dashboard-heading {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+
   gap: 20px;
+
+  width: 100%;
+  min-width: 0;
+
   margin-bottom: 24px;
+}
+
+.dashboard-heading > div {
+  min-width: 0;
 }
 
 .page-kicker {
   display: inline-flex;
+
   margin-bottom: 10px;
+
   padding: 6px 12px;
+
   border-radius: 999px;
+
   color: var(--primary);
   background: rgba(239, 35, 60, 0.1);
+
   font-size: 13px;
   font-weight: 800;
+
   text-transform: uppercase;
 }
 
 .dashboard-heading h1 {
   margin: 0 0 8px;
+
   color: var(--dark);
+
   font-size: 34px;
   font-weight: 800;
+
   letter-spacing: 0;
 }
 
 .dashboard-heading p,
 .panel-head p {
   margin: 0;
+
   color: var(--muted);
 }
+
+
+/* =========================================================
+   BUTTON
+   ========================================================= */
 
 .primary-action,
 .ghost-action {
   min-height: 44px;
+
   padding: 0 16px;
+
   border-radius: 8px;
+
   font-weight: 800;
+
+  white-space: nowrap;
 }
 
 .primary-action {
   border: 1px solid var(--primary);
+
   color: #ffffff;
   background: var(--primary);
 }
@@ -296,47 +537,77 @@ select {
 
 .ghost-action {
   border: 1px solid var(--border);
+
   color: var(--secondary);
   background: var(--card);
 }
 
 .ghost-action:hover {
   border-color: var(--secondary);
+
   color: #ffffff;
   background: var(--secondary);
 }
 
+
+/* =========================================================
+   DASHBOARD STAT CARDS
+   ========================================================= */
+
 .stats-grid {
   display: grid;
+
   grid-template-columns: repeat(4, minmax(0, 1fr));
+
   gap: 16px;
+
+  width: 100%;
+  min-width: 0;
+
   margin-bottom: 16px;
 }
 
 .stat-card,
 .admin-panel {
+  min-width: 0;
+  max-width: 100%;
+
   border: 1px solid var(--border);
   border-radius: 8px;
+
   background: var(--card);
+
   box-shadow: 0 18px 38px rgba(15, 23, 42, 0.06);
 }
 
 .stat-card {
+  overflow: hidden;
+
   padding: 20px;
 }
 
 .stat-card span {
   display: block;
+
   color: var(--muted);
+
   font-weight: 700;
 }
 
 .stat-card strong {
   display: block;
+
   margin: 10px 0 8px;
+
+  overflow: hidden;
+
   color: var(--dark);
+
   font-size: 26px;
   font-weight: 800;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stat-card small {
@@ -351,140 +622,405 @@ select {
   color: var(--primary);
 }
 
+
+/* =========================================================
+   DASHBOARD GRID
+   ========================================================= */
+
 .dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.7fr);
+
+  grid-template-columns:
+    minmax(0, 1.5fr)
+    minmax(300px, 0.7fr);
+
   gap: 16px;
+
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+
   margin-bottom: 16px;
 }
 
-.admin-panel {
-  padding: 20px;
+.dashboard-grid > * {
+  min-width: 0;
+  max-width: 100%;
 }
+
+.admin-panel {
+  position: relative;
+
+  width: 100%;
+
+  padding: 20px;
+
+  overflow: hidden;
+}
+
+
+/* =========================================================
+   PANEL HEADER
+   ========================================================= */
 
 .panel-head {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
+
   gap: 16px;
+
+  min-width: 0;
+
   margin-bottom: 20px;
+}
+
+.panel-head > div {
+  min-width: 0;
 }
 
 .panel-head h2 {
   margin: 0 0 6px;
+
   color: var(--dark);
+
   font-size: 20px;
   font-weight: 800;
 }
 
 .panel-head select {
   height: 40px;
+
+  flex-shrink: 0;
+
   padding: 0 12px;
+
   border: 1px solid var(--border);
   border-radius: 8px;
+
   color: var(--dark);
   background: var(--light);
 }
 
-.bar-chart {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 14px;
-  align-items: end;
-  height: 280px;
-  min-height: 0;
-  padding: 16px 0 38px;
+
+/* =========================================================
+   REVENUE CHART
+   FIX KHÔNG CHO BIỂU ĐỒ TRÀN SANG TRẠNG THÁI KHO
+   ========================================================= */
+
+/* ===== REVENUE CHART SCROLL FIX START ===== */
+
+.revenue-panel {
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
 }
 
-.bar-chart div {
+.bar-chart-scroll {
+  width: 100%;
+  max-width: 100%;
+
+  overflow-x: auto;
+  overflow-y: hidden;
+
+  padding-bottom: 12px;
+
+  -webkit-overflow-scrolling: touch;
+
+  scrollbar-width: auto;
+  scrollbar-color: #94a3b8 #e2e8f0;
+}
+
+.bar-chart-scroll::-webkit-scrollbar {
+  height: 10px;
+}
+
+.bar-chart-scroll::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
+.bar-chart-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid #e2e8f0;
+  border-radius: 999px;
+
+  background: #94a3b8;
+}
+
+.bar-chart-scroll::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+.bar-chart {
+  display: flex;
+  align-items: flex-end;
+
+  gap: 10px;
+
+  height: 280px;
+
+  padding: 16px 8px 42px;
+
+  overflow: visible;
+}
+
+/* 7 ngày */
+.bar-chart-item {
   position: relative;
+
   display: flex;
   align-items: flex-end;
   justify-content: center;
+
+  flex: 1 0 48px;
+
+  width: 48px;
+  min-width: 48px;
+
   height: calc(var(--value) * 2.25px);
+
   max-height: 220px;
   min-height: 42px;
+
   border-radius: 8px 8px 4px 4px;
-  background: linear-gradient(180deg, var(--primary), var(--primary-dark));
+
+  background: linear-gradient(
+    180deg,
+    var(--primary),
+    var(--primary-dark)
+  );
 }
 
-.bar-chart span {
+.bar-chart-item > span {
   position: absolute;
-  bottom: -28px;
+
+  bottom: -29px;
   left: 50%;
+
   transform: translateX(-50%);
+
   color: var(--muted);
-  font-size: 13px;
+
+  font-size: 12px;
   font-weight: 800;
+
   white-space: nowrap;
+
+  pointer-events: none;
 }
+
+/* ===== REVENUE CHART SCROLL FIX END ===== */
+
+
+/* =========================================================
+   STOCK STATUS
+   ========================================================= */
 
 .stock-list {
   display: grid;
+
   gap: 12px;
+
+  width: 100%;
+  min-width: 0;
 }
 
 .stock-list div {
   display: flex;
   align-items: center;
   justify-content: space-between;
+
+  gap: 12px;
+
+  width: 100%;
+  min-width: 0;
+
   padding: 14px;
+
   border: 1px solid var(--border);
   border-radius: 8px;
+
   background: var(--light);
 }
 
 .stock-list span {
+  min-width: 0;
+
+  overflow: hidden;
+
   color: var(--muted);
+
   font-weight: 700;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stock-list strong {
+  flex: 0 0 auto;
+
   color: var(--dark);
+
   font-size: 22px;
   font-weight: 800;
+
+  white-space: nowrap;
 }
 
+
+/* =========================================================
+   ADMIN TABLE / ĐƠN HÀNG GẦN ĐÂY
+   ========================================================= */
+
+/*
+ * Nếu bảng nằm trong wrapper thì wrapper cũng
+ * không được vượt ra ngoài panel.
+ */
+.table-responsive,
+.admin-table-wrapper,
+.table-wrapper {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+
+  overflow-x: auto;
+}
+
+/*
+ * table-layout fixed rất quan trọng.
+ * Nếu không có thuộc tính này thì text dài trong cột sản phẩm
+ * có thể ép cột rộng ra và chồng lên Tổng tiền.
+ */
 .admin-table {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
+
   border-collapse: collapse;
+
+  table-layout: fixed;
 }
 
 .admin-table th,
 .admin-table td {
+  min-width: 0;
+
   padding: 14px 12px;
+
   border-bottom: 1px solid var(--border);
+
   vertical-align: middle;
-  white-space: nowrap;
+
+  overflow: hidden;
 }
 
 .admin-table th {
   color: var(--muted);
+
   font-size: 13px;
   font-weight: 800;
+
+  text-align: left;
+
   text-transform: uppercase;
+
+  white-space: nowrap;
 }
 
 .admin-table td {
   color: var(--text);
+
   font-weight: 600;
+
+  white-space: nowrap;
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
 }
+
+
+/* =========================================================
+   ĐỘ RỘNG CỘT ĐƠN HÀNG GẦN ĐÂY
+   ========================================================= */
+
+/* Mã đơn */
+.admin-table th:nth-child(1),
+.admin-table td:nth-child(1) {
+  width: 20%;
+}
+
+/* Khách hàng */
+.admin-table th:nth-child(2),
+.admin-table td:nth-child(2) {
+  width: 20%;
+}
+
+/* Sản phẩm */
+.admin-table th:nth-child(3),
+.admin-table td:nth-child(3) {
+  width: 20%;
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+
+  white-space: nowrap;
+}
+
+/* Tổng tiền */
+.admin-table th:nth-child(4),
+.admin-table td:nth-child(4) {
+  width: 20%;
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+
+  white-space: nowrap;
+}
+
+/* Trạng thái */
+.admin-table th:nth-child(5),
+.admin-table td:nth-child(5) {
+  width: 20%;
+
+  overflow: hidden;
+
+  white-space: nowrap;
+}
+
+
+/* =========================================================
+   STATUS BADGES
+   ========================================================= */
 
 .status {
   display: inline-flex;
-  gap: 7px;
   align-items: center;
   justify-content: center;
+
+  gap: 7px;
+
+  max-width: 100%;
+
   padding: 6px 10px;
+
   border-radius: 999px;
+
   font-size: 13px;
   font-weight: 800;
+
   line-height: 1.2;
+
+  white-space: nowrap;
 }
 
 .status i {
   flex-shrink: 0;
+
   margin: 0;
+
   line-height: 1;
 }
 
@@ -502,9 +1038,403 @@ select {
   color: var(--primary);
   background: rgba(239, 35, 60, 0.1);
 }
-/* ===== ADMIN DASHBOARD CONTENT END ===== */
 
-/* ===== ADMIN RESPONSIVE START ===== */
+
+/* =========================================================
+   ACCOUNT DROPDOWN
+   ========================================================= */
+
+.account-dropdown {
+  position: relative;
+}
+
+.admin-user .admin-avatar {
+  display: grid;
+
+  width: 36px;
+  height: 36px;
+
+  flex: 0 0 36px;
+
+  place-items: center;
+
+  border-radius: 50%;
+
+  color: #ffffff;
+  background: var(--secondary);
+
+  font-size: 15px;
+}
+
+.user-chevron {
+  flex-shrink: 0;
+
+  color: var(--muted);
+
+  font-size: 12px;
+
+  transition: transform 0.2s ease;
+}
+
+.admin-user.active .user-chevron {
+  transform: rotate(180deg);
+}
+
+.account-menu {
+  position: absolute;
+
+  top: calc(100% + 12px);
+  right: 0;
+
+  z-index: 200;
+
+  width: 255px;
+
+  padding: 8px;
+
+  border: 1px solid var(--border);
+  border-radius: 10px;
+
+  background: var(--card);
+
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.14);
+
+  opacity: 0;
+  visibility: hidden;
+
+  transform: translateY(-8px);
+
+  transition: 0.2s ease;
+}
+
+.account-menu.show {
+  opacity: 1;
+  visibility: visible;
+
+  transform: translateY(0);
+}
+
+.account-menu-header {
+  display: flex;
+  align-items: center;
+
+  gap: 12px;
+
+  min-width: 0;
+
+  padding: 10px;
+}
+
+.account-menu-avatar {
+  display: grid;
+
+  width: 42px;
+  height: 42px;
+
+  flex: 0 0 42px;
+
+  place-items: center;
+
+  border-radius: 50%;
+
+  color: #ffffff;
+  background: var(--secondary);
+
+  font-weight: 800;
+}
+
+.account-menu-header > div {
+  min-width: 0;
+}
+
+.account-menu-header strong {
+  display: block;
+
+  max-width: 180px;
+
+  overflow: hidden;
+
+  color: var(--dark);
+
+  font-size: 14px;
+  font-weight: 800;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-menu-header small {
+  display: block;
+
+  max-width: 180px;
+
+  margin-top: 3px;
+
+  overflow: hidden;
+
+  color: var(--muted);
+
+  font-size: 12px;
+  font-weight: 600;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-menu-divider {
+  height: 1px;
+
+  margin: 4px 0;
+
+  background: var(--border);
+}
+
+.account-menu-item {
+  display: flex;
+  align-items: center;
+
+  width: 100%;
+  min-height: 42px;
+
+  gap: 10px;
+
+  padding: 0 10px;
+
+  border: 0;
+  border-radius: 7px;
+
+  color: var(--text);
+  background: transparent;
+
+  font-size: 14px;
+  font-weight: 700;
+
+  text-align: left;
+
+  cursor: pointer;
+
+  transition: 0.2s ease;
+}
+
+.account-menu-item:hover {
+  color: var(--primary);
+  background: rgba(239, 35, 60, 0.08);
+}
+
+.account-menu-item i {
+  width: 18px;
+
+  flex-shrink: 0;
+
+  color: var(--secondary);
+
+  font-size: 16px;
+
+  text-align: center;
+}
+
+.account-menu-item.logout-item {
+  color: var(--primary);
+}
+
+.account-menu-item.logout-item i {
+  color: var(--primary);
+}
+
+.account-menu-item.logout-item:hover {
+  background: rgba(239, 35, 60, 0.1);
+}
+
+
+/* =========================================================
+   AVATAR
+   ========================================================= */
+
+.admin-avatar,
+.account-menu-avatar {
+  overflow: hidden;
+}
+
+.admin-avatar img,
+.account-menu-avatar img {
+  display: block;
+
+  width: 100%;
+  height: 100%;
+
+  object-fit: cover;
+
+  border-radius: inherit;
+}
+
+
+/* =========================================================
+   LOGOUT MODAL
+   ========================================================= */
+
+.logout-modal {
+  position: fixed;
+
+  inset: 0;
+
+  z-index: 999;
+
+  display: grid;
+
+  place-items: center;
+
+  padding: 20px;
+
+  opacity: 0;
+  visibility: hidden;
+
+  transition:
+    opacity 0.2s ease,
+    visibility 0.2s ease;
+}
+
+.logout-modal.show {
+  opacity: 1;
+  visibility: visible;
+}
+
+.logout-modal__backdrop {
+  position: absolute;
+
+  inset: 0;
+
+  background: rgba(15, 23, 42, 0.48);
+}
+
+.logout-modal__dialog {
+  position: relative;
+
+  z-index: 1;
+
+  width: min(100%, 420px);
+
+  padding: 28px;
+
+  border: 1px solid var(--border);
+  border-radius: 12px;
+
+  background: var(--card);
+
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+
+  text-align: center;
+
+  transform: translateY(12px) scale(0.98);
+
+  transition: transform 0.2s ease;
+}
+
+.logout-modal.show .logout-modal__dialog {
+  transform: translateY(0) scale(1);
+}
+
+.logout-modal__close {
+  position: absolute;
+
+  top: 12px;
+  right: 12px;
+
+  display: grid;
+
+  width: 34px;
+  height: 34px;
+
+  place-items: center;
+
+  border: 1px solid var(--border);
+  border-radius: 8px;
+
+  color: var(--muted);
+  background: var(--light);
+
+  cursor: pointer;
+}
+
+.logout-modal__close:hover {
+  border-color: var(--primary);
+
+  color: var(--primary);
+  background: rgba(239, 35, 60, 0.08);
+}
+
+.logout-modal__icon {
+  display: grid;
+
+  width: 58px;
+  height: 58px;
+
+  place-items: center;
+
+  margin: 0 auto 16px;
+
+  border-radius: 50%;
+
+  color: var(--primary);
+  background: rgba(239, 35, 60, 0.1);
+
+  font-size: 25px;
+}
+
+.logout-modal__dialog h2 {
+  margin: 0 0 8px;
+
+  color: var(--dark);
+
+  font-size: 21px;
+  font-weight: 800;
+}
+
+.logout-modal__dialog p {
+  margin: 0;
+
+  color: var(--muted);
+
+  line-height: 1.6;
+}
+
+.logout-modal__actions {
+  display: flex;
+  justify-content: center;
+
+  gap: 10px;
+
+  margin-top: 24px;
+}
+
+.logout-confirm-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 8px;
+}
+
+body.logout-modal-open {
+  overflow: hidden;
+}
+
+
+/* =========================================================
+   ADMIN LINKS
+   ========================================================= */
+
+.admin-layout a,
+.admin-layout a:hover,
+.admin-layout a:focus,
+.admin-layout a:active {
+  text-decoration: none !important;
+}
+
+
+/* =========================================================
+   RESPONSIVE - <= 1200PX
+   ========================================================= */
+
 @media (max-width: 1199.98px) {
   .top-menu {
     display: none;
@@ -515,9 +1445,14 @@ select {
   }
 
   .dashboard-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
+
+
+/* =========================================================
+   RESPONSIVE - TABLET
+   ========================================================= */
 
 @media (max-width: 991.98px) {
   .admin-layout {
@@ -526,6 +1461,8 @@ select {
 
   .admin-sidebar {
     transform: translateX(-100%);
+
+    box-shadow: 12px 0 30px rgba(15, 23, 42, 0.12);
   }
 
   .sidebar-open .admin-sidebar {
@@ -535,15 +1472,88 @@ select {
   .admin-search {
     display: none;
   }
+
+  .admin-main {
+    padding: 22px;
+  }
 }
 
-@media (max-width: 575.98px) {
+
+/* =========================================================
+   RESPONSIVE - MOBILE
+   ========================================================= */
+
+@media (max-width: 767.98px) {
   .admin-main {
     padding: 18px;
   }
 
+  .dashboard-heading {
+    flex-direction: column;
+  }
+
+  .dashboard-heading .primary-action {
+    align-self: flex-start;
+  }
+
+  /*
+   * Trên màn hình nhỏ bảng được phép scroll ngang.
+   * Không làm text chồng lên nhau.
+   */
+  .admin-table {
+    min-width: 820px;
+  }
+
+  .admin-table th:nth-child(1),
+  .admin-table td:nth-child(1) {
+    width: 180px;
+  }
+
+  .admin-table th:nth-child(2),
+  .admin-table td:nth-child(2) {
+    width: 160px;
+  }
+
+  .admin-table th:nth-child(3),
+  .admin-table td:nth-child(3) {
+    width: 210px;
+  }
+
+  .admin-table th:nth-child(4),
+  .admin-table td:nth-child(4) {
+    width: 140px;
+  }
+
+  .admin-table th:nth-child(5),
+  .admin-table td:nth-child(5) {
+    width: 150px;
+  }
+}
+
+
+/* =========================================================
+   RESPONSIVE - SMALL MOBILE
+   ========================================================= */
+
+@media (max-width: 575.98px) {
+  :root {
+    --admin-sidebar-width: 260px;
+  }
+
+  .admin-main {
+    padding: 16px;
+  }
+
   .admin-topbar {
     padding: 0 14px;
+  }
+
+  .admin-brand {
+    font-size: 18px;
+  }
+
+  .admin-user {
+    gap: 6px;
   }
 
   .admin-user strong {
@@ -560,274 +1570,13 @@ select {
   }
 
   .stats-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
-}
-/* ===== ADMIN RESPONSIVE END ===== */
 
-/* ===== ACCOUNT DROPDOWN START ===== */
-.account-dropdown {
-  position: relative;
-}
-
-.admin-user {
-  padding: 3px 6px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: 0.2s ease;
-}
-
-.admin-user:hover,
-.admin-user.active {
-  color: var(--primary);
-  background: rgba(239, 35, 60, 0.08);
-}
-
-.admin-user .admin-avatar {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  place-items: center;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  color: #ffffff;
-  background: var(--secondary);
-  font-size: 15px;
-}
-
-.user-chevron {
-  color: var(--muted);
-  font-size: 12px;
-  transition: transform 0.2s ease;
-}
-
-.admin-user.active .user-chevron {
-  transform: rotate(180deg);
-}
-
-.account-menu {
-  position: absolute;
-  top: calc(100% + 12px);
-  right: 0;
-  z-index: 100;
-  width: 255px;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--card);
-  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.14);
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(-8px);
-  transition: 0.2s ease;
-}
-
-.account-menu.show {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0);
-}
-
-.account-menu-header {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  padding: 10px;
-}
-
-.account-menu-avatar {
-  display: grid;
-  width: 42px;
-  height: 42px;
-  place-items: center;
-  flex-shrink: 0;
-  border-radius: 50%;
-  color: #ffffff;
-  background: var(--secondary);
-  font-weight: 800;
-}
-
-.account-menu-header strong {
-  display: block;
-  color: var(--dark);
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.account-menu-header small {
-  display: block;
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.account-menu-divider {
-  height: 1px;
-  margin: 4px 0;
-  background: var(--border);
-}
-
-.account-menu-item {
-  display: flex;
-  width: 100%;
-  gap: 10px;
-  align-items: center;
-  min-height: 42px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 7px;
-  color: var(--text);
-  background: transparent;
-  font-size: 14px;
-  font-weight: 700;
-  text-align: left;
-  cursor: pointer;
-  transition: 0.2s ease;
-}
-
-.account-menu-item:hover {
-  color: var(--primary);
-  background: rgba(239, 35, 60, 0.08);
-}
-
-.account-menu-item i {
-  width: 18px;
-  color: var(--secondary);
-  font-size: 16px;
-  text-align: center;
-}
-
-.account-menu-item.logout-item {
-  color: var(--primary);
-}
-
-.account-menu-item.logout-item i {
-  color: var(--primary);
-}
-
-.account-menu-item.logout-item:hover {
-  background: rgba(239, 35, 60, 0.1);
-}
-
-@media (max-width: 575.98px) {
   .account-menu {
     width: 230px;
   }
 
-  .admin-user {
-    gap: 6px;
-  }
-}
-/* ===== ACCOUNT DROPDOWN END ===== */
-
-/* ===== LOGOUT POPUP START ===== */
-.logout-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 999;
-  display: grid;
-  place-items: center;
-  padding: 20px;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.2s ease, visibility 0.2s ease;
-}
-
-.logout-modal.show {
-  opacity: 1;
-  visibility: visible;
-}
-
-.logout-modal__backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.48);
-}
-
-.logout-modal__dialog {
-  position: relative;
-  z-index: 1;
-  width: min(100%, 420px);
-  padding: 28px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card);
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
-  text-align: center;
-  transform: translateY(12px) scale(0.98);
-  transition: transform 0.2s ease;
-}
-
-.logout-modal.show .logout-modal__dialog {
-  transform: translateY(0) scale(1);
-}
-
-.logout-modal__close {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  display: grid;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--muted);
-  background: var(--light);
-  cursor: pointer;
-}
-
-.logout-modal__close:hover {
-  border-color: var(--primary);
-  color: var(--primary);
-  background: rgba(239, 35, 60, 0.08);
-}
-
-.logout-modal__icon {
-  display: grid;
-  width: 58px;
-  height: 58px;
-  place-items: center;
-  margin: 0 auto 16px;
-  border-radius: 50%;
-  color: var(--primary);
-  background: rgba(239, 35, 60, 0.1);
-  font-size: 25px;
-}
-
-.logout-modal__dialog h2 {
-  margin: 0 0 8px;
-  color: var(--dark);
-  font-size: 21px;
-  font-weight: 800;
-}
-
-.logout-modal__dialog p {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.6;
-}
-
-.logout-modal__actions {
-  display: flex;
-  justify-content: center;
-  gap: 10px;
-  margin-top: 24px;
-}
-
-.logout-confirm-btn {
-  display: inline-flex;
-  gap: 8px;
-  align-items: center;
-  justify-content: center;
-}
-
-body.logout-modal-open {
-  overflow: hidden;
-}
-
-@media (max-width: 575.98px) {
   .logout-modal__dialog {
     padding: 24px 18px;
   }
@@ -839,34 +1588,4 @@ body.logout-modal-open {
   .logout-modal__actions button {
     width: 100%;
   }
-}
-/* ===== LOGOUT POPUP END ===== */
-/* Bỏ gạch chân toàn bộ link trong khu vực Admin */
-.admin-layout a,
-.admin-layout a:hover,
-.admin-layout a:focus,
-.admin-layout a:active {
-  text-decoration: none !important;
-}
-
-/* Ảnh đại diện tài khoản quản trị */
-.admin-avatar,
-.account-menu-avatar {
-  overflow: hidden;
-}
-
-.admin-avatar img,
-.account-menu-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: inherit;
-}
-
-.admin-user strong,
-.account-menu-header strong {
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }

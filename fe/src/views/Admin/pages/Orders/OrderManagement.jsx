@@ -131,43 +131,30 @@ const getProductCode = (item) => {
   return item?.product_sku || item?.sku || item?.product_id || "N/A";
 };
 
-// ======================================================
-// PRODUCT IMAGE
-// ======================================================
-
 const getImageUrl = (imageUrl) => {
   if (!imageUrl) {
     return "/images/no-image.png";
   }
 
-  if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
+  if (
+    imageUrl.startsWith("http://") ||
+    imageUrl.startsWith("https://")
+  ) {
     return imageUrl;
   }
 
   return `${IMAGE_BASE_URL}${imageUrl}`;
 };
 
-// ======================================================
-// ORDER MANAGEMENT
-// ======================================================
-
 const OrderManagement = () => {
   const [orders, setOrders] = useState([]);
-
   const [keyword, setKeyword] = useState("");
-
   const [status, setStatus] = useState("");
-
   const [fromDate, setFromDate] = useState("");
-
   const [toDate, setToDate] = useState("");
-
   const [loading, setLoading] = useState(false);
-
   const [selectedOrder, setSelectedOrder] = useState(null);
-
   const [page, setPage] = useState(1);
-
   const [limit, setLimit] = useState(10);
 
   const [pagination, setPagination] = useState({
@@ -177,16 +164,21 @@ const OrderManagement = () => {
     totalPages: 1,
   });
 
-  // ====================================================
-  // PAGINATION FALLBACK
-  // ====================================================
-
-  const buildPaginationFallback = (resData, nextPage, nextLimit) => {
+  const buildPaginationFallback = (
+    resData,
+    nextPage,
+    nextLimit
+  ) => {
     const dataLength = resData.data?.length || 0;
 
-    const total = Number(resData.total ?? dataLength);
+    const total = Number(
+      resData.total ?? dataLength
+    );
 
-    const totalPages = Math.max(Math.ceil(total / nextLimit), 1);
+    const totalPages = Math.max(
+      Math.ceil(total / nextLimit),
+      1
+    );
 
     return {
       page: nextPage,
@@ -196,24 +188,28 @@ const OrderManagement = () => {
     };
   };
 
-  // ====================================================
-  // FETCH ORDERS
-  // ====================================================
-
-  const fetchOrders = async (customFilters = {}) => {
+  const fetchOrders = async (
+    customFilters = {}
+  ) => {
     try {
       setLoading(true);
 
-      const nextPage = customFilters.page ?? page;
+      const nextPage =
+        customFilters.page ?? page;
 
-      const nextLimit = customFilters.limit ?? limit;
+      const nextLimit =
+        customFilters.limit ?? limit;
 
       const filters = {
         keyword:
-          customFilters.keyword !== undefined ? customFilters.keyword : keyword,
+          customFilters.keyword !== undefined
+            ? customFilters.keyword
+            : keyword,
 
         status:
-          customFilters.status !== undefined ? customFilters.status : status,
+          customFilters.status !== undefined
+            ? customFilters.status
+            : status,
 
         from_date:
           customFilters.from_date !== undefined
@@ -221,48 +217,69 @@ const OrderManagement = () => {
             : fromDate,
 
         to_date:
-          customFilters.to_date !== undefined ? customFilters.to_date : toDate,
+          customFilters.to_date !== undefined
+            ? customFilters.to_date
+            : toDate,
 
         page: nextPage,
-
         limit: nextLimit,
       };
 
-      const res = await orderService.getAll(filters);
+      const res =
+        await orderService.getAll(filters);
 
-      const resData = res.data || {};
+      const resData =
+        res.data || {};
 
-      setOrders(resData.data || []);
+      setOrders(
+        resData.data || []
+      );
 
       const nextPagination =
         resData.pagination ||
-        buildPaginationFallback(resData, nextPage, nextLimit);
+        buildPaginationFallback(
+          resData,
+          nextPage,
+          nextLimit
+        );
 
       setPagination({
-        page: Number(nextPagination.page || nextPage),
+        page: Number(
+          nextPagination.page ||
+            nextPage
+        ),
 
-        limit: Number(nextPagination.limit || nextLimit),
+        limit: Number(
+          nextPagination.limit ||
+            nextLimit
+        ),
 
-        total: Number(nextPagination.total || 0),
+        total: Number(
+          nextPagination.total || 0
+        ),
 
-        totalPages: Math.max(Number(nextPagination.totalPages || 1), 1),
+        totalPages: Math.max(
+          Number(
+            nextPagination.totalPages ||
+              1
+          ),
+          1
+        ),
       });
 
       setPage(nextPage);
-
       setLimit(nextLimit);
     } catch (error) {
       console.error(error);
 
-      alert(error.response?.data?.message || "Lỗi lấy danh sách đơn hàng");
+      alert(
+        error.response?.data?.message ||
+          "Lỗi lấy danh sách đơn hàng"
+      );
     } finally {
       setLoading(false);
     }
   };
-
-  // ====================================================
-  // LOAD
-  // ====================================================
 
   useEffect(() => {
     fetchOrders({
@@ -277,10 +294,6 @@ const OrderManagement = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ====================================================
-  // FILTER
-  // ====================================================
-
   const handleFilter = () => {
     setSelectedOrder(null);
 
@@ -290,21 +303,12 @@ const OrderManagement = () => {
     });
   };
 
-  // ====================================================
-  // RESET FILTER
-  // ====================================================
-
   const handleReset = () => {
     setKeyword("");
-
     setStatus("");
-
     setFromDate("");
-
     setToDate("");
-
     setSelectedOrder(null);
-
     setPage(1);
 
     fetchOrders({
@@ -317,12 +321,14 @@ const OrderManagement = () => {
     });
   };
 
-  // ====================================================
-  // CHANGE PAGE
-  // ====================================================
-
-  const handleChangePage = (newPage) => {
-    if (newPage < 1 || newPage > pagination.totalPages) {
+  const handleChangePage = (
+    newPage
+  ) => {
+    if (
+      newPage < 1 ||
+      newPage >
+        pagination.totalPages
+    ) {
       return;
     }
 
@@ -332,15 +338,14 @@ const OrderManagement = () => {
     });
   };
 
-  // ====================================================
-  // LIMIT
-  // ====================================================
-
-  const handleChangeLimit = (e) => {
-    const newLimit = Number(e.target.value);
+  const handleChangeLimit = (
+    e
+  ) => {
+    const newLimit = Number(
+      e.target.value
+    );
 
     setLimit(newLimit);
-
     setPage(1);
 
     fetchOrders({
@@ -349,21 +354,19 @@ const OrderManagement = () => {
     });
   };
 
-  // ====================================================
-  // PAGE NUMBERS
-  // ====================================================
-
   const renderPageNumbers = () => {
-    const totalPages = pagination.totalPages || 1;
+    const totalPages =
+      pagination.totalPages || 1;
 
-    const currentPage = pagination.page || page;
+    const currentPage =
+      pagination.page || page;
 
     if (totalPages <= 7) {
       return Array.from(
         {
           length: totalPages,
         },
-        (_, index) => index + 1,
+        (_, index) => index + 1
       );
     }
 
@@ -373,15 +376,28 @@ const OrderManagement = () => {
       pages.push("...");
     }
 
-    const start = Math.max(2, currentPage - 1);
+    const start = Math.max(
+      2,
+      currentPage - 1
+    );
 
-    const end = Math.min(totalPages - 1, currentPage + 1);
+    const end = Math.min(
+      totalPages - 1,
+      currentPage + 1
+    );
 
-    for (let pageNumber = start; pageNumber <= end; pageNumber += 1) {
+    for (
+      let pageNumber = start;
+      pageNumber <= end;
+      pageNumber += 1
+    ) {
       pages.push(pageNumber);
     }
 
-    if (currentPage < totalPages - 3) {
+    if (
+      currentPage <
+      totalPages - 3
+    ) {
       pages.push("...");
     }
 
@@ -390,18 +406,24 @@ const OrderManagement = () => {
     return pages;
   };
 
-  // ====================================================
-  // VIEW DETAIL
-  // ====================================================
-
-  const handleViewDetail = async (id) => {
+  const handleViewDetail = async (
+    id
+  ) => {
     try {
-      const res = await orderService.getById(id);
+      const res =
+        await orderService.getById(
+          id
+        );
 
-      setSelectedOrder(res.data.data);
+      setSelectedOrder(
+        res.data.data
+      );
 
       setTimeout(() => {
-        const detailElement = document.querySelector(".order-detail-card");
+        const detailElement =
+          document.querySelector(
+            ".order-detail-card"
+          );
 
         if (detailElement) {
           detailElement.scrollIntoView({
@@ -413,66 +435,105 @@ const OrderManagement = () => {
     } catch (error) {
       console.error(error);
 
-      alert(error.response?.data?.message || "Lỗi lấy chi tiết đơn hàng");
+      alert(
+        error.response?.data?.message ||
+          "Lỗi lấy chi tiết đơn hàng"
+      );
     }
   };
 
-  // ====================================================
-  // UPDATE STATUS
-  // ====================================================
-
-  const handleUpdateStatus = async (id, newStatus) => {
+  const handleUpdateStatus = async (
+    id,
+    newStatus
+  ) => {
     if (!newStatus) {
       return;
     }
 
-    const confirmChange = window.confirm(
-      `Bạn có chắc muốn chuyển đơn hàng sang trạng thái "${STATUS_OPTIONS[newStatus]}" không?`,
-    );
+    const confirmChange =
+      window.confirm(
+        `Bạn có chắc muốn chuyển đơn hàng sang trạng thái "${STATUS_OPTIONS[newStatus]}" không?`
+      );
 
     if (!confirmChange) {
       return;
     }
 
     try {
-      await orderService.updateStatus(id, newStatus);
+      setLoading(true);
 
-      alert("Cập nhật trạng thái thành công");
+      await orderService.updateStatus(
+        id,
+        newStatus
+      );
+
+      if (
+        selectedOrder?.id === id
+      ) {
+        try {
+          const detailRes =
+            await orderService.getById(
+              id
+            );
+
+          setSelectedOrder(
+            detailRes.data.data
+          );
+        } catch (detailError) {
+          console.error(
+            "Lỗi tải lại chi tiết đơn hàng:",
+            detailError
+          );
+        }
+      }
+
+      setPage(1);
 
       await fetchOrders({
-        page,
+        keyword,
+        status,
+        from_date: fromDate,
+        to_date: toDate,
+        page: 1,
         limit,
       });
 
-      if (selectedOrder?.id === id) {
-        const res = await orderService.getById(id);
-
-        setSelectedOrder(res.data.data);
-      }
+      alert(
+        "Cập nhật trạng thái thành công"
+      );
     } catch (error) {
       console.error(error);
 
-      alert(error.response?.data?.message || "Lỗi cập nhật trạng thái");
+      alert(
+        error.response?.data?.message ||
+          "Lỗi cập nhật trạng thái"
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
-  // ====================================================
-  // EXPORT INVOICE
-  // ====================================================
-
-  const handleExportInvoice = async (id) => {
+  const handleExportInvoice = async (
+    id
+  ) => {
     try {
-      const res = await orderService.getInvoice(id);
+      const res =
+        await orderService.getInvoice(
+          id
+        );
 
-      const invoice = res.data.data;
+      const invoice =
+        res.data.data;
 
-      const order = invoice.order;
+      const order =
+        invoice.order;
 
-      const printWindow = window.open("", "_blank");
+      const printWindow =
+        window.open("", "_blank");
 
       if (!printWindow) {
         alert(
-          "Trình duyệt đang chặn popup. Vui lòng cho phép popup để in hóa đơn.",
+          "Trình duyệt đang chặn popup. Vui lòng cho phép popup để in hóa đơn."
         );
 
         return;
@@ -566,7 +627,11 @@ const OrderManagement = () => {
                   Ngày xuất:
                 </strong>
 
-                ${new Date(invoice.exported_at).toLocaleString("vi-VN")}
+                ${new Date(
+                  invoice.exported_at
+                ).toLocaleString(
+                  "vi-VN"
+                )}
               </div>
 
               <div>
@@ -610,7 +675,8 @@ const OrderManagement = () => {
               </div>
 
               ${
-                invoice.summary.transaction_code
+                invoice.summary
+                  .transaction_code
                   ? `
                     <div>
                       <strong>
@@ -624,15 +690,18 @@ const OrderManagement = () => {
               }
 
               ${
-                invoice.summary.paid_at
+                invoice.summary
+                  .paid_at
                   ? `
                     <div>
                       <strong>
                         Thời gian thanh toán:
                       </strong>
 
-                      ${new Date(invoice.summary.paid_at).toLocaleString(
-                        "vi-VN",
+                      ${new Date(
+                        invoice.summary.paid_at
+                      ).toLocaleString(
+                        "vi-VN"
                       )}
                     </div>
                   `
@@ -655,14 +724,19 @@ const OrderManagement = () => {
               <tbody>
                 ${invoice.items
                   .map(
-                    (item, index) => `
+                    (
+                      item,
+                      index
+                    ) => `
                       <tr>
                         <td>
                           ${index + 1}
                         </td>
 
                         <td>
-                          ${getProductCode(item)}
+                          ${getProductCode(
+                            item
+                          )}
                         </td>
 
                         <td>
@@ -670,7 +744,11 @@ const OrderManagement = () => {
                         </td>
 
                         <td>
-                          ${Number(item.price).toLocaleString("vi-VN")} đ
+                          ${Number(
+                            item.price
+                          ).toLocaleString(
+                            "vi-VN"
+                          )} đ
                         </td>
 
                         <td>
@@ -678,10 +756,14 @@ const OrderManagement = () => {
                         </td>
 
                         <td>
-                          ${Number(item.total_price).toLocaleString("vi-VN")} đ
+                          ${Number(
+                            item.total_price
+                          ).toLocaleString(
+                            "vi-VN"
+                          )} đ
                         </td>
                       </tr>
-                    `,
+                    `
                   )
                   .join("")}
               </tbody>
@@ -689,7 +771,12 @@ const OrderManagement = () => {
 
             <div class="total">
               Tổng tiền:
-              ${Number(invoice.summary.total_amount).toLocaleString("vi-VN")} đ
+              ${Number(
+                invoice.summary
+                  .total_amount
+              ).toLocaleString(
+                "vi-VN"
+              )} đ
             </div>
 
             <div class="footer">
@@ -705,125 +792,158 @@ const OrderManagement = () => {
         </html>
       `;
 
-      printWindow.document.write(html);
+      printWindow.document.write(
+        html
+      );
 
       printWindow.document.close();
     } catch (error) {
       console.error(error);
 
-      alert(error.response?.data?.message || "Lỗi xuất hóa đơn");
+      alert(
+        error.response?.data?.message ||
+          "Lỗi xuất hóa đơn"
+      );
     }
   };
 
-  // ====================================================
-  // RENDER
-  // ====================================================
-
   return (
     <div className="order-page">
-      {/* =================================================
-          PAGE HEADER
-      ================================================= */}
-
       <div className="order-page-header">
         <div>
-          <h3 className="order-page-title">Quản lý đơn hàng</h3>
+          <h3 className="order-page-title">
+            Quản lý đơn hàng
+          </h3>
 
           <p className="order-page-subtitle">
-            Theo dõi, tìm kiếm, lọc đơn hàng và cập nhật trạng thái xử lý.
+            Theo dõi, tìm kiếm,
+            lọc đơn hàng và cập
+            nhật trạng thái xử lý.
           </p>
         </div>
 
         <div className="order-page-count">
-          <span>{pagination.total}</span>
+          <span>
+            {pagination.total}
+          </span>
 
-          <small>đơn hàng</small>
+          <small>
+            đơn hàng
+          </small>
         </div>
       </div>
 
-      {/* =================================================
-          FILTER
-      ================================================= */}
-
       <div className="order-card">
         <div className="order-card-header">
-          <h4 className="order-card-title">Bộ lọc đơn hàng</h4>
+          <h4 className="order-card-title">
+            Bộ lọc đơn hàng
+          </h4>
         </div>
 
         <div className="order-card-body">
           <div className="order-filter-grid">
-            {/* KEYWORD */}
-
             <div className="order-form-group">
-              <label className="order-label">Từ khóa</label>
+              <label className="order-label">
+                Từ khóa
+              </label>
 
               <input
                 type="text"
                 className="order-input"
                 placeholder="Mã đơn, tên khách, SĐT, mã SP..."
                 value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
+                onChange={(e) =>
+                  setKeyword(
+                    e.target.value
+                  )
+                }
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+                  if (
+                    e.key === "Enter"
+                  ) {
                     handleFilter();
                   }
                 }}
               />
             </div>
 
-            {/* STATUS */}
-
             <div className="order-form-group">
-              <label className="order-label">Trạng thái</label>
+              <label className="order-label">
+                Trạng thái
+              </label>
 
               <select
                 className="order-select"
                 value={status}
-                onChange={(e) => setStatus(e.target.value)}
+                onChange={(e) =>
+                  setStatus(
+                    e.target.value
+                  )
+                }
               >
-                <option value="">Tất cả trạng thái</option>
+                <option value="">
+                  Tất cả trạng thái
+                </option>
 
-                {Object.entries(STATUS_OPTIONS).map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
+                {Object.entries(
+                  STATUS_OPTIONS
+                ).map(
+                  ([
+                    key,
+                    label,
+                  ]) => (
+                    <option
+                      key={key}
+                      value={key}
+                    >
+                      {label}
+                    </option>
+                  )
+                )}
               </select>
             </div>
 
-            {/* FROM DATE */}
-
             <div className="order-form-group">
-              <label className="order-label">Từ ngày</label>
+              <label className="order-label">
+                Từ ngày
+              </label>
 
               <input
                 type="date"
                 className="order-input"
                 value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
+                onChange={(e) =>
+                  setFromDate(
+                    e.target.value
+                  )
+                }
               />
             </div>
 
-            {/* TO DATE */}
-
             <div className="order-form-group">
-              <label className="order-label">Đến ngày</label>
+              <label className="order-label">
+                Đến ngày
+              </label>
 
               <input
                 type="date"
                 className="order-input"
                 value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
+                onChange={(e) =>
+                  setToDate(
+                    e.target.value
+                  )
+                }
               />
             </div>
-
-            {/* ACTION */}
 
             <div className="order-actions order-filter-actions">
               <button
                 type="button"
                 className="order-btn order-btn-dark"
-                onClick={handleFilter}
+                onClick={
+                  handleFilter
+                }
               >
                 Lọc
               </button>
@@ -831,7 +951,9 @@ const OrderManagement = () => {
               <button
                 type="button"
                 className="order-btn order-btn-secondary"
-                onClick={handleReset}
+                onClick={
+                  handleReset
+                }
               >
                 Làm mới
               </button>
@@ -840,20 +962,24 @@ const OrderManagement = () => {
         </div>
       </div>
 
-      {/* =================================================
-          ORDER LIST
-      ================================================= */}
-
       <div className="order-card">
         <div className="order-card-header">
-          <h4 className="order-card-title">Danh sách đơn hàng</h4>
+          <h4 className="order-card-title">
+            Danh sách đơn hàng
+          </h4>
 
-          <span className="order-muted">Tổng: {pagination.total} đơn hàng</span>
+          <span className="order-muted">
+            Tổng:{" "}
+            {pagination.total} đơn
+            hàng
+          </span>
         </div>
 
         <div className="order-card-body">
           {loading ? (
-            <div className="order-loading">Đang tải dữ liệu...</div>
+            <div className="order-loading">
+              Đang tải dữ liệu...
+            </div>
           ) : (
             <>
               <div className="order-table-wrap">
@@ -861,183 +987,306 @@ const OrderManagement = () => {
                   <thead>
                     <tr>
                       <th>ID</th>
-
                       <th>Mã đơn</th>
-
-                      <th>Khách hàng</th>
-
+                      <th>
+                        Khách hàng
+                      </th>
                       <th>SĐT</th>
-
-                      <th>Tổng tiền</th>
-
-                      <th>Trạng thái</th>
-
-                      <th>Ngày tạo</th>
-
-                      <th>Hành động</th>
+                      <th>
+                        Tổng tiền
+                      </th>
+                      <th>
+                        Trạng thái
+                      </th>
+                      <th>
+                        Ngày tạo
+                      </th>
+                      <th>
+                        Hành động
+                      </th>
                     </tr>
                   </thead>
 
                   <tbody>
-                    {orders.length === 0 ? (
+                    {orders.length ===
+                    0 ? (
                       <tr>
-                        <td colSpan="8" className="order-empty">
-                          Chưa có đơn hàng
+                        <td
+                          colSpan="8"
+                          className="order-empty"
+                        >
+                          Chưa có đơn
+                          hàng
                         </td>
                       </tr>
                     ) : (
-                      orders.map((order) => (
-                        <tr key={order.id}>
-                          <td className="order-id">#{order.id}</td>
+                      orders.map(
+                        (order) => (
+                          <tr
+                            key={
+                              order.id
+                            }
+                          >
+                            <td className="order-id">
+                              #
+                              {
+                                order.id
+                              }
+                            </td>
 
-                          <td>
-                            <strong>{order.order_code}</strong>
-                          </td>
+                            <td>
+                              <strong>
+                                {
+                                  order.order_code
+                                }
+                              </strong>
+                            </td>
 
-                          <td>{order.shipping_name || "Không có"}</td>
+                            <td>
+                              {order.shipping_name ||
+                                "Không có"}
+                            </td>
 
-                          <td>{order.shipping_phone || "Không có"}</td>
+                            <td>
+                              {order.shipping_phone ||
+                                "Không có"}
+                            </td>
 
-                          <td className="order-money">
-                            {formatMoney(order.total_amount)}
-                          </td>
+                            <td className="order-money">
+                              {formatMoney(
+                                order.total_amount
+                              )}
+                            </td>
 
-                          <td>
-                            <span className={getStatusClass(order.status)}>
-                              {order.status_label ||
-                                STATUS_OPTIONS[order.status]}
-                            </span>
-                          </td>
-
-                          <td>{formatDateTime(order.created_at)}</td>
-
-                          <td>
-                            <div className="order-actions">
-                              <button
-                                type="button"
-                                className="order-btn order-btn-sm order-btn-info"
-                                onClick={() => handleViewDetail(order.id)}
-                              >
-                                Chi tiết
-                              </button>
-
-                              <button
-                                type="button"
-                                className="order-btn order-btn-sm order-btn-secondary"
-                                onClick={() => handleExportInvoice(order.id)}
-                              >
-                                Hóa đơn
-                              </button>
-
-                              <select
-                                className="order-inline-select"
-                                value=""
-                                disabled={isFinalStatus(order.status)}
-                                onChange={(e) => {
-                                  if (!e.target.value) {
-                                    return;
-                                  }
-
-                                  handleUpdateStatus(order.id, e.target.value);
-                                }}
-                              >
-                                <option value="">
-                                  {isFinalStatus(order.status)
-                                    ? "Đã khóa"
-                                    : "Chuyển trạng thái"}
-                                </option>
-
-                                {getNextStatusOptions(order.status).map(
-                                  (item) => (
-                                    <option key={item.value} value={item.value}>
-                                      {item.label}
-                                    </option>
-                                  ),
+                            <td>
+                              <span
+                                className={getStatusClass(
+                                  order.status
                                 )}
-                              </select>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
+                              >
+                                {order.status_label ||
+                                  STATUS_OPTIONS[
+                                    order
+                                      .status
+                                  ]}
+                              </span>
+                            </td>
+
+                            <td>
+                              {formatDateTime(
+                                order.created_at
+                              )}
+                            </td>
+
+                            <td>
+                              <div className="order-actions">
+                                <button
+                                  type="button"
+                                  className="order-btn order-btn-sm order-btn-info"
+                                  onClick={() =>
+                                    handleViewDetail(
+                                      order.id
+                                    )
+                                  }
+                                >
+                                  Chi tiết
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="order-btn order-btn-sm order-btn-secondary"
+                                  onClick={() =>
+                                    handleExportInvoice(
+                                      order.id
+                                    )
+                                  }
+                                >
+                                  Hóa đơn
+                                </button>
+
+                                <select
+                                  className="order-inline-select"
+                                  value=""
+                                  disabled={isFinalStatus(
+                                    order.status
+                                  )}
+                                  onChange={(
+                                    e
+                                  ) => {
+                                    if (
+                                      !e
+                                        .target
+                                        .value
+                                    ) {
+                                      return;
+                                    }
+
+                                    handleUpdateStatus(
+                                      order.id,
+                                      e
+                                        .target
+                                        .value
+                                    );
+                                  }}
+                                >
+                                  <option value="">
+                                    {isFinalStatus(
+                                      order.status
+                                    )
+                                      ? "Đã khóa"
+                                      : "Chuyển trạng thái"}
+                                  </option>
+
+                                  {getNextStatusOptions(
+                                    order.status
+                                  ).map(
+                                    (
+                                      item
+                                    ) => (
+                                      <option
+                                        key={
+                                          item.value
+                                        }
+                                        value={
+                                          item.value
+                                        }
+                                      >
+                                        {
+                                          item.label
+                                        }
+                                      </option>
+                                    )
+                                  )}
+                                </select>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      )
                     )}
                   </tbody>
                 </table>
               </div>
 
-              {/* ===========================================
-                  PAGINATION
-              =========================================== */}
-
-              {pagination.total > 0 && (
+              {pagination.total >
+                0 && (
                 <div className="order-pagination">
                   <div className="order-pagination-info">
                     Hiển thị{" "}
                     <strong>
-                      {(pagination.page - 1) * pagination.limit + 1}
+                      {(pagination.page -
+                        1) *
+                        pagination.limit +
+                        1}
                     </strong>{" "}
                     -{" "}
                     <strong>
                       {Math.min(
-                        pagination.page * pagination.limit,
-                        pagination.total,
+                        pagination.page *
+                          pagination.limit,
+                        pagination.total
                       )}
                     </strong>{" "}
-                    trong tổng <strong>{pagination.total}</strong> đơn hàng
+                    trong tổng{" "}
+                    <strong>
+                      {
+                        pagination.total
+                      }
+                    </strong>{" "}
+                    đơn hàng
                   </div>
 
                   <div className="order-pagination-controls">
                     <select
                       className="order-page-size"
                       value={limit}
-                      onChange={handleChangeLimit}
+                      onChange={
+                        handleChangeLimit
+                      }
                     >
-                      <option value={5}>5 / trang</option>
+                      <option value={5}>
+                        5 / trang
+                      </option>
 
-                      <option value={10}>10 / trang</option>
+                      <option value={10}>
+                        10 / trang
+                      </option>
 
-                      <option value={20}>20 / trang</option>
+                      <option value={20}>
+                        20 / trang
+                      </option>
                     </select>
 
                     <button
                       type="button"
                       className="order-page-btn"
-                      disabled={pagination.page <= 1}
-                      onClick={() => handleChangePage(pagination.page - 1)}
+                      disabled={
+                        pagination.page <=
+                        1
+                      }
+                      onClick={() =>
+                        handleChangePage(
+                          pagination.page -
+                            1
+                        )
+                      }
                     >
                       Trước
                     </button>
 
                     <div className="order-page-numbers">
-                      {renderPageNumbers().map((pageNumber, index) =>
-                        pageNumber === "..." ? (
-                          <span
-                            key={`dots-${index}`}
-                            className="order-page-dots"
-                          >
-                            ...
-                          </span>
-                        ) : (
-                          <button
-                            key={pageNumber}
-                            type="button"
-                            className={
-                              pageNumber === pagination.page
-                                ? "order-page-number active"
-                                : "order-page-number"
-                            }
-                            onClick={() => handleChangePage(pageNumber)}
-                          >
-                            {pageNumber}
-                          </button>
-                        ),
+                      {renderPageNumbers().map(
+                        (
+                          pageNumber,
+                          index
+                        ) =>
+                          pageNumber ===
+                          "..." ? (
+                            <span
+                              key={`dots-${index}`}
+                              className="order-page-dots"
+                            >
+                              ...
+                            </span>
+                          ) : (
+                            <button
+                              key={
+                                pageNumber
+                              }
+                              type="button"
+                              className={
+                                pageNumber ===
+                                pagination.page
+                                  ? "order-page-number active"
+                                  : "order-page-number"
+                              }
+                              onClick={() =>
+                                handleChangePage(
+                                  pageNumber
+                                )
+                              }
+                            >
+                              {
+                                pageNumber
+                              }
+                            </button>
+                          )
                       )}
                     </div>
 
                     <button
                       type="button"
                       className="order-page-btn"
-                      disabled={pagination.page >= pagination.totalPages}
-                      onClick={() => handleChangePage(pagination.page + 1)}
+                      disabled={
+                        pagination.page >=
+                        pagination.totalPages
+                      }
+                      onClick={() =>
+                        handleChangePage(
+                          pagination.page +
+                            1
+                        )
+                      }
                     >
                       Sau
                     </button>
@@ -1049,224 +1298,290 @@ const OrderManagement = () => {
         </div>
       </div>
 
-      {/* =================================================
-          ORDER DETAIL
-      ================================================= */}
-
       {selectedOrder && (
         <div className="order-card order-detail-card">
           <div className="order-card-header">
             <h4 className="order-card-title">
-              Chi tiết đơn hàng #{selectedOrder.order_code}
+              Chi tiết đơn hàng #
+              {
+                selectedOrder.order_code
+              }
             </h4>
 
             <button
               type="button"
               className="order-btn order-btn-sm order-btn-danger"
-              onClick={() => setSelectedOrder(null)}
+              onClick={() =>
+                setSelectedOrder(
+                  null
+                )
+              }
             >
               Đóng
             </button>
           </div>
 
           <div className="order-card-body">
-            {/* =============================================
-                ORDER INFO
-            ============================================= */}
-
             <div className="order-detail-grid">
-              {/* CUSTOMER */}
-
               <div className="order-detail-item">
-                <div className="order-detail-label">Khách hàng</div>
+                <div className="order-detail-label">
+                  Khách hàng
+                </div>
 
                 <div className="order-detail-value">
-                  {selectedOrder.shipping_name || "Không có"}
+                  {selectedOrder.shipping_name ||
+                    "Không có"}
                 </div>
               </div>
 
-              {/* PHONE */}
-
               <div className="order-detail-item">
-                <div className="order-detail-label">Số điện thoại</div>
+                <div className="order-detail-label">
+                  Số điện thoại
+                </div>
 
                 <div className="order-detail-value">
-                  {selectedOrder.shipping_phone || "Không có"}
+                  {selectedOrder.shipping_phone ||
+                    "Không có"}
                 </div>
               </div>
 
-              {/* ADDRESS */}
-
               <div className="order-detail-item">
-                <div className="order-detail-label">Địa chỉ giao hàng</div>
+                <div className="order-detail-label">
+                  Địa chỉ giao hàng
+                </div>
 
                 <div className="order-detail-value">
-                  {selectedOrder.shipping_address || "Không có"}
+                  {selectedOrder.shipping_address ||
+                    "Không có"}
                 </div>
               </div>
 
-              {/* ORDER STATUS */}
-
               <div className="order-detail-item">
-                <div className="order-detail-label">Trạng thái đơn</div>
+                <div className="order-detail-label">
+                  Trạng thái đơn
+                </div>
 
                 <div className="order-detail-value">
-                  <span className={getStatusClass(selectedOrder.status)}>
+                  <span
+                    className={getStatusClass(
+                      selectedOrder.status
+                    )}
+                  >
                     {selectedOrder.status_label ||
-                      STATUS_OPTIONS[selectedOrder.status]}
+                      STATUS_OPTIONS[
+                        selectedOrder
+                          .status
+                      ]}
                   </span>
                 </div>
               </div>
 
-              {/* PAYMENT METHOD */}
-
               <div className="order-detail-item">
-                <div className="order-detail-label">Phương thức thanh toán</div>
+                <div className="order-detail-label">
+                  Phương thức thanh toán
+                </div>
 
                 <div className="order-detail-value">
                   <span
                     className={getPaymentMethodClass(
-                      selectedOrder.payment_method,
+                      selectedOrder.payment_method
                     )}
                   >
                     {selectedOrder.payment_method_label ||
-                      getPaymentMethodLabel(selectedOrder.payment_method)}
+                      getPaymentMethodLabel(
+                        selectedOrder.payment_method
+                      )}
                   </span>
                 </div>
               </div>
 
-              {/* PAYMENT STATUS */}
-
               <div className="order-detail-item">
-                <div className="order-detail-label">Trạng thái thanh toán</div>
+                <div className="order-detail-label">
+                  Trạng thái thanh toán
+                </div>
 
                 <div className="order-detail-value">
                   <span
                     className={getPaymentStatusClass(
-                      selectedOrder.payment_status,
+                      selectedOrder.payment_status
                     )}
                   >
                     {getPaymentStatusLabel(
                       selectedOrder.payment_status,
-                      selectedOrder.payment_method,
+                      selectedOrder.payment_method
                     )}
                   </span>
 
                   {selectedOrder.transaction_code && (
                     <div className="order-payment-note">
-                      Mã giao dịch: {selectedOrder.transaction_code}
+                      Mã giao dịch:{" "}
+                      {
+                        selectedOrder.transaction_code
+                      }
                     </div>
                   )}
 
                   {selectedOrder.paid_at && (
                     <div className="order-payment-note">
-                      Thanh toán lúc: {formatDateTime(selectedOrder.paid_at)}
+                      Thanh toán lúc:{" "}
+                      {formatDateTime(
+                        selectedOrder.paid_at
+                      )}
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* NOTE */}
-
               <div className="order-detail-item">
-                <div className="order-detail-label">Ghi chú</div>
+                <div className="order-detail-label">
+                  Ghi chú
+                </div>
 
                 <div className="order-detail-value">
-                  {selectedOrder.note || "Không có"}
+                  {selectedOrder.note ||
+                    "Không có"}
                 </div>
               </div>
 
-              {/* CREATED DATE */}
-
               <div className="order-detail-item">
-                <div className="order-detail-label">Ngày tạo</div>
+                <div className="order-detail-label">
+                  Ngày tạo
+                </div>
 
                 <div className="order-detail-value">
-                  {formatDateTime(selectedOrder.created_at)}
+                  {formatDateTime(
+                    selectedOrder.created_at
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* =============================================
-                PRODUCTS
-            ============================================= */}
-
-            <div className="order-section-title">Sản phẩm trong đơn</div>
+            <div className="order-section-title">
+              Sản phẩm trong đơn
+            </div>
 
             <div className="order-table-wrap">
               <table className="order-table order-detail-table">
                 <thead>
                   <tr>
-                    <th>Mã SP</th>
+                    <th>
+                      Mã SP
+                    </th>
 
-                    <th>Sản phẩm</th>
+                    <th>
+                      Sản phẩm
+                    </th>
 
-                    <th>Ảnh</th>
+                    <th>
+                      Ảnh
+                    </th>
 
-                    <th>Giá</th>
+                    <th>
+                      Giá
+                    </th>
 
-                    <th>Số lượng</th>
+                    <th>
+                      Số lượng
+                    </th>
 
-                    <th>Thành tiền</th>
+                    <th>
+                      Thành tiền
+                    </th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  {selectedOrder.items?.length > 0 ? (
-                    selectedOrder.items.map((item) => (
-                      <tr key={item.id}>
-                        {/* PRODUCT CODE */}
+                  {selectedOrder.items
+                    ?.length >
+                  0 ? (
+                    selectedOrder.items.map(
+                      (
+                        item
+                      ) => (
+                        <tr
+                          key={
+                            item.id
+                          }
+                        >
+                          <td>
+                            <strong>
+                              {getProductCode(
+                                item
+                              )}
+                            </strong>
+                          </td>
 
-                        <td>
-                          <strong>{getProductCode(item)}</strong>
-                        </td>
+                          <td>
+                            {
+                              item.product_name
+                            }
+                          </td>
 
-                        {/* PRODUCT NAME */}
+                          <td>
+                            <img
+                              src={getImageUrl(
+                                item.product_image
+                              )}
+                              alt={
+                                item.product_name ||
+                                "Sản phẩm"
+                              }
+                              style={{
+                                width:
+                                  "72px",
+                                height:
+                                  "72px",
+                                objectFit:
+                                  "cover",
+                                borderRadius:
+                                  "10px",
+                                border:
+                                  "1px solid #e5e7eb",
+                                background:
+                                  "#ffffff",
+                                display:
+                                  "block",
+                              }}
+                              onError={(
+                                event
+                              ) => {
+                                event.currentTarget.onerror =
+                                  null;
 
-                        <td>{item.product_name}</td>
+                                event.currentTarget.src =
+                                  "/images/no-image.png";
+                              }}
+                            />
+                          </td>
 
-                        {/* PRODUCT IMAGE */}
+                          <td>
+                            {formatMoney(
+                              item.price
+                            )}
+                          </td>
 
-                        <td>
-                          <img
-                            src={getImageUrl(item.product_image)}
-                            alt={item.product_name || "Sản phẩm"}
-                            style={{
-                              width: "72px",
-                              height: "72px",
-                              objectFit: "cover",
-                              borderRadius: "10px",
-                              border: "1px solid #e5e7eb",
-                              background: "#ffffff",
-                              display: "block",
-                            }}
-                            onError={(event) => {
-                              event.currentTarget.onerror = null;
+                          <td>
+                            {
+                              item.quantity
+                            }
+                          </td>
 
-                              event.currentTarget.src = "/images/no-image.png";
-                            }}
-                          />
-                        </td>
-
-                        {/* PRICE */}
-
-                        <td>{formatMoney(item.price)}</td>
-
-                        {/* QUANTITY */}
-
-                        <td>{item.quantity}</td>
-
-                        {/* TOTAL */}
-
-                        <td className="order-money">
-                          {formatMoney(item.total_price)}
-                        </td>
-                      </tr>
-                    ))
+                          <td className="order-money">
+                            {formatMoney(
+                              item.total_price
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    )
                   ) : (
                     <tr>
-                      <td colSpan="6" className="order-empty">
-                        Không có sản phẩm trong đơn
+                      <td
+                        colSpan="6"
+                        className="order-empty"
+                      >
+                        Không có sản
+                        phẩm trong đơn
                       </td>
                     </tr>
                   )}
@@ -1274,12 +1589,11 @@ const OrderManagement = () => {
               </table>
             </div>
 
-            {/* =============================================
-                TOTAL
-            ============================================= */}
-
             <div className="order-total">
-              Tổng tiền: {formatMoney(selectedOrder.total_amount)}
+              Tổng tiền:{" "}
+              {formatMoney(
+                selectedOrder.total_amount
+              )}
             </div>
           </div>
         </div>
