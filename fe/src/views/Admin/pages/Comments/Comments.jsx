@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import toast from "react-hot-toast"; 
+import { useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
+
 import "./Comments.css";
+
 import {
   getComments,
   getCommentStatistics,
@@ -15,10 +16,12 @@ import {
 } from "../../../../services/commentService";
 
 function Comments() {
-  // ==========================
+  // =====================================================
   // DATA
-  // ==========================
+  // =====================================================
+
   const [comments, setComments] = useState([]);
+
   const [statistics, setStatistics] = useState({
     total: 0,
     approved: 0,
@@ -28,17 +31,19 @@ function Comments() {
   const [products, setProducts] = useState([]);
   const [users, setUsers] = useState([]);
 
-  // ==========================
+  // =====================================================
   // FILTER
-  // ==========================
+  // =====================================================
+
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState("all");
   const [productId, setProductId] = useState("");
   const [userId, setUserId] = useState("");
 
-  // ==========================
+  // =====================================================
   // PAGINATION
-  // ==========================
+  // =====================================================
+
   const [page, setPage] = useState(1);
   const [limit] = useState(10);
 
@@ -48,35 +53,49 @@ function Comments() {
     total: 0,
   });
 
-  // ==========================
-  // SELECT & DROPDOWN
-  // ==========================
+  // =====================================================
+  // SELECT
+  // =====================================================
+
   const [selectedIds, setSelectedIds] = useState([]);
+
+  // =====================================================
+  // ACTION MENU
+  // =====================================================
+
   const [openMenuId, setOpenMenuId] = useState(null);
 
-  // ==========================
+  // =====================================================
   // DETAIL MODAL
-  // ==========================
+  // =====================================================
+
   const [showModal, setShowModal] = useState(false);
   const [detail, setDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
-  // ==========================
-  // DELETE CONFIRM MODAL
-  // ==========================
+  // =====================================================
+  // DELETE MODAL
+  // =====================================================
+
   const [deleteModal, setDeleteModal] = useState({
     isOpen: false,
-    type: null, // 'single' or 'bulk'
+    type: null,
     id: null,
   });
 
-  // ==========================
-  // LOADING
-  // ==========================
-  const [loading, setLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
-  // ==========================
+  // =====================================================
+  // LOADING
+  // =====================================================
+
+  const [loading, setLoading] = useState(false);
+  const [actionLoadingId, setActionLoadingId] = useState(null);
+
+  // =====================================================
   // LOAD COMMENTS
-  // ==========================
+  // =====================================================
+
   const loadComments = async () => {
     try {
       setLoading(true);
@@ -86,404 +105,1226 @@ function Comments() {
         limit,
       };
 
-      if (keyword.trim()) params.keyword = keyword;
-      if (status !== "all") params.status = status;
-      if (productId) params.product_id = productId;
-      if (userId) params.user_id = userId;
+      if (keyword.trim()) {
+        params.keyword = keyword.trim();
+      }
+
+      if (status !== "all") {
+        params.status = status;
+      }
+
+      if (productId) {
+        params.product_id = productId;
+      }
+
+      if (userId) {
+        params.user_id = userId;
+      }
 
       const res = await getComments(params);
 
-      setComments(res.data.data || []);
-      setPagination(res.data.pagination || { page: 1, totalPages: 1, total: 0 });
+      const rows = res?.data?.data || [];
+
+      const paging = res?.data?.pagination || {
+        page: 1,
+        totalPages: 1,
+        total: 0,
+      };
+
+      setComments(Array.isArray(rows) ? rows : []);
+
+      setPagination({
+        page: Number(paging.page) || page,
+        totalPages: Number(paging.totalPages) || 1,
+        total: Number(paging.total) || 0,
+      });
+
       setSelectedIds([]);
       setOpenMenuId(null);
     } catch (err) {
       console.error(err);
-      toast.error("Không tải được bình luận.");
+
+      toast.error(
+        err?.response?.data?.message || "Không tải được danh sách bình luận.",
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  // ==========================
-  // LOAD STATISTICS
-  // ==========================
+  // =====================================================
+  // STATISTICS
+  // =====================================================
+
   const loadStatistics = async () => {
     try {
       const res = await getCommentStatistics();
-      setStatistics(res.data.data || { total: 0, approved: 0, pending: 0 });
-    } catch (err) { console.error(err); }
+
+      setStatistics(
+        res?.data?.data || {
+          total: 0,
+          approved: 0,
+          pending: 0,
+        },
+      );
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  // ==========================
-  // LOAD FILTER
-  // ==========================
+  // =====================================================
+  // FILTER DATA
+  // =====================================================
+
   const loadFilters = async () => {
     try {
-      const p = await getProducts();
-      const u = await getUsers();
-      setProducts(p.data.data || []);
-      setUsers(u.data.data || []);
-    } catch (err) { console.error(err); }
+      const [productResponse, userResponse] = await Promise.all([
+        getProducts(),
+        getUsers(),
+      ]);
+
+      setProducts(productResponse?.data?.data || []);
+      setUsers(userResponse?.data?.data || []);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  // ==========================
+  // =====================================================
   // INIT
-  // ==========================
+  // =====================================================
+
   useEffect(() => {
     loadFilters();
     loadStatistics();
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Reset page về 1 khi có sự thay đổi filter
+  // =====================================================
+  // RESET PAGE WHEN FILTER CHANGES
+  // =====================================================
+
   useEffect(() => {
     setPage(1);
   }, [keyword, status, productId, userId]);
 
-  // Gọi API khi filter hoặc page thay đổi
+  // =====================================================
+  // LOAD LIST
+  // =====================================================
+
   useEffect(() => {
     loadComments();
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, keyword, status, productId, userId]);
 
-  // ==========================
+  // =====================================================
+  // CLOSE ACTION MENU WHEN CLICK OUTSIDE
+  // =====================================================
+
+  useEffect(() => {
+    const handleDocumentClick = () => {
+      setOpenMenuId(null);
+    };
+
+    document.addEventListener("click", handleDocumentClick);
+
+    return () => {
+      document.removeEventListener("click", handleDocumentClick);
+    };
+  }, []);
+
+  // =====================================================
   // APPROVE
-  // ==========================
+  // =====================================================
+
   const handleApprove = async (id) => {
     try {
+      setActionLoadingId(id);
+      setOpenMenuId(null);
+
       await approveComment(id);
-      loadComments();
-      loadStatistics();
+
       toast.success("Đã duyệt bình luận.");
+
+      await Promise.all([loadComments(), loadStatistics()]);
     } catch (err) {
       console.error(err);
-      toast.error("Duyệt thất bại!");
+
+      toast.error(err?.response?.data?.message || "Không thể duyệt bình luận.");
+    } finally {
+      setActionLoadingId(null);
     }
   };
 
-  // ==========================
+  // =====================================================
   // REJECT
-  // ==========================
+  // =====================================================
+
   const handleReject = async (id) => {
     try {
+      setActionLoadingId(id);
+      setOpenMenuId(null);
+
       await rejectComment(id);
-      loadComments();
-      loadStatistics();
-      toast.success("Đã từ chối bình luận.");
+
+      toast.success("Đã chuyển bình luận về trạng thái chờ duyệt.");
+
+      await Promise.all([loadComments(), loadStatistics()]);
     } catch (err) {
       console.error(err);
-      toast.error("Từ chối thất bại!");
+
+      toast.error(
+        err?.response?.data?.message || "Không thể từ chối bình luận.",
+      );
+    } finally {
+      setActionLoadingId(null);
     }
   };
 
-  // ==========================
-  // DELETE HANDLERS
-  // ==========================
+  // =====================================================
+  // OPEN DELETE
+  // =====================================================
+
   const openDeleteModal = (id) => {
-    setDeleteModal({ isOpen: true, type: 'single', id });
+    setOpenMenuId(null);
+
+    setDeleteModal({
+      isOpen: true,
+      type: "single",
+      id,
+    });
   };
 
   const openBulkDeleteModal = () => {
     if (selectedIds.length === 0) {
-      toast.error("Vui lòng chọn ít nhất một bình luận!");
+      toast.error("Vui lòng chọn ít nhất một bình luận.");
+
       return;
     }
-    setDeleteModal({ isOpen: true, type: 'bulk', id: null });
+
+    setDeleteModal({
+      isOpen: true,
+      type: "bulk",
+      id: null,
+    });
   };
+
+  // =====================================================
+  // CLOSE DELETE
+  // =====================================================
+
+  const closeDeleteModal = () => {
+    if (deleteLoading) {
+      return;
+    }
+
+    setDeleteModal({
+      isOpen: false,
+      type: null,
+      id: null,
+    });
+  };
+
+  // =====================================================
+  // DELETE
+  // =====================================================
 
   const handleConfirmDelete = async () => {
     const { type, id } = deleteModal;
-    setDeleteModal({ isOpen: false, type: null, id: null });
 
     try {
-      if (type === 'single') {
+      setDeleteLoading(true);
+
+      if (type === "single") {
         await deleteComment(id);
+
         toast.success("Đã xóa bình luận.");
       } else {
         await deleteManyComments(selectedIds);
+
         toast.success(`Đã xóa ${selectedIds.length} bình luận.`);
       }
-      loadComments();
-      loadStatistics();
+
+      setDeleteModal({
+        isOpen: false,
+        type: null,
+        id: null,
+      });
+
+      setSelectedIds([]);
+
+      await Promise.all([loadComments(), loadStatistics()]);
     } catch (err) {
       console.error(err);
-      toast.error("Xóa thất bại!");
+
+      toast.error(err?.response?.data?.message || "Không thể xóa bình luận.");
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
-  const closeDeleteModal = () => {
-    setDeleteModal({ isOpen: false, type: null, id: null });
-  };
-
-  // ==========================
+  // =====================================================
   // VIEW DETAIL
-  // ==========================
+  // =====================================================
+
   const handleView = async (id) => {
     try {
+      setDetailLoading(true);
+      setOpenMenuId(null);
+
       const res = await getCommentById(id);
-      setDetail(res.data.data);
+
+      setDetail(res?.data?.data || null);
       setShowModal(true);
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error(err);
+
+      toast.error("Không thể tải chi tiết bình luận.");
+    } finally {
+      setDetailLoading(false);
+    }
   };
 
-  // ==========================
+  // =====================================================
   // CHECKBOX
-  // ==========================
+  // =====================================================
+
   const handleSelect = (id) => {
-    setSelectedIds(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    setSelectedIds((previous) =>
+      previous.includes(id)
+        ? previous.filter((item) => item !== id)
+        : [...previous, id],
     );
   };
 
   const handleSelectAll = () => {
-    if (selectedIds.length === comments.length) {
+    if (comments.length > 0 && selectedIds.length === comments.length) {
       setSelectedIds([]);
-    } else {
-      setSelectedIds(comments.map(item => item.id));
+
+      return;
     }
+
+    setSelectedIds(comments.map((item) => item.id));
   };
 
-  // ==========================
-  // PAGINATION UTILITIES
-  // ==========================
-  const totalPages = pagination.totalPages || 1;
+  // =====================================================
+  // RESET FILTER
+  // =====================================================
+
+  const handleResetFilter = () => {
+    setKeyword("");
+    setStatus("all");
+    setProductId("");
+    setUserId("");
+    setPage(1);
+  };
+
+  // =====================================================
+  // PAGINATION
+  // =====================================================
+
+  const totalPages = Number(pagination.totalPages) || 1;
+
   const startResult = pagination.total === 0 ? 0 : (page - 1) * limit + 1;
+
   const endResult = Math.min(page * limit, pagination.total);
 
   const getPageNumbers = () => {
     const pages = [];
+
     const maxVisible = 5;
+
     let startPage = Math.max(1, page - 2);
+
     let endPage = Math.min(totalPages, startPage + maxVisible - 1);
-    if (endPage - startPage < maxVisible - 1) startPage = Math.max(1, endPage - maxVisible + 1);
-    for (let i = startPage; i <= endPage; i++) pages.push(i);
+
+    if (endPage - startPage < maxVisible - 1) {
+      startPage = Math.max(1, endPage - maxVisible + 1);
+    }
+
+    for (let pageNumber = startPage; pageNumber <= endPage; pageNumber += 1) {
+      pages.push(pageNumber);
+    }
+
     return pages;
   };
 
+  // =====================================================
+  // EXTRA STATS
+  // =====================================================
+
+  const approvalRate = useMemo(() => {
+    if (!statistics.total) {
+      return 0;
+    }
+
+    return Math.round(
+      (Number(statistics.approved || 0) / Number(statistics.total || 1)) * 100,
+    );
+  }, [statistics]);
+
+  // =====================================================
+  // FORMAT DATE
+  // =====================================================
+
+  const formatDate = (value) => {
+    if (!value) {
+      return "--";
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+
+    return date.toLocaleDateString("vi-VN");
+  };
+
+  const formatDateTime = (value) => {
+    if (!value) {
+      return "--";
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+
+    return date.toLocaleString("vi-VN");
+  };
+
+  // =====================================================
+  // RENDER STARS
+  // =====================================================
+
+  const renderRating = (rating) => {
+    const safeRating = Number(rating || 0);
+
+    return (
+      <div className="cm-rating" title={`${safeRating}/5 sao`}>
+        {[1, 2, 3, 4, 5].map((star) => (
+          <i
+            key={star}
+            className={
+              star <= safeRating
+                ? "bi bi-star-fill cm-rating-active"
+                : "bi bi-star cm-rating-empty"
+            }
+          />
+        ))}
+      </div>
+    );
+  };
+
   return (
-    <section className="cm-page">
-      {/* ================= CUSTOM CONFIRM MODAL ================= */}
+    <div className="cm-admin-page">
+      {/* =================================================
+          DELETE CONFIRM
+      ================================================= */}
+
       {deleteModal.isOpen && (
-        <div className="custom-confirm-overlay" onClick={closeDeleteModal}>
-          <div className="custom-confirm-box" onClick={(e) => e.stopPropagation()}>
-            <div className="custom-confirm-icon"><i className="bi bi-trash3"></i></div>
-            <h3 className="custom-confirm-title">Xóa bình luận</h3>
-            <p className="custom-confirm-message">
-              {deleteModal.type === 'bulk' 
-                ? `Bạn có chắc muốn xóa ${selectedIds.length} bình luận đã chọn?` 
-                : "Bạn có chắc muốn xóa bình luận này?"}
+        <div className="cm-confirm-overlay" onMouseDown={closeDeleteModal}>
+          <div
+            className="cm-confirm-dialog"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="cm-confirm-icon">
+              <i className="bi bi-trash3" />
+            </div>
+
+            <span className="cm-confirm-kicker">Xác nhận thao tác</span>
+
+            <h2>
+              {deleteModal.type === "bulk"
+                ? "Xóa nhiều bình luận"
+                : "Xóa bình luận"}
+            </h2>
+
+            <p>
+              {deleteModal.type === "bulk"
+                ? `Bạn có chắc muốn xóa ${selectedIds.length} bình luận đã chọn? Hành động này không thể hoàn tác.`
+                : "Bạn có chắc muốn xóa bình luận này? Hành động này không thể hoàn tác."}
             </p>
-            <div className="custom-confirm-actions">
-              <button className="custom-btn-cancel" onClick={closeDeleteModal}>Hủy</button>
-              <button className="custom-btn-delete" onClick={handleConfirmDelete}>Xóa</button>
+
+            <div className="cm-confirm-actions">
+              <button
+                type="button"
+                className="cm-button cm-button-light"
+                onClick={closeDeleteModal}
+                disabled={deleteLoading}
+              >
+                Hủy
+              </button>
+
+              <button
+                type="button"
+                className="cm-button cm-button-danger"
+                onClick={handleConfirmDelete}
+                disabled={deleteLoading}
+              >
+                {deleteLoading ? (
+                  <>
+                    <span className="cm-spinner" />
+                    Đang xóa...
+                  </>
+                ) : (
+                  <>
+                    <i className="bi bi-trash3" />
+                    Xóa
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ================= HEADER ================= */}
-      <div className="cm-header">
-        <div className="cm-title">
-          <p className="cm-eyebrow">QUẢN LÝ CỬA HÀNG</p>
+      {/* =================================================
+          HEADER
+      ================================================= */}
+
+      <section className="cm-page-heading">
+        <div className="cm-heading-content">
+          <span className="cm-heading-kicker">
+            <i className="bi bi-chat-square-heart-fill" />
+            Review Center
+          </span>
+
           <h1>Quản lý đánh giá sản phẩm</h1>
-          <p className="cm-desc">Quản lý, duyệt và kiểm soát bình luận của khách hàng.</p>
+
+          <p>
+            Theo dõi phản hồi của khách hàng, kiểm duyệt nội dung, quản lý đánh
+            giá và duy trì chất lượng cộng đồng trên hệ thống.
+          </p>
         </div>
-      </div>
 
-      {/* ================= STATISTICS ================= */}
-      <div className="cm-stat-grid">
-        <div className="cm-stat-card"><h3>Tổng bình luận</h3><span>{statistics.total}</span></div>
-        <div className="cm-stat-card success"><h3>Đã duyệt</h3><span>{statistics.approved}</span></div>
-        <div className="cm-stat-card warning"><h3>Chờ duyệt</h3><span>{statistics.pending}</span></div>
-      </div>
+        <div className="cm-heading-summary">
+          <div>
+            <span>Tỷ lệ đã duyệt</span>
 
-      {/* ================= PANEL ================= */}
-      <div className="cm-panel">
-        
-        {/* ================= BULK ACTION BAR ================= */}
+            <strong>{approvalRate}%</strong>
+          </div>
+
+          <div className="cm-heading-progress">
+            <span
+              style={{
+                width: `${approvalRate}%`,
+              }}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* =================================================
+          STATISTICS
+      ================================================= */}
+
+      <section className="cm-stat-grid">
+        <article className="cm-stat-card cm-stat-total">
+          <div className="cm-stat-icon">
+            <i className="bi bi-chat-square-text-fill" />
+          </div>
+
+          <div className="cm-stat-content">
+            <span className="cm-stat-label">Tổng bình luận</span>
+
+            <strong>{statistics.total || 0}</strong>
+
+            <small>Tất cả phản hồi khách hàng</small>
+          </div>
+        </article>
+
+        <article className="cm-stat-card cm-stat-approved">
+          <div className="cm-stat-icon">
+            <i className="bi bi-shield-check" />
+          </div>
+
+          <div className="cm-stat-content">
+            <span className="cm-stat-label">Đã duyệt</span>
+
+            <strong>{statistics.approved || 0}</strong>
+
+            <small>Đang hiển thị trên website</small>
+          </div>
+        </article>
+
+        <article className="cm-stat-card cm-stat-pending">
+          <div className="cm-stat-icon">
+            <i className="bi bi-hourglass-split" />
+          </div>
+
+          <div className="cm-stat-content">
+            <span className="cm-stat-label">Chờ duyệt</span>
+
+            <strong>{statistics.pending || 0}</strong>
+
+            <small>Cần quản trị viên kiểm tra</small>
+          </div>
+        </article>
+      </section>
+
+      {/* =================================================
+          MAIN CARD
+      ================================================= */}
+
+      <section className="cm-list-card">
+        {/* ===============================================
+            CARD HEADER
+        =============================================== */}
+
+        <div className="cm-card-heading">
+          <div className="cm-card-heading-main">
+            <div className="cm-card-icon">
+              <i className="bi bi-chat-left-dots-fill" />
+            </div>
+
+            <div>
+              <span className="cm-card-kicker">Customer Feedback</span>
+
+              <h2>Danh sách đánh giá</h2>
+
+              <p>
+                Kiểm duyệt nội dung, đánh giá sao và phản hồi của khách hàng.
+              </p>
+            </div>
+          </div>
+
+          <span className="cm-result-count">
+            <i className="bi bi-database" />
+            {pagination.total || 0} bình luận
+          </span>
+        </div>
+
+        {/* ===============================================
+            BULK BAR
+        =============================================== */}
+
         {selectedIds.length > 0 && (
-          <div className="cm-bulk-action-bar">
-            <div className="cm-bulk-info">
-              <div className="cm-bulk-icon-box"><i className="bi bi-check-square-fill"></i></div>
-              <div className="cm-bulk-text">
-                <h4>Đã chọn <span>{selectedIds.length}</span> bình luận</h4>
-                <p>Các thao tác sẽ áp dụng cho toàn bộ bình luận đã chọn.</p>
+          <div className="cm-bulk-bar">
+            <div className="cm-bulk-left">
+              <div className="cm-bulk-icon">
+                <i className="bi bi-check2-square" />
+              </div>
+
+              <div>
+                <strong>
+                  Đã chọn <span>{selectedIds.length}</span> bình luận
+                </strong>
+
+                <p>Thao tác sẽ áp dụng cho toàn bộ nội dung đã chọn.</p>
               </div>
             </div>
+
             <div className="cm-bulk-actions">
-              <button className="cm-bulk-delete-btn" onClick={openBulkDeleteModal}>
-                <i className="bi bi-trash"></i> Xóa
+              <button
+                type="button"
+                className="cm-button cm-button-danger-soft"
+                onClick={openBulkDeleteModal}
+              >
+                <i className="bi bi-trash3" />
+                Xóa đã chọn
               </button>
-              <button className="cm-bulk-cancel-btn" onClick={() => setSelectedIds([])}>
-                <i className="bi bi-x-lg"></i> Bỏ chọn
+
+              <button
+                type="button"
+                className="cm-button cm-button-light"
+                onClick={() => setSelectedIds([])}
+              >
+                <i className="bi bi-x-lg" />
+                Bỏ chọn
               </button>
             </div>
           </div>
         )}
 
-        {/* ================= TOOLBAR ================= */}
-        <div className="cm-toolbar">
-          <input type="text" placeholder="🔍 Tìm kiếm..." value={keyword} onChange={(e) => setKeyword(e.target.value)} />
-          <select value={productId} onChange={(e) => setProductId(e.target.value)}>
-            <option value="">Tất cả sản phẩm</option>
-            {products.map((item) => (<option key={item.id} value={item.id}>{item.name}</option>))}
-          </select>
-          <select value={userId} onChange={(e) => setUserId(e.target.value)}>
-            <option value="">Tất cả người dùng</option>
-            {users.map((item) => (<option key={item.id} value={item.id}>{item.full_name}</option>))}
-          </select>
-          <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="all">Tất cả</option>
-            <option value="1">Đã duyệt</option>
-            <option value="0">Chưa duyệt</option>
-          </select>
+        {/* ===============================================
+            FILTER
+        =============================================== */}
+
+        <div className="cm-filter-panel">
+          <label className="cm-search-field">
+            <i className="bi bi-search" />
+
+            <input
+              type="search"
+              placeholder="Tìm nội dung, người dùng..."
+              value={keyword}
+              onChange={(event) => setKeyword(event.target.value)}
+            />
+
+            {keyword && (
+              <button
+                type="button"
+                onClick={() => setKeyword("")}
+                aria-label="Xóa tìm kiếm"
+              >
+                <i className="bi bi-x-lg" />
+              </button>
+            )}
+          </label>
+
+          <div className="cm-filter-select">
+            <i className="bi bi-box-seam" />
+
+            <select
+              value={productId}
+              onChange={(event) => setProductId(event.target.value)}
+            >
+              <option value="">Tất cả sản phẩm</option>
+
+              {products.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="cm-filter-select">
+            <i className="bi bi-person" />
+
+            <select
+              value={userId}
+              onChange={(event) => setUserId(event.target.value)}
+            >
+              <option value="">Tất cả người dùng</option>
+
+              {users.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.full_name ||
+                    item.name ||
+                    item.email ||
+                    `User #${item.id}`}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="cm-filter-select">
+            <i className="bi bi-shield-check" />
+
+            <select
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+            >
+              <option value="all">Tất cả trạng thái</option>
+
+              <option value="1">Đã duyệt</option>
+
+              <option value="0">Chờ duyệt</option>
+            </select>
+          </div>
+
+          <button
+            type="button"
+            className="cm-button cm-button-light cm-filter-reset"
+            onClick={handleResetFilter}
+          >
+            <i className="bi bi-arrow-counterclockwise" />
+            Làm mới
+          </button>
         </div>
 
-        {/* ================= TABLE ================= */}
-        <div className="cm-table-wrapper">
-          <table className="cm-table">
-            <thead>
-              <tr>
-                <th style={{ width: '40px', textAlign: 'center' }}>
-                  <input type="checkbox" checked={comments.length > 0 && selectedIds.length === comments.length} onChange={handleSelectAll} />
-                </th>
-                <th>ID</th>
-                <th>Người dùng</th>
-                <th>Sản phẩm</th>
-                <th style={{ minWidth: '200px' }}>Nội dung</th>
-                <th style={{ width: '130px' }}>Đánh giá</th>
-                <th style={{ width: '120px' }}>Trạng thái</th>
-                <th style={{ width: '110px' }}>Ngày</th>
-                <th style={{ width: '60px', textAlign: 'center' }}>Thao tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan="9" className="cm-empty">Đang tải...</td></tr>
-              ) : comments.length === 0 ? (
-                <tr><td colSpan="9" className="cm-empty">Không có dữ liệu.</td></tr>
-              ) : (
-                comments.map((item) => (
-                  <tr key={item.id}>
-                    <td style={{ textAlign: 'center' }}>
-                      <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => handleSelect(item.id)} />
-                    </td>
-                    <td>#{item.id}</td>
-                    <td><strong>{item.full_name}</strong></td>
-                    <td>{item.product_name}</td>
-                    <td><div className="cm-content">{item.content}</div></td>
-                    <td>
-                      <div className="cm-rating">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <i key={star} className={star <= item.rating ? "bi bi-star-fill active" : "bi bi-star"}></i>
-                        ))}
-                      </div>
-                    </td>
-                    <td>
-                      {item.is_approved ? (
-                        <span className="cm-badge-approved">Đã duyệt</span>
-                      ) : (
-                        <span className="cm-badge-pending">Chờ duyệt</span>
-                      )}
-                    </td>
-                    <td>{new Date(item.created_at).toLocaleDateString("vi-VN")}</td>
+        {/* ===============================================
+            TABLE
+        =============================================== */}
 
-                    {/* 👇 CỘT THAO TÁC 3 CHẤM (Giống Post) */}
-                    <td style={{ textAlign: 'center' }}>
-                      <div className="cm-action-dropdown">
-                        <button className="cm-action-trigger" onClick={() => setOpenMenuId(openMenuId === item.id ? null : item.id)}>
-                          <i className="bi bi-three-dots-vertical"></i>
-                        </button>
-                        
-                        {openMenuId === item.id && (
-                          <div className="cm-action-menu">
-                            <button className="cm-action-item" onClick={() => handleView(item.id)}>
-                              <i className="bi bi-eye"></i> Chi tiết
-                            </button>
-                            {item.is_approved === 0 ? (
-                              <button className="cm-action-item success-item" onClick={() => handleApprove(item.id)}>
-                                <i className="bi bi-check-circle"></i> Duyệt
-                              </button>
-                            ) : (
-                              <button className="cm-action-item warning-item" onClick={() => handleReject(item.id)}>
-                                <i className="bi bi-x-circle"></i> Từ chối
-                              </button>
-                            )}
-                            <button className="cm-action-item delete-item" onClick={() => openDeleteModal(item.id)}>
-                              <i className="bi bi-trash"></i> Xóa
-                            </button>
-                          </div>
-                        )}
+        <div className="cm-table-shell">
+          <div className="cm-table-scroll">
+            <table className="cm-data-table">
+              <thead>
+                <tr>
+                  <th className="cm-checkbox-column">
+                    <label className="cm-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={
+                          comments.length > 0 &&
+                          selectedIds.length === comments.length
+                        }
+                        onChange={handleSelectAll}
+                      />
+
+                      <span />
+                    </label>
+                  </th>
+
+                  <th>Mã</th>
+
+                  <th>Người dùng</th>
+
+                  <th>Sản phẩm</th>
+
+                  <th>Nội dung</th>
+
+                  <th>Đánh giá</th>
+
+                  <th>Trạng thái</th>
+
+                  <th>Ngày tạo</th>
+
+                  <th className="cm-text-center">Thao tác</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan="9" className="cm-table-state">
+                      <div className="cm-loading-state">
+                        <span className="cm-loader" />
+
+                        <strong>Đang tải đánh giá</strong>
+
+                        <p>Hệ thống đang đồng bộ phản hồi của khách hàng...</p>
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : comments.length === 0 ? (
+                  <tr>
+                    <td colSpan="9" className="cm-table-state">
+                      <div className="cm-empty-state">
+                        <div className="cm-empty-icon">
+                          <i className="bi bi-chat-square-dots" />
+                        </div>
+
+                        <strong>Không tìm thấy bình luận</strong>
+
+                        <p>Thử thay đổi từ khóa hoặc bộ lọc.</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  comments.map((item) => (
+                    <tr
+                      key={item.id}
+                      className={
+                        selectedIds.includes(item.id) ? "cm-row-selected" : ""
+                      }
+                    >
+                      {/* CHECKBOX */}
+
+                      <td className="cm-checkbox-column">
+                        <label className="cm-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(item.id)}
+                            onChange={() => handleSelect(item.id)}
+                          />
+
+                          <span />
+                        </label>
+                      </td>
+
+                      {/* ID */}
+
+                      <td>
+                        <span className="cm-comment-id">#{item.id}</span>
+                      </td>
+
+                      {/* USER */}
+
+                      <td>
+                        <div className="cm-user-info">
+                          <div className="cm-user-avatar">
+                            {String(item.full_name || "U")
+                              .trim()
+                              .charAt(0)
+                              .toUpperCase()}
+                          </div>
+
+                          <div>
+                            <strong>{item.full_name || "Người dùng"}</strong>
+
+                            {item.email && <span>{item.email}</span>}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* PRODUCT */}
+
+                      <td>
+                        <div className="cm-product-info">
+                          <i className="bi bi-box-seam" />
+
+                          <span title={item.product_name}>
+                            {item.product_name || "Không xác định"}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* CONTENT */}
+
+                      <td>
+                        <div
+                          className="cm-comment-content"
+                          title={item.content}
+                        >
+                          {item.content || "--"}
+                        </div>
+                      </td>
+
+                      {/* RATING */}
+
+                      <td>{renderRating(item.rating)}</td>
+
+                      {/* STATUS */}
+
+                      <td>
+                        {Number(item.is_approved) === 1 ? (
+                          <span className="cm-status-badge cm-status-approved">
+                            <span className="cm-status-dot" />
+                            Đã duyệt
+                          </span>
+                        ) : (
+                          <span className="cm-status-badge cm-status-pending">
+                            <span className="cm-status-dot" />
+                            Chờ duyệt
+                          </span>
+                        )}
+                      </td>
+
+                      {/* DATE */}
+
+                      <td>
+                        <div className="cm-date">
+                          <i className="bi bi-calendar3" />
+
+                          <span>{formatDate(item.created_at)}</span>
+                        </div>
+                      </td>
+
+                      {/* ACTION */}
+
+                      <td className="cm-text-center">
+                        <div
+                          className="cm-action"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            className="cm-action-trigger"
+                            onClick={() =>
+                              setOpenMenuId(
+                                openMenuId === item.id ? null : item.id,
+                              )
+                            }
+                          >
+                            {actionLoadingId === item.id ? (
+                              <span className="cm-mini-spinner" />
+                            ) : (
+                              <i className="bi bi-three-dots-vertical" />
+                            )}
+                          </button>
+
+                          {openMenuId === item.id && (
+                            <div className="cm-action-menu">
+                              <button
+                                type="button"
+                                className="cm-action-item"
+                                onClick={() => handleView(item.id)}
+                              >
+                                <span className="cm-action-icon cm-action-icon-view">
+                                  <i className="bi bi-eye" />
+                                </span>
+
+                                <span>Xem chi tiết</span>
+                              </button>
+
+                              {Number(item.is_approved) === 0 ? (
+                                <button
+                                  type="button"
+                                  className="cm-action-item"
+                                  onClick={() => handleApprove(item.id)}
+                                >
+                                  <span className="cm-action-icon cm-action-icon-approve">
+                                    <i className="bi bi-check-circle" />
+                                  </span>
+
+                                  <span>Duyệt</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="cm-action-item"
+                                  onClick={() => handleReject(item.id)}
+                                >
+                                  <span className="cm-action-icon cm-action-icon-reject">
+                                    <i className="bi bi-x-circle" />
+                                  </span>
+
+                                  <span>Chuyển chờ duyệt</span>
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                className="cm-action-item cm-action-delete"
+                                onClick={() => openDeleteModal(item.id)}
+                              >
+                                <span className="cm-action-icon cm-action-icon-delete">
+                                  <i className="bi bi-trash3" />
+                                </span>
+
+                                <span>Xóa bình luận</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        {/* ================= PAGINATION (ĐÃ SỬA ĐIỀU KIỆN HIỂN THỊ) ================= */}
-        {/* 👇 Đã đổi từ `totalPages > 1` thành `pagination.total > 0` để luôn hiện */}
+        {/* ===============================================
+            PAGINATION
+        =============================================== */}
+
         {pagination.total > 0 && (
-          <div className="cm-pagination-box">
+          <div className="cm-table-footer">
             <div className="cm-pagination-info">
-              Hiển thị {startResult} - {endResult} / {pagination.total} bình luận
+              Hiển thị <strong>{startResult}</strong> –{" "}
+              <strong>{endResult}</strong> trong tổng{" "}
+              <strong>{pagination.total}</strong> bình luận
             </div>
+
             <div className="cm-pagination-controls">
-              <button className="cm-page-btn" disabled={page === 1} onClick={() => setPage(1)}>«</button>
-              <button className="cm-page-btn" disabled={page === 1} onClick={() => setPage(page - 1)}>‹</button>
-              {getPageNumbers().map((p) => (
-                <button key={p} className={`cm-page-btn ${p === page ? 'active' : ''}`} onClick={() => setPage(p)}>{p}</button>
+              <button
+                type="button"
+                className="cm-page-button"
+                disabled={page === 1}
+                onClick={() => setPage(1)}
+                title="Trang đầu"
+              >
+                <i className="bi bi-chevron-double-left" />
+              </button>
+
+              <button
+                type="button"
+                className="cm-page-button"
+                disabled={page === 1}
+                onClick={() => setPage((previous) => Math.max(1, previous - 1))}
+                title="Trang trước"
+              >
+                <i className="bi bi-chevron-left" />
+              </button>
+
+              {getPageNumbers().map((pageNumber) => (
+                <button
+                  key={pageNumber}
+                  type="button"
+                  className={
+                    pageNumber === page
+                      ? "cm-page-button active"
+                      : "cm-page-button"
+                  }
+                  onClick={() => setPage(pageNumber)}
+                >
+                  {pageNumber}
+                </button>
               ))}
-              <button className="cm-page-btn" disabled={page === totalPages} onClick={() => setPage(page + 1)}>›</button>
-              <button className="cm-page-btn" disabled={page === totalPages} onClick={() => setPage(totalPages)}>»</button>
+
+              <button
+                type="button"
+                className="cm-page-button"
+                disabled={page === totalPages}
+                onClick={() =>
+                  setPage((previous) => Math.min(totalPages, previous + 1))
+                }
+                title="Trang sau"
+              >
+                <i className="bi bi-chevron-right" />
+              </button>
+
+              <button
+                type="button"
+                className="cm-page-button"
+                disabled={page === totalPages}
+                onClick={() => setPage(totalPages)}
+                title="Trang cuối"
+              >
+                <i className="bi bi-chevron-double-right" />
+              </button>
             </div>
           </div>
         )}
-      </div>
+      </section>
 
-      {/* ================= DETAIL MODAL (Đã cập nhật UI) ================= */}
+      {/* =================================================
+          DETAIL LOADING
+      ================================================= */}
+
+      {detailLoading && (
+        <div className="cm-detail-loading">
+          <span className="cm-loader" />
+        </div>
+      )}
+
+      {/* =================================================
+          DETAIL MODAL
+      ================================================= */}
+
       {showModal && detail && (
-        <div className="cm-modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="cm-modal" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="cm-modal-overlay"
+          onMouseDown={() => setShowModal(false)}
+        >
+          <div
+            className="cm-detail-modal"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            {/* HEADER */}
+
             <div className="cm-modal-header">
-              <h2>Chi tiết bình luận</h2>
-              <button className="cm-close" onClick={() => setShowModal(false)}>×</button>
-            </div>
-            <div className="cm-modal-body">
-              <div className="cm-detail-row"><strong>ID:</strong><span>#{detail.id}</span></div>
-              <div className="cm-detail-row"><strong>Người dùng:</strong><span>{detail.full_name}</span></div>
-              <div className="cm-detail-row"><strong>Email:</strong><span>{detail.email}</span></div>
-              <div className="cm-detail-row"><strong>Sản phẩm:</strong><span>{detail.product_name}</span></div>
-              <div className="cm-detail-row">
-                <strong>Đánh giá:</strong>
-                <span className="cm-rating">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <i key={star} className={star <= detail.rating ? "bi bi-star-fill active" : "bi bi-star"}></i>
-                  ))}
-                </span>
+              <div className="cm-modal-heading">
+                <span className="cm-modal-kicker">Review #{detail.id}</span>
+
+                <h2>Chi tiết đánh giá</h2>
+
+                <p>Thông tin đầy đủ về nội dung phản hồi của khách hàng.</p>
               </div>
-              <div className="cm-detail-row"><strong>Ngày tạo:</strong><span>{new Date(detail.created_at).toLocaleString("vi-VN")}</span></div>
-              <div className="cm-detail-row">
-                <strong>Trạng thái:</strong>
-                {detail.is_approved ? (
-                  <span className="cm-badge-approved">Đã duyệt</span>
+
+              <button
+                type="button"
+                className="cm-modal-close"
+                onClick={() => setShowModal(false)}
+              >
+                <i className="bi bi-x-lg" />
+              </button>
+            </div>
+
+            {/* PROFILE */}
+
+            <div className="cm-detail-profile">
+              <div className="cm-detail-avatar">
+                {String(detail.full_name || "U")
+                  .trim()
+                  .charAt(0)
+                  .toUpperCase()}
+              </div>
+
+              <div className="cm-detail-profile-main">
+                <strong>{detail.full_name || "Người dùng"}</strong>
+
+                <span>{detail.email || "Không có email"}</span>
+
+                {renderRating(detail.rating)}
+              </div>
+
+              <div>
+                {Number(detail.is_approved) === 1 ? (
+                  <span className="cm-status-badge cm-status-approved">
+                    <span className="cm-status-dot" />
+                    Đã duyệt
+                  </span>
                 ) : (
-                  <span className="cm-badge-pending">Chưa duyệt</span>
+                  <span className="cm-status-badge cm-status-pending">
+                    <span className="cm-status-dot" />
+                    Chờ duyệt
+                  </span>
                 )}
               </div>
-              <div className="cm-detail-content">
-                <strong>Nội dung bình luận</strong>
-                <div className="cm-content-box">{detail.content}</div>
+            </div>
+
+            {/* INFO */}
+
+            <div className="cm-detail-grid">
+              <div className="cm-detail-card">
+                <span>Mã bình luận</span>
+
+                <strong>#{detail.id}</strong>
+              </div>
+
+              <div className="cm-detail-card">
+                <span>Đánh giá</span>
+
+                <strong>{Number(detail.rating || 0)}/5 sao</strong>
+              </div>
+
+              <div className="cm-detail-card cm-detail-card-wide">
+                <span>Sản phẩm</span>
+
+                <strong>{detail.product_name || "Không xác định"}</strong>
+              </div>
+
+              <div className="cm-detail-card">
+                <span>Ngày tạo</span>
+
+                <strong>{formatDateTime(detail.created_at)}</strong>
+              </div>
+
+              <div className="cm-detail-card">
+                <span>Trạng thái</span>
+
+                <strong>
+                  {Number(detail.is_approved) === 1 ? "Đã duyệt" : "Chờ duyệt"}
+                </strong>
               </div>
             </div>
+
+            {/* CONTENT */}
+
+            <div className="cm-detail-comment">
+              <div className="cm-detail-comment-title">
+                <i className="bi bi-chat-quote-fill" />
+
+                <span>Nội dung bình luận</span>
+              </div>
+
+              <p>{detail.content || "Không có nội dung."}</p>
+            </div>
+
+            {/* FOOTER */}
+
             <div className="cm-modal-footer">
-              <button className="cm-btn-secondary" onClick={() => setShowModal(false)}>Đóng</button>
+              <button
+                type="button"
+                className="cm-button cm-button-light"
+                onClick={() => setShowModal(false)}
+              >
+                Đóng
+              </button>
+
+              {Number(detail.is_approved) === 0 ? (
+                <button
+                  type="button"
+                  className="cm-button cm-button-success"
+                  onClick={async () => {
+                    await handleApprove(detail.id);
+
+                    setShowModal(false);
+                  }}
+                >
+                  <i className="bi bi-check-circle" />
+                  Duyệt bình luận
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="cm-button cm-button-warning"
+                  onClick={async () => {
+                    await handleReject(detail.id);
+
+                    setShowModal(false);
+                  }}
+                >
+                  <i className="bi bi-arrow-counterclockwise" />
+                  Chuyển chờ duyệt
+                </button>
+              )}
             </div>
           </div>
         </div>
       )}
-    </section>
+    </div>
   );
 }
 

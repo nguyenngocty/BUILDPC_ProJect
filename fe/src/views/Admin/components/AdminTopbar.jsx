@@ -1,43 +1,259 @@
 import { useEffect, useRef } from "react";
+
 import { NavLink } from "react-router-dom";
+
 import useAuth from "../../../hooks/useAuth";
+
 import { getInitials, getRoleLabel } from "../../../models/UserModel";
 
-const topMenuItems = [
-  
-];
+const topMenuItems = [];
 
-function AdminTopbar({ isAccountOpen, onToggleSidebar, onToggleAccount, onCloseAccount, onOpenAccountInfo, onOpenChangePassword, onGoToClient, onOpenLogout }) {
+function AdminTopbar({
+  isAccountOpen,
+  onToggleSidebar,
+  onToggleAccount,
+  onCloseAccount,
+  onOpenAccountInfo,
+  onOpenChangePassword,
+  onGoToClient,
+  onOpenLogout,
+}) {
   const { currentUser } = useAuth();
+
   const accountMenuRef = useRef(null);
+
+  const displayName =
+    currentUser?.fullName || currentUser?.name || "Quản trị viên";
+
+  const avatar = currentUser?.avatar;
+
+  const initials = getInitials(displayName);
+
+  // =========================================================
+  // CLICK OUTSIDE ACCOUNT MENU
+  // =========================================================
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (isAccountOpen && accountMenuRef.current && !accountMenuRef.current.contains(event.target)) onCloseAccount();
+      if (!isAccountOpen || !accountMenuRef.current) {
+        return;
+      }
+
+      if (!accountMenuRef.current.contains(event.target)) {
+        onCloseAccount();
+      }
     };
+
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, [isAccountOpen, onCloseAccount]);
 
-  return <header className="admin-topbar">
-    <div className="topbar-left"><button className="sidebar-toggle" type="button" onClick={onToggleSidebar}><i className="bi bi-list" /></button><NavLink className="admin-brand" to="/admin" end><span className="brand-mark"><i className="bi bi-speedometer2" /></span><span>Admin</span></NavLink></div>
-    <nav className="top-menu">{topMenuItems.map((item) => <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => isActive ? "active" : ""}>{item.label}</NavLink>)}</nav>
-    <div className="topbar-actions"><div className="admin-search"><input type="search" placeholder="Tìm kiếm..." /></div><button className="icon-btn" type="button"><i className="bi bi-bell-fill" /></button>
-      <div className="account-dropdown" ref={accountMenuRef}>
-        <button className={`admin-user ${isAccountOpen ? "active" : ""}`} type="button" onClick={onToggleAccount} aria-expanded={isAccountOpen}>
-          <span className="admin-avatar">{currentUser?.avatar ? <img src={currentUser.avatar} alt="" /> : getInitials(currentUser?.fullName || currentUser?.name)}</span><strong>{currentUser?.fullName || currentUser?.name}</strong><i className="bi bi-chevron-down user-chevron" />
+  return (
+    <header className="adm-topbar">
+      {/* =====================================================
+          LEFT
+          ===================================================== */}
+
+      <div className="adm-topbar__left">
+        <button
+          className="adm-topbar__menu-button"
+          type="button"
+          onClick={onToggleSidebar}
+          aria-label="Ẩn hoặc hiện menu quản trị"
+        >
+          <i className="bi bi-list" />
         </button>
-        <div className={`account-menu ${isAccountOpen ? "show" : ""}`}>
-          <div className="account-menu-header"><span className="account-menu-avatar">{currentUser?.avatar ? <img src={currentUser.avatar} alt="" /> : getInitials(currentUser?.fullName || currentUser?.name)}</span><div><strong>{currentUser?.fullName || currentUser?.name}</strong><small>{getRoleLabel(currentUser?.role)}</small></div></div>
-          <div className="account-menu-divider" />
-          <button className="account-menu-item" type="button" onClick={onOpenAccountInfo}><i className="bi bi-person-vcard" /><span>Thông tin tài khoản</span></button>
-          <button className="account-menu-item" type="button" onClick={onOpenChangePassword}><i className="bi bi-shield-lock" /><span>Đổi mật khẩu</span></button>
-          <button className="account-menu-item" type="button" onClick={onGoToClient}><i className="bi bi-shop" /><span>Về trang khách hàng</span></button>
-          <button className="account-menu-item logout-item" type="button" onClick={onOpenLogout}><i className="bi bi-box-arrow-right" /><span>Đăng xuất</span></button>
+
+        <NavLink className="adm-topbar__brand" to="/admin" end>
+          <span className="adm-topbar__brand-icon">
+            <i className="bi bi-pc-display-horizontal" />
+          </span>
+
+          <span className="adm-topbar__brand-content">
+            <strong>Admin Panel</strong>
+
+            <small>PC Builder</small>
+          </span>
+        </NavLink>
+      </div>
+
+      {/* =====================================================
+          CENTER
+          ===================================================== */}
+
+      {topMenuItems.length > 0 && (
+        <nav className="adm-topbar__navigation">
+          {topMenuItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              className={({ isActive }) =>
+                [
+                  "adm-topbar__nav-link",
+                  isActive && "adm-topbar__nav-link--active",
+                ]
+                  .filter(Boolean)
+                  .join(" ")
+              }
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
+      )}
+
+      {/* =====================================================
+          RIGHT
+          ===================================================== */}
+
+      <div className="adm-topbar__actions">
+        <div className="adm-topbar__search">
+          <i className="bi bi-search adm-topbar__search-icon" />
+
+          <input
+            className="adm-topbar__search-input"
+            type="search"
+            placeholder="Tìm kiếm..."
+            aria-label="Tìm kiếm"
+          />
+        </div>
+
+        <button
+          className="adm-topbar__icon-button"
+          type="button"
+          aria-label="Thông báo"
+        >
+          <i className="bi bi-bell" />
+
+          <span className="adm-topbar__notification-dot" />
+        </button>
+
+        {/* ===================================================
+            ACCOUNT
+            =================================================== */}
+
+        <div className="adm-account" ref={accountMenuRef}>
+          <button
+            className={[
+              "adm-account__button",
+              isAccountOpen && "adm-account__button--active",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            type="button"
+            onClick={onToggleAccount}
+            aria-expanded={isAccountOpen}
+            aria-haspopup="menu"
+          >
+            <span className="adm-account__avatar">
+              {avatar ? <img src={avatar} alt={displayName} /> : initials}
+            </span>
+
+            <span className="adm-account__text">
+              <strong>{displayName}</strong>
+
+              <small>{getRoleLabel(currentUser?.role)}</small>
+            </span>
+
+            <i
+              className={[
+                "bi",
+                "bi-chevron-down",
+                "adm-account__chevron",
+                isAccountOpen && "adm-account__chevron--open",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            />
+          </button>
+
+          <div
+            className={[
+              "adm-account-menu",
+              isAccountOpen && "adm-account-menu--show",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            role="menu"
+          >
+            <div className="adm-account-menu__header">
+              <span className="adm-account-menu__avatar">
+                {avatar ? <img src={avatar} alt={displayName} /> : initials}
+              </span>
+
+              <div className="adm-account-menu__info">
+                <strong>{displayName}</strong>
+
+                <span>
+                  {currentUser?.email || getRoleLabel(currentUser?.role)}
+                </span>
+              </div>
+            </div>
+
+            <div className="adm-account-menu__divider" />
+
+            <button
+              className="adm-account-menu__item"
+              type="button"
+              role="menuitem"
+              onClick={onOpenAccountInfo}
+            >
+              <span className="adm-account-menu__item-icon">
+                <i className="bi bi-person-vcard" />
+              </span>
+
+              <span>Thông tin tài khoản</span>
+            </button>
+
+            <button
+              className="adm-account-menu__item"
+              type="button"
+              role="menuitem"
+              onClick={onOpenChangePassword}
+            >
+              <span className="adm-account-menu__item-icon">
+                <i className="bi bi-shield-lock" />
+              </span>
+
+              <span>Đổi mật khẩu</span>
+            </button>
+
+            <button
+              className="adm-account-menu__item"
+              type="button"
+              role="menuitem"
+              onClick={onGoToClient}
+            >
+              <span className="adm-account-menu__item-icon">
+                <i className="bi bi-shop" />
+              </span>
+
+              <span>Về trang khách hàng</span>
+            </button>
+
+            <div className="adm-account-menu__divider" />
+
+            <button
+              className="adm-account-menu__item adm-account-menu__item--logout"
+              type="button"
+              role="menuitem"
+              onClick={onOpenLogout}
+            >
+              <span className="adm-account-menu__item-icon">
+                <i className="bi bi-box-arrow-right" />
+              </span>
+
+              <span>Đăng xuất</span>
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  </header>;
+    </header>
+  );
 }
 
 export default AdminTopbar;

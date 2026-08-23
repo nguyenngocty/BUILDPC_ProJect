@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+
+import toast from "react-hot-toast";
+
 import couponService from "../../../../services/couponService";
+
 import "./CouponManagement.css";
 
 const STATUS_LABELS = {
@@ -14,24 +18,34 @@ const DISCOUNT_TYPES = {
   fixed: "Giảm tiền",
 };
 
-const emptyForm = {
+const EMPTY_FORM = {
   code: "",
   type: "percent",
-  value: 0,
-  minOrder: 0,
-  quantity: 0,
+  value: "",
+  minOrder: "",
+  quantity: "",
   usedCount: 0,
   startAt: "",
   endAt: "",
   status: "1",
 };
 
+// =====================================================
+// FORMAT MONEY
+// =====================================================
+
 function formatMoney(value) {
   return `${Number(value || 0).toLocaleString("vi-VN")} đ`;
 }
 
+// =====================================================
+// FORMAT DATE
+// =====================================================
+
 function formatDate(value) {
-  if (!value) return "Không có";
+  if (!value) {
+    return "Không giới hạn";
+  }
 
   const date = new Date(value);
 
@@ -42,8 +56,32 @@ function formatDate(value) {
   return date.toLocaleDateString("vi-VN");
 }
 
+// =====================================================
+// FORMAT DATETIME
+// =====================================================
+
+function formatDateTime(value) {
+  if (!value) {
+    return "Không giới hạn";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString("vi-VN");
+}
+
+// =====================================================
+// DATETIME LOCAL
+// =====================================================
+
 function toDateTimeLocal(value) {
-  if (!value) return "";
+  if (!value) {
+    return "";
+  }
 
   const date = new Date(value);
 
@@ -52,13 +90,20 @@ function toDateTimeLocal(value) {
   }
 
   const offset = date.getTimezoneOffset();
+
   const localDate = new Date(date.getTime() - offset * 60 * 1000);
 
   return localDate.toISOString().slice(0, 16);
 }
 
+// =====================================================
+// MYSQL DATETIME
+// =====================================================
+
 function toMysqlDatetime(value) {
-  if (!value) return null;
+  if (!value) {
+    return null;
+  }
 
   const date = new Date(value);
 
@@ -68,91 +113,152 @@ function toMysqlDatetime(value) {
 
   const pad = (number) => String(number).padStart(2, "0");
 
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
-    date.getDate()
-  )} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  return `${date.getFullYear()}-${pad(
+    date.getMonth() + 1,
+  )}-${pad(date.getDate())} ${pad(
+    date.getHours(),
+  )}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
+
+// =====================================================
+// RESOLVE STATUS
+// =====================================================
 
 function resolveCouponStatus(coupon) {
   const now = Date.now();
-  const startTime = coupon.start_date ? new Date(coupon.start_date).getTime() : null;
+
+  const startTime = coupon.start_date
+    ? new Date(coupon.start_date).getTime()
+    : null;
+
   const endTime = coupon.end_date ? new Date(coupon.end_date).getTime() : null;
 
   if (Number(coupon.status) === 0) {
     return "inactive";
   }
 
-  if (startTime && now < startTime) {
+  if (startTime && !Number.isNaN(startTime) && now < startTime) {
     return "scheduled";
   }
 
-  if (endTime && now > endTime) {
+  if (endTime && !Number.isNaN(endTime) && now > endTime) {
     return "expired";
   }
 
   return "active";
 }
 
+// =====================================================
+// NORMALIZE
+// =====================================================
+
 function normalizeCoupon(coupon) {
   return {
     id: coupon.id,
+
     code: coupon.code || "",
+
     type: coupon.type || "percent",
+
     value: Number(coupon.value || 0),
+
     minOrder: Number(coupon.min_order || 0),
+
     quantity: Number(coupon.quantity || 0),
+
     usedCount: Number(coupon.used_count || 0),
+
     startAt: toDateTimeLocal(coupon.start_date),
+
     endAt: toDateTimeLocal(coupon.end_date),
+
+    startDate: coupon.start_date,
+
+    endDate: coupon.end_date,
+
     rawStatus: Number(coupon.status ?? 1),
+
     status: resolveCouponStatus(coupon),
   };
 }
 
-function getStatusClass(status) {
-  switch (status) {
-    case "active":
-      return "coupon-badge coupon-badge-active";
-    case "scheduled":
-      return "coupon-badge coupon-badge-scheduled";
-    case "expired":
-      return "coupon-badge coupon-badge-expired";
-    default:
-      return "coupon-badge coupon-badge-inactive";
-  }
-}
+// =====================================================
+// USAGE
+// =====================================================
 
 function getUsagePercent(coupon) {
-  if (!coupon.quantity) return 0;
+  const quantity = Number(coupon.quantity) || 0;
 
-  return Math.min(100, Math.round((coupon.usedCount / coupon.quantity) * 100));
+  const used = Number(coupon.usedCount) || 0;
+
+  if (quantity <= 0) {
+    return 0;
+  }
+
+  return Math.min(100, Math.round((used / quantity) * 100));
 }
+
+// =====================================================
+// COMPONENT
+// =====================================================
 
 function CouponManagement() {
   const [coupons, setCoupons] = useState([]);
+
   const [keyword, setKeyword] = useState("");
+
   const [typeFilter, setTypeFilter] = useState("all");
+
   const [statusFilter, setStatusFilter] = useState("all");
+
   const [editingCouponId, setEditingCouponId] = useState(null);
-  const [form, setForm] = useState(emptyForm);
+
+  const [form, setForm] = useState(EMPTY_FORM);
+
+  const [errors, setErrors] = useState({});
+
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+
+  const [saving, setSaving] = useState(false);
+
+  const [statusUpdatingId, setStatusUpdatingId] = useState(null);
+
+  const [deletingId, setDeletingId] = useState(null);
+
+  const [pageError, setPageError] = useState("");
+
+  const [openMenuId, setOpenMenuId] = useState(null);
+
+  const [deleteConfirm, setDeleteConfirm] = useState({
+    open: false,
+    coupon: null,
+  });
+
+  // =====================================================
+  // LOAD COUPONS
+  // =====================================================
 
   const loadCoupons = useCallback(async () => {
-    setLoading(true);
-    setError("");
-
     try {
-      const response = await couponService.getAll({ page: 1, limit: 1000 });
+      setLoading(true);
+
+      setPageError("");
+
+      const response = await couponService.getAll({
+        page: 1,
+        limit: 1000,
+      });
+
       const rows = response?.data?.data || [];
 
-      setCoupons(rows.map(normalizeCoupon));
-    } catch (requestError) {
-      const message =
-        requestError?.response?.data?.message ||
-        "Không thể tải danh sách coupon từ backend.";
+      setCoupons(Array.isArray(rows) ? rows.map(normalizeCoupon) : []);
+    } catch (error) {
+      console.error(error);
 
-      setError(message);
+      const message =
+        error?.response?.data?.message || "Không thể tải danh sách coupon.";
+
+      setPageError(message);
     } finally {
       setLoading(false);
     }
@@ -162,22 +268,52 @@ function CouponManagement() {
     loadCoupons();
   }, [loadCoupons]);
 
-  useEffect(() => {
-    if (!editingCouponId) return;
+  // =====================================================
+  // CLOSE ACTION MENU
+  // =====================================================
 
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  useEffect(() => {
+    const closeMenu = () => {
+      setOpenMenuId(null);
+    };
+
+    document.addEventListener("click", closeMenu);
+
+    return () => {
+      document.removeEventListener("click", closeMenu);
+    };
+  }, []);
+
+  // =====================================================
+  // SCROLL EDIT
+  // =====================================================
+
+  useEffect(() => {
+    if (!editingCouponId) {
+      return;
+    }
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
   }, [editingCouponId]);
 
+  // =====================================================
+  // FILTER
+  // =====================================================
+
   const filteredCoupons = useMemo(() => {
-    const lowerKeyword = keyword.trim().toLowerCase();
+    const search = keyword.trim().toLowerCase();
 
     return coupons.filter((coupon) => {
       const matchesKeyword =
-        !lowerKeyword ||
-        coupon.code.toLowerCase().includes(lowerKeyword) ||
-        coupon.status.toLowerCase().includes(lowerKeyword);
+        !search ||
+        coupon.code.toLowerCase().includes(search) ||
+        (STATUS_LABELS[coupon.status] || "").toLowerCase().includes(search);
 
       const matchesType = typeFilter === "all" || coupon.type === typeFilter;
+
       const matchesStatus =
         statusFilter === "all" || coupon.status === statusFilter;
 
@@ -185,177 +321,348 @@ function CouponManagement() {
     });
   }, [coupons, keyword, typeFilter, statusFilter]);
 
+  // =====================================================
+  // STATS
+  // =====================================================
+
   const stats = useMemo(() => {
     const now = new Date();
 
+    const active = coupons.filter(
+      (coupon) => coupon.status === "active",
+    ).length;
+
+    const scheduled = coupons.filter(
+      (coupon) => coupon.status === "scheduled",
+    ).length;
+
+    const expired = coupons.filter(
+      (coupon) => coupon.status === "expired",
+    ).length;
+
+    const expiringSoon = coupons.filter((coupon) => {
+      if (coupon.status !== "active" || !coupon.endAt) {
+        return false;
+      }
+
+      const endDate = new Date(coupon.endAt);
+
+      if (Number.isNaN(endDate.getTime())) {
+        return false;
+      }
+
+      const difference =
+        (endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+
+      return difference >= 0 && difference <= 7;
+    }).length;
+
     return {
       total: coupons.length,
-      active: coupons.filter((coupon) => coupon.status === "active").length,
-      scheduled: coupons.filter((coupon) => coupon.status === "scheduled").length,
-      expiringSoon: coupons.filter((coupon) => {
-        const endDate = coupon.endAt ? new Date(coupon.endAt) : null;
-
-        if (!endDate || Number.isNaN(endDate.getTime())) {
-          return false;
-        }
-
-        const diffDays =
-          (endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-
-        return coupon.status === "active" && diffDays <= 7 && diffDays >= 0;
-      }).length,
+      active,
+      scheduled,
+      expired,
+      expiringSoon,
     };
   }, [coupons]);
 
+  // =====================================================
+  // RESET FORM
+  // =====================================================
+
   const resetForm = () => {
     setEditingCouponId(null);
-    setForm(emptyForm);
+
+    setErrors({});
+
+    setForm({
+      ...EMPTY_FORM,
+    });
   };
+
+  // =====================================================
+  // CLEAR ERROR
+  // =====================================================
+
+  const clearError = (name) => {
+    setErrors((previous) => ({
+      ...previous,
+      [name]: "",
+    }));
+  };
+
+  // =====================================================
+  // CHANGE
+  // =====================================================
 
   const handleChange = (event) => {
     const { name, value } = event.target;
 
-    setForm((currentForm) => ({
-      ...currentForm,
-      [name]:
-        name === "value" ||
-        name === "minOrder" ||
-        name === "quantity" ||
-        name === "usedCount"
-          ? Number(value)
-          : value,
+    clearError(name);
+
+    setForm((current) => ({
+      ...current,
+
+      [name]: value,
     }));
   };
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
+  // =====================================================
+  // VALIDATE
+  // =====================================================
+
+  const validateForm = () => {
+    const nextErrors = {};
 
     const code = form.code.trim().toUpperCase();
 
     if (!code) {
-      window.alert("Vui lòng nhập mã coupon.");
-      return;
+      nextErrors.code = "Vui lòng nhập mã coupon.";
+    } else if (code.length < 3) {
+      nextErrors.code = "Mã coupon phải có ít nhất 3 ký tự.";
     }
 
     if (!["percent", "fixed"].includes(form.type)) {
-      window.alert("Loại coupon không hợp lệ.");
-      return;
+      nextErrors.type = "Kiểu giảm giá không hợp lệ.";
     }
 
-    if (form.value < 0) {
-      window.alert("Giá trị coupon không hợp lệ.");
-      return;
+    const value = Number(form.value);
+
+    if (form.value === "" || !Number.isFinite(value)) {
+      nextErrors.value = "Vui lòng nhập giá trị giảm.";
+    } else if (value <= 0) {
+      nextErrors.value = "Giá trị giảm phải lớn hơn 0.";
+    } else if (form.type === "percent" && value > 100) {
+      nextErrors.value = "Phần trăm giảm không được vượt quá 100%.";
     }
 
-    if (form.type === "percent" && form.value > 100) {
-      window.alert("Giá trị phần trăm phải từ 0 đến 100.");
-      return;
+    const minOrder = Number(form.minOrder);
+
+    if (form.minOrder !== "" && (!Number.isFinite(minOrder) || minOrder < 0)) {
+      nextErrors.minOrder = "Giá trị đơn tối thiểu không hợp lệ.";
     }
 
-    if (form.quantity < 0 || form.usedCount < 0) {
-      window.alert("Số lượng coupon không hợp lệ.");
-      return;
+    const quantity = Number(form.quantity);
+
+    if (form.quantity === "" || !Number.isFinite(quantity)) {
+      nextErrors.quantity = "Vui lòng nhập số lượng coupon.";
+    } else if (quantity < 0) {
+      nextErrors.quantity = "Số lượng không được âm.";
     }
 
-    if (Number(form.status) !== 0 && Number(form.status) !== 1) {
-      window.alert("Trạng thái coupon phải là 0 hoặc 1.");
-      return;
+    const usedCount = Number(form.usedCount);
+
+    if (!Number.isFinite(usedCount) || usedCount < 0) {
+      nextErrors.usedCount = "Số lượt đã dùng không hợp lệ.";
     }
 
-    const startDate = toMysqlDatetime(form.startAt);
-    const endDate = toMysqlDatetime(form.endAt);
+    if (quantity >= 0 && usedCount > quantity && quantity !== 0) {
+      nextErrors.usedCount =
+        "Số lượt đã dùng không được lớn hơn tổng số lượng.";
+    }
 
-    if (startDate && endDate && new Date(startDate).getTime() > new Date(endDate).getTime()) {
-      window.alert("Ngày bắt đầu không được lớn hơn ngày kết thúc.");
+    if (!["0", "1"].includes(String(form.status))) {
+      nextErrors.status = "Trạng thái coupon không hợp lệ.";
+    }
+
+    if (form.startAt && form.endAt) {
+      const start = new Date(form.startAt).getTime();
+
+      const end = new Date(form.endAt).getTime();
+
+      if (!Number.isNaN(start) && !Number.isNaN(end) && start > end) {
+        nextErrors.endAt = "Thời gian kết thúc phải sau thời gian bắt đầu.";
+      }
+    }
+
+    setErrors(nextErrors);
+
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  // =====================================================
+  // SUBMIT
+  // =====================================================
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!validateForm()) {
+      toast.error("Vui lòng kiểm tra lại thông tin coupon.");
+
       return;
     }
 
     const payload = {
-      code,
+      code: form.code.trim().toUpperCase(),
+
       type: form.type,
+
       value: Number(form.value),
-      min_order: Number(form.minOrder),
-      quantity: Number(form.quantity),
-      used_count: Number(form.usedCount),
+
+      min_order: Number(form.minOrder || 0),
+
+      quantity: Number(form.quantity || 0),
+
+      used_count: Number(form.usedCount || 0),
+
       status: Number(form.status),
-      start_date: startDate,
-      end_date: endDate,
+
+      start_date: toMysqlDatetime(form.startAt),
+
+      end_date: toMysqlDatetime(form.endAt),
     };
 
     try {
+      setSaving(true);
+
       if (editingCouponId) {
         await couponService.update(editingCouponId, payload);
-        window.alert("Cập nhật coupon thành công.");
+
+        toast.success("Cập nhật coupon thành công.");
       } else {
         await couponService.create(payload);
-        window.alert("Thêm coupon thành công.");
+
+        toast.success("Thêm coupon thành công.");
       }
 
       resetForm();
-      await loadCoupons();
-    } catch (requestError) {
-      const message =
-        requestError?.response?.data?.message ||
-        "Không thể lưu coupon. Vui lòng thử lại.";
 
-      window.alert(message);
+      await loadCoupons();
+    } catch (error) {
+      console.error(error);
+
+      toast.error(error?.response?.data?.message || "Không thể lưu coupon.");
+    } finally {
+      setSaving(false);
     }
   };
 
+  // =====================================================
+  // EDIT
+  // =====================================================
+
   const handleEdit = (coupon) => {
     setEditingCouponId(coupon.id);
+
+    setErrors({});
+
     setForm({
       code: coupon.code,
+
       type: coupon.type,
+
       value: coupon.value,
+
       minOrder: coupon.minOrder,
+
       quantity: coupon.quantity,
+
       usedCount: coupon.usedCount,
+
       startAt: coupon.startAt,
+
       endAt: coupon.endAt,
+
       status: String(coupon.rawStatus ?? 1),
     });
   };
 
-  const handleDelete = async (couponId) => {
-    const confirmDelete = window.confirm("Bạn có chắc muốn xóa coupon này?");
+  // =====================================================
+  // DELETE
+  // =====================================================
 
-    if (!confirmDelete) return;
+  const openDeleteConfirm = (coupon) => {
+    setOpenMenuId(null);
+
+    setDeleteConfirm({
+      open: true,
+      coupon,
+    });
+  };
+
+  const closeDeleteConfirm = () => {
+    if (deletingId) {
+      return;
+    }
+
+    setDeleteConfirm({
+      open: false,
+      coupon: null,
+    });
+  };
+
+  const handleDelete = async () => {
+    const coupon = deleteConfirm.coupon;
+
+    if (!coupon) {
+      return;
+    }
 
     try {
-      await couponService.remove(couponId);
+      setDeletingId(coupon.id);
 
-      if (editingCouponId === couponId) {
+      await couponService.remove(coupon.id);
+
+      if (editingCouponId === coupon.id) {
         resetForm();
       }
 
-      await loadCoupons();
-    } catch (requestError) {
-      const message =
-        requestError?.response?.data?.message ||
-        "Không thể xóa coupon. Vui lòng thử lại.";
+      toast.success(`Đã xóa coupon "${coupon.code}".`);
 
-      window.alert(message);
+      setDeleteConfirm({
+        open: false,
+        coupon: null,
+      });
+
+      await loadCoupons();
+    } catch (error) {
+      console.error(error);
+
+      toast.error(error?.response?.data?.message || "Không thể xóa coupon.");
+    } finally {
+      setDeletingId(null);
     }
   };
+
+  // =====================================================
+  // STATUS
+  // =====================================================
 
   const handleToggleStatus = async (coupon) => {
     const nextStatus = Number(coupon.rawStatus) === 1 ? 0 : 1;
 
     try {
+      setStatusUpdatingId(coupon.id);
+
+      setOpenMenuId(null);
+
       await couponService.update(coupon.id, {
         status: nextStatus,
       });
 
-      await loadCoupons();
-    } catch (requestError) {
-      const message =
-        requestError?.response?.data?.message ||
-        "Không thể đổi trạng thái coupon.";
+      toast.success(
+        nextStatus === 1
+          ? `Đã bật coupon "${coupon.code}".`
+          : `Đã tắt coupon "${coupon.code}".`,
+      );
 
-      window.alert(message);
+      await loadCoupons();
+    } catch (error) {
+      console.error(error);
+
+      toast.error(
+        error?.response?.data?.message ||
+          "Không thể thay đổi trạng thái coupon.",
+      );
+    } finally {
+      setStatusUpdatingId(null);
     }
   };
+
+  // =====================================================
+  // RESET FILTER
+  // =====================================================
 
   const handleResetFilter = () => {
     setKeyword("");
@@ -363,320 +670,921 @@ function CouponManagement() {
     setStatusFilter("all");
   };
 
+  // =====================================================
+  // STATUS CLASS
+  // =====================================================
+
+  const getStatusClass = (status) => {
+    return `coupon-status-badge coupon-status-${status}`;
+  };
+
   return (
-    <section className="admin-page coupon-page">
-      <div className="admin-page-heading coupon-heading">
-        <div>
-          <p className="admin-page-eyebrow">QUẢN LÝ KHUYẾN MÃI</p>
-          <h1>Quản lý coupons</h1>
+    <div className="coupon-admin-page">
+      {/* =================================================
+          DELETE MODAL
+      ================================================= */}
+
+      {deleteConfirm.open && (
+        <div
+          className="coupon-confirm-overlay"
+          onMouseDown={closeDeleteConfirm}
+        >
+          <div
+            className="coupon-confirm-dialog"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="coupon-confirm-icon">
+              <i className="bi bi-trash3" />
+            </div>
+
+            <span className="coupon-confirm-kicker">Xác nhận thao tác</span>
+
+            <h2>Xóa coupon</h2>
+
+            <p>
+              Bạn có chắc muốn xóa coupon{" "}
+              <strong>{deleteConfirm.coupon?.code}</strong>? Hành động này có
+              thể ảnh hưởng đến chương trình khuyến mãi đang áp dụng.
+            </p>
+
+            <div className="coupon-confirm-actions">
+              <button
+                type="button"
+                className="coupon-button coupon-button-light"
+                onClick={closeDeleteConfirm}
+                disabled={Boolean(deletingId)}
+              >
+                Hủy
+              </button>
+
+              <button
+                type="button"
+                className="coupon-button coupon-button-danger"
+                onClick={handleDelete}
+                disabled={Boolean(deletingId)}
+              >
+                {deletingId ? (
+                  <>
+                    <span className="coupon-spinner" />
+                    Đang xóa...
+                  </>
+                ) : (
+                  <>
+                    <i className="bi bi-trash3" />
+                    Xóa coupon
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =================================================
+          HEADER
+      ================================================= */}
+
+      <section className="coupon-page-heading">
+        <div className="coupon-heading-content">
+          <span className="coupon-heading-kicker">
+            <i className="bi bi-ticket-perforated-fill" />
+            Promotion Center
+          </span>
+
+          <h1>Quản lý Coupons</h1>
+
           <p>
-            Tạo, chỉnh sửa, bật/tắt và theo dõi mã giảm giá trong một màn hình.
+            Tạo mã giảm giá, thiết lập thời gian áp dụng, giới hạn lượt sử dụng
+            và quản lý các chương trình khuyến mãi.
           </p>
         </div>
 
-        <div className="coupon-stats-grid" aria-label="Thống kê coupons">
-          <article className="coupon-stat-card">
-            <span>Tổng coupon</span>
-            <strong>{stats.total}</strong>
-          </article>
+        <button
+          type="button"
+          className="coupon-heading-action"
+          onClick={() => {
+            resetForm();
 
-          <article className="coupon-stat-card">
-            <span>Đang bật</span>
-            <strong>{stats.active}</strong>
-          </article>
+            window.scrollTo({
+              top: 0,
+              behavior: "smooth",
+            });
+          }}
+        >
+          <i className="bi bi-plus-lg" />
+          Tạo coupon mới
+        </button>
+      </section>
 
-          <article className="coupon-stat-card">
-            <span>Lên lịch</span>
-            <strong>{stats.scheduled}</strong>
-          </article>
+      {/* =================================================
+          STATISTICS
+      ================================================= */}
 
-          <article className="coupon-stat-card">
-            <span>Sắp hết hạn</span>
-            <strong>{stats.expiringSoon}</strong>
-          </article>
-        </div>
-      </div>
-
-      <div className="coupon-grid">
-        <div className="admin-panel coupon-form-panel">
-          <div className="panel-head">
-            <div>
-              <h2>
-                <i className="bi bi-ticket-perforated" />
-                {editingCouponId ? "Chỉnh sửa coupon" : "Thêm coupon mới"}
-              </h2>
-              <p>Thiết lập mã, giá trị giảm, hạn dùng và giới hạn lượt sử dụng.</p>
-            </div>
-
-            {editingCouponId && (
-              <button
-                type="button"
-                className="ghost-action"
-                onClick={resetForm}
-              >
-                Hủy chỉnh sửa
-              </button>
-            )}
+      <section className="coupon-stat-grid">
+        <article className="coupon-stat-card coupon-stat-total">
+          <div className="coupon-stat-icon">
+            <i className="bi bi-ticket-perforated" />
           </div>
 
-          <form className="coupon-form" onSubmit={handleSubmit}>
-            <div className="coupon-field">
-              <label>Mã coupon</label>
+          <div>
+            <span>Tổng coupon</span>
+
+            <strong>{stats.total}</strong>
+
+            <small>Toàn bộ mã khuyến mãi</small>
+          </div>
+        </article>
+
+        <article className="coupon-stat-card coupon-stat-active">
+          <div className="coupon-stat-icon">
+            <i className="bi bi-lightning-charge-fill" />
+          </div>
+
+          <div>
+            <span>Đang hoạt động</span>
+
+            <strong>{stats.active}</strong>
+
+            <small>Có thể sử dụng ngay</small>
+          </div>
+        </article>
+
+        <article className="coupon-stat-card coupon-stat-scheduled">
+          <div className="coupon-stat-icon">
+            <i className="bi bi-clock-fill" />
+          </div>
+
+          <div>
+            <span>Đang lên lịch</span>
+
+            <strong>{stats.scheduled}</strong>
+
+            <small>Chờ đến thời gian áp dụng</small>
+          </div>
+        </article>
+
+        <article className="coupon-stat-card coupon-stat-expiring">
+          <div className="coupon-stat-icon">
+            <i className="bi bi-hourglass-split" />
+          </div>
+
+          <div>
+            <span>Sắp hết hạn</span>
+
+            <strong>{stats.expiringSoon}</strong>
+
+            <small>Hết hạn trong 7 ngày</small>
+          </div>
+        </article>
+      </section>
+
+      {/* =================================================
+          FORM
+      ================================================= */}
+
+      <section className="coupon-editor-card">
+        <div className="coupon-card-heading">
+          <div className="coupon-card-heading-main">
+            <div
+              className={
+                editingCouponId
+                  ? "coupon-card-icon coupon-card-icon-edit"
+                  : "coupon-card-icon"
+              }
+            >
+              <i
+                className={
+                  editingCouponId ? "bi bi-pencil-square" : "bi bi-plus-lg"
+                }
+              />
+            </div>
+
+            <div>
+              <span className="coupon-card-kicker">Coupon Editor</span>
+
+              <h2>{editingCouponId ? "Cập nhật coupon" : "Tạo coupon mới"}</h2>
+
+              <p>
+                Thiết lập mã khuyến mãi, điều kiện, thời gian và giới hạn sử
+                dụng.
+              </p>
+            </div>
+          </div>
+
+          {editingCouponId && (
+            <button
+              type="button"
+              className="coupon-button coupon-button-light"
+              onClick={resetForm}
+              disabled={saving}
+            >
+              <i className="bi bi-x-lg" />
+              Hủy chỉnh sửa
+            </button>
+          )}
+        </div>
+
+        <form className="coupon-form" onSubmit={handleSubmit}>
+          {/* CODE */}
+
+          <div className="coupon-field coupon-field-code">
+            <label>
+              Mã coupon
+              <span>*</span>
+            </label>
+
+            <div
+              className={
+                errors.code
+                  ? "coupon-input-wrap coupon-input-error"
+                  : "coupon-input-wrap"
+              }
+            >
+              <i className="bi bi-upc-scan" />
+
               <input
                 type="text"
                 name="code"
                 value={form.code}
-                onChange={handleChange}
                 placeholder="VD: GIAM15"
+                maxLength={50}
+                disabled={saving}
+                onChange={(event) => {
+                  const value = event.target.value
+                    .toUpperCase()
+                    .replace(/\s+/g, "")
+                    .replace(/[^A-Z0-9_-]/g, "");
+
+                  clearError("code");
+
+                  setForm((previous) => ({
+                    ...previous,
+                    code: value,
+                  }));
+                }}
               />
             </div>
 
-            <div className="coupon-field">
-              <label>Kiểu giảm</label>
-              <select name="type" value={form.type} onChange={handleChange}>
-                <option value="percent">Phần trăm</option>
-                <option value="fixed">Giảm tiền</option>
+            {errors.code && (
+              <small className="coupon-error-text">
+                <i className="bi bi-exclamation-circle" />
+                {errors.code}
+              </small>
+            )}
+          </div>
+
+          {/* TYPE */}
+
+          <div className="coupon-field">
+            <label>
+              Kiểu giảm
+              <span>*</span>
+            </label>
+
+            <div className="coupon-input-wrap">
+              <i className="bi bi-tags" />
+
+              <select
+                name="type"
+                value={form.type}
+                onChange={handleChange}
+                disabled={saving}
+              >
+                <option value="percent">Phần trăm (%)</option>
+
+                <option value="fixed">Giảm số tiền cố định</option>
               </select>
             </div>
+          </div>
 
-            <div className="coupon-field">
-              <label>{form.type === "percent" ? "Giảm (%)" : "Giảm tiền"}</label>
+          {/* VALUE */}
+
+          <div className="coupon-field">
+            <label>
+              {form.type === "percent" ? "Mức giảm (%)" : "Số tiền giảm"}
+              <span>*</span>
+            </label>
+
+            <div
+              className={
+                errors.value
+                  ? "coupon-input-wrap coupon-input-error"
+                  : "coupon-input-wrap"
+              }
+            >
+              <i className="bi bi-percent" />
+
               <input
                 type="number"
                 name="value"
                 min="0"
+                step={form.type === "percent" ? "1" : "1000"}
                 value={form.value}
+                placeholder={form.type === "percent" ? "15" : "100000"}
+                disabled={saving}
                 onChange={handleChange}
               />
+
+              <span className="coupon-input-suffix">
+                {form.type === "percent" ? "%" : "đ"}
+              </span>
             </div>
 
-            <div className="coupon-field">
-              <label>Đơn tối thiểu</label>
+            {errors.value && (
+              <small className="coupon-error-text">
+                <i className="bi bi-exclamation-circle" />
+                {errors.value}
+              </small>
+            )}
+          </div>
+
+          {/* MIN ORDER */}
+
+          <div className="coupon-field">
+            <label>Đơn hàng tối thiểu</label>
+
+            <div
+              className={
+                errors.minOrder
+                  ? "coupon-input-wrap coupon-input-error"
+                  : "coupon-input-wrap"
+              }
+            >
+              <i className="bi bi-cart-check" />
+
               <input
                 type="number"
                 name="minOrder"
                 min="0"
+                step="1000"
                 value={form.minOrder}
+                placeholder="0"
+                disabled={saving}
                 onChange={handleChange}
               />
+
+              <span className="coupon-input-suffix">đ</span>
             </div>
 
-            <div className="coupon-field">
-              <label>Số lượng</label>
+            {errors.minOrder && (
+              <small className="coupon-error-text">
+                <i className="bi bi-exclamation-circle" />
+                {errors.minOrder}
+              </small>
+            )}
+          </div>
+
+          {/* QUANTITY */}
+
+          <div className="coupon-field">
+            <label>
+              Số lượng coupon
+              <span>*</span>
+            </label>
+
+            <div
+              className={
+                errors.quantity
+                  ? "coupon-input-wrap coupon-input-error"
+                  : "coupon-input-wrap"
+              }
+            >
+              <i className="bi bi-stack" />
+
               <input
                 type="number"
                 name="quantity"
                 min="0"
                 value={form.quantity}
+                placeholder="100"
+                disabled={saving}
                 onChange={handleChange}
               />
             </div>
 
-            <div className="coupon-field">
-              <label>Đã dùng</label>
+            {errors.quantity && (
+              <small className="coupon-error-text">
+                <i className="bi bi-exclamation-circle" />
+                {errors.quantity}
+              </small>
+            )}
+          </div>
+
+          {/* USED */}
+
+          <div className="coupon-field">
+            <label>Đã sử dụng</label>
+
+            <div
+              className={
+                errors.usedCount
+                  ? "coupon-input-wrap coupon-input-error"
+                  : "coupon-input-wrap"
+              }
+            >
+              <i className="bi bi-graph-up-arrow" />
+
               <input
                 type="number"
                 name="usedCount"
                 min="0"
                 value={form.usedCount}
+                disabled={saving}
                 onChange={handleChange}
               />
             </div>
 
-            <div className="coupon-field">
-              <label>Bắt đầu</label>
+            {errors.usedCount && (
+              <small className="coupon-error-text">
+                <i className="bi bi-exclamation-circle" />
+                {errors.usedCount}
+              </small>
+            )}
+          </div>
+
+          {/* START */}
+
+          <div className="coupon-field">
+            <label>Thời gian bắt đầu</label>
+
+            <div className="coupon-input-wrap">
+              <i className="bi bi-calendar-event" />
+
               <input
                 type="datetime-local"
                 name="startAt"
                 value={form.startAt}
+                disabled={saving}
                 onChange={handleChange}
               />
             </div>
+          </div>
 
-            <div className="coupon-field">
-              <label>Kết thúc</label>
+          {/* END */}
+
+          <div className="coupon-field">
+            <label>Thời gian kết thúc</label>
+
+            <div
+              className={
+                errors.endAt
+                  ? "coupon-input-wrap coupon-input-error"
+                  : "coupon-input-wrap"
+              }
+            >
+              <i className="bi bi-calendar-x" />
+
               <input
                 type="datetime-local"
                 name="endAt"
                 value={form.endAt}
+                disabled={saving}
                 onChange={handleChange}
               />
             </div>
 
-            <div className="coupon-field">
-              <label>Trạng thái</label>
-              <select name="status" value={form.status} onChange={handleChange}>
+            {errors.endAt && (
+              <small className="coupon-error-text">
+                <i className="bi bi-exclamation-circle" />
+                {errors.endAt}
+              </small>
+            )}
+          </div>
+
+          {/* STATUS */}
+
+          <div className="coupon-field">
+            <label>Trạng thái</label>
+
+            <div className="coupon-input-wrap">
+              <i className="bi bi-toggle-on" />
+
+              <select
+                name="status"
+                value={form.status}
+                disabled={saving}
+                onChange={handleChange}
+              >
                 <option value="1">Đang bật</option>
+
                 <option value="0">Đang tắt</option>
               </select>
             </div>
-
-            <div className="coupon-actions coupon-field-full">
-              <button type="submit" className="primary-action">
-                <i className="bi bi-save2" />
-                {editingCouponId ? "Cập nhật coupon" : "Thêm coupon"}
-              </button>
-
-              <button type="button" className="ghost-action" onClick={resetForm}>
-                Làm mới form
-              </button>
-            </div>
-          </form>
-        </div>
-
-        <div className="admin-panel coupon-list-panel">
-          <div className="panel-head">
-            <div>
-              <h2>
-                <i className="bi bi-collection" /> Danh sách coupon
-              </h2>
-              <p>Theo dõi trạng thái, lượt dùng và thao tác nhanh cho từng mã.</p>
-            </div>
           </div>
 
-          <div className="coupon-toolbar">
-            <div className="admin-search-box coupon-search-box">
-              <input
-                type="text"
-                placeholder="Tìm theo mã coupon hoặc trạng thái..."
-                value={keyword}
-                onChange={(event) => setKeyword(event.target.value)}
-              />
-            </div>
+          {/* ACTION */}
 
-            <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
-              <option value="all">Tất cả kiểu giảm</option>
-              <option value="percent">Phần trăm</option>
-              <option value="fixed">Giảm tiền</option>
-            </select>
+          <div className="coupon-form-actions">
+            <button
+              type="submit"
+              className="coupon-button coupon-button-primary"
+              disabled={saving}
+            >
+              {saving ? (
+                <>
+                  <span className="coupon-spinner" />
+                  Đang lưu...
+                </>
+              ) : editingCouponId ? (
+                <>
+                  <i className="bi bi-check-lg" />
+                  Lưu thay đổi
+                </>
+              ) : (
+                <>
+                  <i className="bi bi-plus-lg" />
+                  Thêm coupon
+                </>
+              )}
+            </button>
 
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-              <option value="all">Tất cả trạng thái</option>
-              <option value="active">Đang bật</option>
-              <option value="scheduled">Lên lịch</option>
-              <option value="expired">Hết hạn</option>
-              <option value="inactive">Đang tắt</option>
-            </select>
-
-            <button type="button" className="ghost-action" onClick={handleResetFilter}>
-              Làm mới lọc
+            <button
+              type="button"
+              className="coupon-button coupon-button-light"
+              onClick={resetForm}
+              disabled={saving}
+            >
+              <i className="bi bi-arrow-counterclockwise" />
+              Làm mới form
             </button>
           </div>
+        </form>
+      </section>
 
-          <div className="table-responsive coupon-table-wrap">
-            <table className="admin-table coupon-table">
+      {/* =================================================
+          LIST
+      ================================================= */}
+
+      <section className="coupon-list-card">
+        <div className="coupon-card-heading">
+          <div className="coupon-card-heading-main">
+            <div className="coupon-card-icon coupon-card-icon-blue">
+              <i className="bi bi-collection" />
+            </div>
+
+            <div>
+              <span className="coupon-card-kicker">Promotion Library</span>
+
+              <h2>Danh sách coupon</h2>
+
+              <p>
+                Theo dõi trạng thái, thời gian áp dụng và mức sử dụng của từng
+                mã.
+              </p>
+            </div>
+          </div>
+
+          <span className="coupon-result-count">
+            <i className="bi bi-ticket-perforated" />
+            {filteredCoupons.length} / {coupons.length} coupon
+          </span>
+        </div>
+
+        {/* FILTER */}
+
+        <div className="coupon-filter-panel">
+          <label className="coupon-search-field">
+            <i className="bi bi-search" />
+
+            <input
+              type="search"
+              value={keyword}
+              placeholder="Tìm theo mã coupon..."
+              onChange={(event) => setKeyword(event.target.value)}
+            />
+
+            {keyword && (
+              <button
+                type="button"
+                onClick={() => setKeyword("")}
+                aria-label="Xóa từ khóa"
+              >
+                <i className="bi bi-x-lg" />
+              </button>
+            )}
+          </label>
+
+          <div className="coupon-filter-select">
+            <i className="bi bi-percent" />
+
+            <select
+              value={typeFilter}
+              onChange={(event) => setTypeFilter(event.target.value)}
+            >
+              <option value="all">Tất cả kiểu giảm</option>
+
+              <option value="percent">Phần trăm</option>
+
+              <option value="fixed">Giảm tiền</option>
+            </select>
+          </div>
+
+          <div className="coupon-filter-select">
+            <i className="bi bi-activity" />
+
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+            >
+              <option value="all">Tất cả trạng thái</option>
+
+              <option value="active">Đang bật</option>
+
+              <option value="scheduled">Lên lịch</option>
+
+              <option value="expired">Hết hạn</option>
+
+              <option value="inactive">Đang tắt</option>
+            </select>
+          </div>
+
+          <button
+            type="button"
+            className="coupon-button coupon-button-light coupon-filter-reset"
+            onClick={handleResetFilter}
+          >
+            <i className="bi bi-arrow-counterclockwise" />
+            Làm mới
+          </button>
+        </div>
+
+        {/* ERROR */}
+
+        {pageError && (
+          <div className="coupon-page-error">
+            <div>
+              <i className="bi bi-exclamation-triangle-fill" />
+
+              <span>{pageError}</span>
+            </div>
+
+            <button type="button" onClick={loadCoupons}>
+              Thử lại
+            </button>
+          </div>
+        )}
+
+        {/* TABLE */}
+
+        <div className="coupon-table-shell">
+          <div className="coupon-table-scroll">
+            <table className="coupon-data-table">
               <thead>
                 <tr>
-                  <th>Mã</th>
-                  <th>Giá trị</th>
+                  <th>Coupon</th>
+
+                  <th>Giá trị giảm</th>
+
                   <th>Điều kiện</th>
-                  <th>Hiệu lực</th>
+
+                  <th>Mức sử dụng</th>
+
+                  <th>Thời gian</th>
+
                   <th>Trạng thái</th>
-                  <th>Thao tác</th>
+
+                  <th className="coupon-text-center">Thao tác</th>
                 </tr>
               </thead>
 
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="6" className="admin-table-empty">
-                      Đang tải dữ liệu coupon...
-                    </td>
-                  </tr>
-                ) : error ? (
-                  <tr>
-                    <td colSpan="6" className="admin-table-empty">
-                      {error}
+                    <td colSpan="7" className="coupon-table-state">
+                      <div className="coupon-loading-state">
+                        <span className="coupon-loader" />
+
+                        <strong>Đang tải dữ liệu</strong>
+
+                        <p>
+                          Hệ thống đang đồng bộ các chương trình khuyến mãi...
+                        </p>
+                      </div>
                     </td>
                   </tr>
                 ) : filteredCoupons.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="admin-table-empty">
-                      Chưa có coupon nào phù hợp bộ lọc.
+                    <td colSpan="7" className="coupon-table-state">
+                      <div className="coupon-empty-state">
+                        <div className="coupon-empty-icon">
+                          <i className="bi bi-ticket-perforated" />
+                        </div>
+
+                        <strong>Không tìm thấy coupon</strong>
+
+                        <p>Thử thay đổi từ khóa hoặc bộ lọc.</p>
+                      </div>
                     </td>
                   </tr>
                 ) : (
-                  filteredCoupons.map((coupon) => (
-                    <tr key={coupon.id}>
-                      <td>
-                        <div className="coupon-code-block">
-                          <strong>{coupon.code}</strong>
-                          <span>Loại: {DISCOUNT_TYPES[coupon.type] || coupon.type}</span>
-                        </div>
-                      </td>
+                  filteredCoupons.map((coupon) => {
+                    const usage = getUsagePercent(coupon);
 
-                      <td>
-                        <div className="coupon-value-block">
-                          <strong>
-                            {coupon.type === "percent"
-                              ? `${coupon.value}%`
-                              : formatMoney(coupon.value)}
-                          </strong>
-                          <span>{DISCOUNT_TYPES[coupon.type] || coupon.type}</span>
-                        </div>
-                      </td>
+                    return (
+                      <tr key={coupon.id}>
+                        {/* CODE */}
 
-                      <td>
-                        <div className="coupon-condition-block">
-                          <span>Tối thiểu: {formatMoney(coupon.minOrder)}</span>
-                          <span>
-                            {coupon.usedCount}/{coupon.quantity} lượt dùng
-                          </span>
-                          <div className="coupon-progress">
-                            <span style={{ width: `${getUsagePercent(coupon)}%` }} />
+                        <td>
+                          <div className="coupon-code-info">
+                            <div className="coupon-code-icon">
+                              <i className="bi bi-ticket-perforated-fill" />
+                            </div>
+
+                            <div>
+                              <strong>{coupon.code}</strong>
+
+                              <span>ID #{coupon.id}</span>
+                            </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      <td>
-                        <div className="coupon-time-block">
-                          <span>Bắt đầu: {formatDate(coupon.startAt)}</span>
-                          <span>Kết thúc: {formatDate(coupon.endAt)}</span>
-                        </div>
-                      </td>
+                        {/* VALUE */}
 
-                      <td>
-                        <span className={getStatusClass(coupon.status)}>
-                          {STATUS_LABELS[coupon.status] || coupon.status}
-                        </span>
-                      </td>
+                        <td>
+                          <div className="coupon-discount-value">
+                            <strong>
+                              {coupon.type === "percent"
+                                ? `${coupon.value}%`
+                                : formatMoney(coupon.value)}
+                            </strong>
 
-                      <td>
-                        <div className="coupon-row-actions">
-                          <button
-                            type="button"
-                            className="ghost-action coupon-action-button"
-                            onClick={() => handleEdit(coupon)}
+                            <span>
+                              {DISCOUNT_TYPES[coupon.type] || coupon.type}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* CONDITION */}
+
+                        <td>
+                          <div className="coupon-condition">
+                            <span>
+                              <i className="bi bi-cart-check" />
+                              Đơn từ{" "}
+                              <strong>{formatMoney(coupon.minOrder)}</strong>
+                            </span>
+
+                            <span>
+                              <i className="bi bi-stack" />
+                              Giới hạn <strong>{coupon.quantity}</strong> lượt
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* USAGE */}
+
+                        <td>
+                          <div className="coupon-usage">
+                            <div className="coupon-usage-top">
+                              <strong>
+                                {coupon.usedCount}/{coupon.quantity}
+                              </strong>
+
+                              <span>{usage}%</span>
+                            </div>
+
+                            <div className="coupon-progress-track">
+                              <span
+                                style={{
+                                  width: `${usage}%`,
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* TIME */}
+
+                        <td>
+                          <div className="coupon-time">
+                            <span>
+                              <i className="bi bi-calendar-check" />
+
+                              {formatDate(coupon.startDate || coupon.startAt)}
+                            </span>
+
+                            <span>
+                              <i className="bi bi-calendar-x" />
+
+                              {formatDate(coupon.endDate || coupon.endAt)}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* STATUS */}
+
+                        <td>
+                          <span
+                            className={getStatusClass(coupon.status)}
+                            title={`Bắt đầu: ${formatDateTime(
+                              coupon.startDate,
+                            )} - Kết thúc: ${formatDateTime(coupon.endDate)}`}
                           >
-                            Sửa
-                          </button>
+                            <span className="coupon-status-dot" />
 
-                          <button
-                            type="button"
-                            className="ghost-action coupon-action-button"
-                            onClick={() => handleToggleStatus(coupon)}
-                          >
-                            Bật/Tắt
-                          </button>
+                            {STATUS_LABELS[coupon.status] || coupon.status}
+                          </span>
+                        </td>
 
-                          <button
-                            type="button"
-                            className="ghost-action coupon-action-button coupon-danger-button"
-                            onClick={() => handleDelete(coupon.id)}
+                        {/* ACTION */}
+
+                        <td className="coupon-text-center">
+                          <div
+                            className="coupon-action"
+                            onClick={(event) => event.stopPropagation()}
                           >
-                            Xóa
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                            <button
+                              type="button"
+                              className="coupon-action-trigger"
+                              onClick={() =>
+                                setOpenMenuId(
+                                  openMenuId === coupon.id ? null : coupon.id,
+                                )
+                              }
+                            >
+                              <i className="bi bi-three-dots-vertical" />
+                            </button>
+
+                            {openMenuId === coupon.id && (
+                              <div className="coupon-action-menu">
+                                <button
+                                  type="button"
+                                  className="coupon-action-item"
+                                  onClick={() => {
+                                    setOpenMenuId(null);
+
+                                    handleEdit(coupon);
+                                  }}
+                                >
+                                  <span className="coupon-action-icon coupon-action-icon-edit">
+                                    <i className="bi bi-pencil-square" />
+                                  </span>
+
+                                  <span>Chỉnh sửa</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="coupon-action-item"
+                                  disabled={statusUpdatingId === coupon.id}
+                                  onClick={() => handleToggleStatus(coupon)}
+                                >
+                                  <span className="coupon-action-icon coupon-action-icon-status">
+                                    <i
+                                      className={
+                                        Number(coupon.rawStatus) === 1
+                                          ? "bi bi-eye-slash"
+                                          : "bi bi-eye"
+                                      }
+                                    />
+                                  </span>
+
+                                  <span>
+                                    {Number(coupon.rawStatus) === 1
+                                      ? "Tắt coupon"
+                                      : "Bật coupon"}
+                                  </span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="coupon-action-item coupon-action-delete"
+                                  onClick={() => openDeleteConfirm(coupon)}
+                                >
+                                  <span className="coupon-action-icon coupon-action-icon-delete">
+                                    <i className="bi bi-trash3" />
+                                  </span>
+
+                                  <span>Xóa coupon</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
         </div>
-      </div>
-    </section>
+
+        {!loading && !pageError && filteredCoupons.length > 0 && (
+          <div className="coupon-table-footer">
+            <div>
+              Hiển thị <strong>{filteredCoupons.length}</strong> trong tổng{" "}
+              <strong>{coupons.length}</strong> coupon
+            </div>
+
+            <div className="coupon-footer-note">
+              <i className="bi bi-shield-check" />
+              Dữ liệu được đồng bộ từ hệ thống
+            </div>
+          </div>
+        )}
+      </section>
+    </div>
   );
 }
 

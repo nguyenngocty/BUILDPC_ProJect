@@ -1,88 +1,1010 @@
 import React, { useEffect, useMemo, useState } from "react";
-import {
-  Plus,
-  Edit2,
-  Trash2,
-  Cpu,
-  ShieldAlert,
-  Save,
-  X,
-  Search,
-  Image,
-  Layers,
-  RefreshCw,
-  Eye,
-  CheckCircle2,
-  HardDrive,
-  Sparkles,
-} from "lucide-react";
-import pcPartService from "../../../../services/pcPartService"; 
+
+import pcPartService from "../../../../services/pcPartService";
 import axiosClient from "../../../../services/axiosClient";
 
+import "./PCBuilderAdmin.css";
+
+const IMAGE_BASE_URL =
+  process.env.REACT_APP_UPLOAD_URL || "http://localhost:5000";
+
+const FALLBACK_CATEGORIES = [
+  {
+    key: "CPU",
+    label: "Bộ vi xử lý",
+  },
+  {
+    key: "MAINBOARD",
+    label: "Bo mạch chủ",
+  },
+  {
+    key: "RAM",
+    label: "Bộ nhớ RAM",
+  },
+  {
+    key: "VGA",
+    label: "Card đồ họa",
+  },
+  {
+    key: "COOLING",
+    label: "Tản nhiệt",
+  },
+  {
+    key: "PSU",
+    label: "Nguồn máy tính",
+  },
+  {
+    key: "STORAGE",
+    label: "Ổ cứng lưu trữ",
+  },
+  {
+    key: "CASE",
+    label: "Vỏ máy tính",
+  },
+];
+
+const CATEGORY_ICONS = {
+  CPU: "bi-cpu",
+  MAINBOARD: "bi-motherboard",
+  RAM: "bi-memory",
+  VGA: "bi-gpu-card",
+  COOLING: "bi-fan",
+  PSU: "bi-lightning-charge",
+  STORAGE: "bi-device-ssd",
+  CASE: "bi-pc-display",
+};
+
+const BUDGET_RATIOS = {
+  office: {
+    CPU: 0.32,
+    MAINBOARD: 0.18,
+    RAM: 0.18,
+    STORAGE: 0.15,
+    PSU: 0.1,
+    CASE: 0.04,
+    COOLING: 0.03,
+  },
+
+  gaming: {
+    VGA: 0.36,
+    CPU: 0.2,
+    MAINBOARD: 0.12,
+    RAM: 0.1,
+    STORAGE: 0.08,
+    PSU: 0.06,
+    COOLING: 0.05,
+    CASE: 0.03,
+  },
+
+  design: {
+    CPU: 0.25,
+    RAM: 0.2,
+    VGA: 0.22,
+    STORAGE: 0.12,
+    MAINBOARD: 0.08,
+    PSU: 0.06,
+    COOLING: 0.05,
+    CASE: 0.02,
+  },
+};
+
+const AUTO_BUILD_ORDER = [
+  "VGA",
+  "CPU",
+  "MAINBOARD",
+  "RAM",
+  "STORAGE",
+  "COOLING",
+  "PSU",
+  "CASE",
+];
+
+// =========================================================
+// HELPERS
+// =========================================================
+
+const formatMoney = (value) => {
+  return `${Number(value || 0).toLocaleString("vi-VN")} đ`;
+};
+
+const getImageUrl = (image) => {
+  if (!image) {
+    return "";
+  }
+
+  if (image.startsWith("http://") || image.startsWith("https://")) {
+    return image;
+  }
+
+  return `${IMAGE_BASE_URL}${image}`;
+};
+
+const normalizeCategoryKey = (key = "") => {
+  if (!key) {
+    return "";
+  }
+
+  const value = String(key).trim().toLowerCase();
+
+  if (
+    value.includes("vga") ||
+    value.includes("card") ||
+    value.includes("đồ họa") ||
+    value === "66"
+  ) {
+    return "VGA";
+  }
+
+  if (
+    value.includes("cpu") ||
+    value.includes("vi xử lý") ||
+    value.includes("chip")
+  ) {
+    return "CPU";
+  }
+
+  if (
+    value.includes("main") ||
+    value.includes("motherboard") ||
+    value.includes("bo mạch")
+  ) {
+    return "MAINBOARD";
+  }
+
+  if (value.includes("ram") || value.includes("bộ nhớ")) {
+    return "RAM";
+  }
+
+  if (
+    value.includes("psu") ||
+    value.includes("nguồn") ||
+    value.includes("power")
+  ) {
+    return "PSU";
+  }
+
+  if (
+    value.includes("storage") ||
+    value.includes("ssd") ||
+    value.includes("hdd") ||
+    value.includes("ổ cứng")
+  ) {
+    return "STORAGE";
+  }
+
+  if (value.includes("case") || value.includes("vỏ")) {
+    return "CASE";
+  }
+
+  if (value.includes("cool") || value.includes("tản")) {
+    return "COOLING";
+  }
+
+  return value.toUpperCase();
+};
+
+const parseSpecifications = (product) => {
+  if (!product?.specifications) {
+    return {};
+  }
+
+  try {
+    if (typeof product.specifications === "string") {
+      return JSON.parse(product.specifications);
+    }
+
+    return product.specifications;
+  } catch (error) {
+    console.error(
+      "Không thể parse specifications:",
+      product.specifications,
+      error,
+    );
+
+    return {};
+  }
+};
+
+const detectItemCategory = (item) => {
+  if (!item) {
+    return null;
+  }
+
+  const rawCategory = String(
+    item?.category_key || item?.category || item?.category_name || "",
+  ).toUpperCase();
+
+  const productName = String(
+    item?.name || item?.product_name || "",
+  ).toUpperCase();
+
+  const typeId = Number(
+    item?.type_id || item?.part_type_id || item?.pc_part?.type_id,
+  );
+
+  if (typeId === 1) return "CPU";
+  if (typeId === 2) return "MAINBOARD";
+  if (typeId === 3) return "RAM";
+  if (typeId === 4) return "VGA";
+  if (typeId === 5) return "COOLING";
+  if (typeId === 6) return "PSU";
+  if (typeId === 7) return "STORAGE";
+  if (typeId === 8) return "CASE";
+
+  const combined = `${rawCategory} ${productName}`.toUpperCase();
+
+  if (
+    combined.includes("CPU") ||
+    combined.includes("RYZEN") ||
+    combined.includes("CORE I")
+  ) {
+    return "CPU";
+  }
+
+  if (
+    combined.includes("MAIN") ||
+    combined.includes("MOTHERBOARD") ||
+    combined.includes("B550") ||
+    combined.includes("H610") ||
+    combined.includes("Z690") ||
+    combined.includes("B650")
+  ) {
+    return "MAINBOARD";
+  }
+
+  if (
+    combined.includes("RAM") ||
+    combined.includes("DDR4") ||
+    combined.includes("DDR5")
+  ) {
+    return "RAM";
+  }
+
+  if (
+    combined.includes("VGA") ||
+    combined.includes("GPU") ||
+    combined.includes("RTX") ||
+    combined.includes("GTX") ||
+    combined.includes("RX ") ||
+    combined.includes("NVIDIA") ||
+    combined.includes("RADEON")
+  ) {
+    return "VGA";
+  }
+
+  if (
+    combined.includes("COOL") ||
+    combined.includes("TẢN") ||
+    combined.includes("THERMALRIGHT") ||
+    combined.includes("CR-")
+  ) {
+    return "COOLING";
+  }
+
+  if (
+    combined.includes("PSU") ||
+    combined.includes("NGUỒN") ||
+    combined.includes("BRONZE") ||
+    combined.includes("ATOM") ||
+    combined.includes("A650BN") ||
+    combined.includes("CV") ||
+    combined.includes("MWE")
+  ) {
+    return "PSU";
+  }
+
+  if (
+    combined.includes("STORAGE") ||
+    combined.includes("DISK") ||
+    combined.includes("HARD-DISK") ||
+    combined.includes("SSD") ||
+    combined.includes("HDD") ||
+    combined.includes("NVME") ||
+    combined.includes("SATA")
+  ) {
+    return "STORAGE";
+  }
+
+  if (
+    combined.includes("CASE") ||
+    combined.includes("VỎ") ||
+    combined.includes("XIGMATEK") ||
+    combined.includes("AIRFLOW")
+  ) {
+    return "CASE";
+  }
+
+  return null;
+};
+
+const normalizeProduct = (product, quantity = 1) => {
+  const specifications = parseSpecifications(product);
+
+  const productId = product.product_id || product.id || product.productId;
+
+  return {
+    ...product,
+
+    id: productId,
+
+    product_id: productId,
+
+    name: product.name || product.product_name || "Linh kiện",
+
+    sku: product.sku || product.product_sku || "",
+
+    price: Number(product.sale_price) || Number(product.price) || 0,
+
+    image: product.image || product.thumbnail || product.image_url || "",
+
+    quantity: Number(quantity) > 0 ? Number(quantity) : 1,
+
+    socket: specifications.socket || product.socket || "",
+
+    ram_type:
+      specifications.ram_type ||
+      specifications.ramType ||
+      product.ram_type ||
+      product.ramType ||
+      "",
+
+    power_recommend:
+      specifications.power_recommend ||
+      specifications.powerRecommend ||
+      product.power_recommend ||
+      product.powerRecommend ||
+      "",
+
+    wattage: specifications.wattage || product.wattage || "",
+
+    specifications,
+  };
+};
+
+// =========================================================
+// MAIN COMPONENT
+// =========================================================
+
 export default function PCBuilderAdmin() {
-  // =====================================================
-  // AUTO BUILD & STATE CHÍNH
-  // =====================================================
-  const [targetBudget, setTargetBudget] = useState(15000000); // Ngân sách mặc định
-  const [targetUsage, setTargetUsage] = useState("gaming");   // Nhu cầu mặc định
-  const [allComponents, setAllComponents] = useState([]);     // Kho linh kiện tổng
-  const [formErrors, setFormErrors] = useState({});
+  // =======================================================
+  // MAIN STATE
+  // =======================================================
+
   const [builds, setBuilds] = useState([]);
-  const [categories, setCategories] = useState([]);
+
+  const [categories, setCategories] = useState(FALLBACK_CATEGORIES);
+
+  const [allComponents, setAllComponents] = useState([]);
+
+  // =======================================================
+  // AUTO BUILD
+  // =======================================================
+
+  const [targetBudget, setTargetBudget] = useState(15000000);
+
+  const [targetUsage, setTargetUsage] = useState("gaming");
+
+  // =======================================================
+  // BUILD FORM
+  // =======================================================
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isComponentModalOpen, setIsComponentModalOpen] = useState(false);
 
   const [modalMode, setModalMode] = useState("view");
 
-  // =====================================================
-  // FORM BUILD PC
-  // =====================================================
   const [editingBuildId, setEditingBuildId] = useState(null);
 
   const [formName, setFormName] = useState("");
+
   const [formDesc, setFormDesc] = useState("");
+
   const [formImage, setFormImage] = useState("");
-  const [formStatus, setFormStatus] = useState("active");
+
+  const [formStatus, setFormStatus] = useState(1);
+
+  const [formErrors, setFormErrors] = useState({});
 
   const [selectedItems, setSelectedItems] = useState({});
 
-  // =====================================================
+  // =======================================================
   // COMPONENT MODAL
-  // =====================================================
+  // =======================================================
+
+  const [isComponentModalOpen, setIsComponentModalOpen] = useState(false);
+
   const [activeCategory, setActiveCategory] = useState("");
+
   const [componentList, setComponentList] = useState([]);
+
   const [searchQuery, setSearchQuery] = useState("");
 
-  // =====================================================
+  // =======================================================
   // LOADING
-  // =====================================================
+  // =======================================================
+
   const [isLoadingBuilds, setIsLoadingBuilds] = useState(false);
+
   const [isLoadingCategories, setIsLoadingCategories] = useState(false);
+
   const [isLoadingComponents, setIsLoadingComponents] = useState(false);
+
   const [isSaving, setIsSaving] = useState(false);
 
+  const [visibilityUpdatingId, setVisibilityUpdatingId] = useState(null);
+
+  // =======================================================
+  // LOAD BUILDS
+  // =======================================================
+
+  const fetchBuilds = async () => {
+    try {
+      setIsLoadingBuilds(true);
+
+      const response = await axiosClient.get("/admin/pc-builds");
+
+      const data = Array.isArray(response.data)
+        ? response.data
+        : response.data?.data || [];
+
+      setBuilds(data);
+    } catch (error) {
+      console.error(
+        "Lỗi lấy danh sách cấu hình:",
+        error.response?.data || error.message,
+      );
+
+      setBuilds([]);
+    } finally {
+      setIsLoadingBuilds(false);
+    }
+  };
+
+  // =======================================================
+  // LOAD CATEGORIES
+  // =======================================================
+
+  const fetchCategories = async () => {
+    try {
+      setIsLoadingCategories(true);
+
+      const response = await axiosClient.get("/admin/pc-builds/categories");
+
+      let rawCategories = [];
+
+      if (Array.isArray(response.data)) {
+        rawCategories = response.data;
+      } else if (Array.isArray(response.data?.data)) {
+        rawCategories = response.data.data;
+      }
+
+      const apiCategories = rawCategories
+        .filter(Boolean)
+        .map((category) => {
+          if (typeof category === "string") {
+            const key = normalizeCategoryKey(category);
+
+            return {
+              key,
+              label: category,
+            };
+          }
+
+          const rawKey =
+            category.key ||
+            category.category ||
+            category.slug ||
+            category.code ||
+            category.name ||
+            "";
+
+          const key = normalizeCategoryKey(rawKey);
+
+          return {
+            ...category,
+
+            key,
+
+            label: category.label || category.name || category.category || key,
+          };
+        })
+        .filter((category) => category.key);
+
+      const categoryMap = new Map();
+
+      FALLBACK_CATEGORIES.forEach((category) => {
+        categoryMap.set(category.key, category);
+      });
+
+      apiCategories.forEach((category) => {
+        const fallback = categoryMap.get(category.key);
+
+        categoryMap.set(category.key, {
+          ...fallback,
+          ...category,
+
+          key: category.key,
+
+          label: category.label || fallback?.label || category.key,
+        });
+      });
+
+      setCategories(Array.from(categoryMap.values()));
+    } catch (error) {
+      console.error("Lỗi lấy danh mục:", error.response?.data || error.message);
+
+      setCategories(FALLBACK_CATEGORIES);
+    } finally {
+      setIsLoadingCategories(false);
+    }
+  };
+
+  // =======================================================
+  // LOAD ALL COMPONENTS
+  // =======================================================
+
+  const fetchAllComponents = async () => {
+    try {
+      const response = await pcPartService.getBuildComponents();
+
+      const data = Array.isArray(response.data)
+        ? response.data
+        : response.data?.data || [];
+
+      setAllComponents(data);
+    } catch (error) {
+      console.error("Lỗi tải linh kiện Build PC:", error);
+
+      setAllComponents([]);
+    }
+  };
+
+  // =======================================================
+  // INITIAL
+  // =======================================================
+
+  useEffect(() => {
+    fetchBuilds();
+    fetchCategories();
+    fetchAllComponents();
+  }, []);
+
+  // =======================================================
+  // ESC CLOSE
+  // =======================================================
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      if (isComponentModalOpen) {
+        setIsComponentModalOpen(false);
+
+        return;
+      }
+
+      if (isModalOpen) {
+        setIsModalOpen(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isModalOpen, isComponentModalOpen]);
+
+  // =======================================================
+  // LOCK BODY
+  // =======================================================
+
+  useEffect(() => {
+    const modalOpen = isModalOpen || isComponentModalOpen;
+
+    document.body.classList.toggle("adm-build-modal-open", modalOpen);
+
+    return () => {
+      document.body.classList.remove("adm-build-modal-open");
+    };
+  }, [isModalOpen, isComponentModalOpen]);
+
+  // =======================================================
+  // RESET BUILD
+  // =======================================================
+
+  const resetBuildForm = () => {
+    setEditingBuildId(null);
+
+    setFormName("");
+
+    setFormDesc("");
+
+    setFormImage("");
+
+    setFormStatus(1);
+
+    setSelectedItems({});
+
+    setFormErrors({});
+  };
+
+  // =======================================================
+  // OPEN ADD
+  // =======================================================
+
+  const handleOpenAddModal = () => {
+    resetBuildForm();
+
+    setModalMode("add");
+
+    setIsModalOpen(true);
+  };
+
+  // =======================================================
+  // OPEN VIEW
+  // =======================================================
+
+  const handleOpenViewModal = (build) => {
+    setEditingBuildId(build.id);
+
+    setModalMode("view");
+
+    setFormName(build.name || "");
+
+    setFormDesc(build.description || "");
+
+    setFormImage(build.image || build.thumbnail || "");
+
+    setFormStatus(
+      build.status !== undefined && build.status !== null
+        ? Number(build.status)
+        : 1,
+    );
+
+    const itemsMap = {};
+
+    const buildItems = Array.isArray(build.items) ? build.items : [];
+
+    buildItems.forEach((item) => {
+      const category = detectItemCategory(item);
+
+      if (!category) {
+        return;
+      }
+
+      itemsMap[category] = normalizeProduct(item, item.quantity || 1);
+    });
+
+    setSelectedItems(itemsMap);
+
+    setFormErrors({});
+
+    setIsModalOpen(true);
+  };
+
+  // =======================================================
+  // EDIT
+  // =======================================================
+
+  const handleEnableEditMode = () => {
+    setModalMode("edit");
+  };
+
+  // =======================================================
+  // DELETE BUILD
+  // =======================================================
+
+  const handleDeleteBuild = async (id) => {
+    const confirmed = window.confirm(
+      "Bạn có chắc muốn xóa cấu hình mẫu này không?",
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await axiosClient.delete(`/admin/pc-builds/${id}`);
+
+      setBuilds((previous) => previous.filter((build) => build.id !== id));
+    } catch (error) {
+      console.error("Lỗi xóa cấu hình:", error.response?.data || error.message);
+
+      window.alert(error.response?.data?.message || "Không thể xóa cấu hình.");
+    }
+  };
+
+  // =======================================================
+  // TOGGLE PART VISIBILITY
+  // =======================================================
 
   const handleToggleVisibility = async (id, currentStatus) => {
     try {
+      setVisibilityUpdatingId(id);
+
       const newStatus = currentStatus === 1 || currentStatus === true ? 0 : 1;
-      await axiosClient.put(`/admin/pc-parts/${id}/visibility`, { is_visible: newStatus });
-      
-      // Load lại danh sách linh kiện trong modal để cập nhật giao diện ngay lập tức
-      handleOpenComponentModal(activeCategory);
+
+      await axiosClient.put(`/admin/pc-parts/${id}/visibility`, {
+        is_visible: newStatus,
+      });
+
+      setComponentList((previous) =>
+        previous.map((item) =>
+          Number(item.product_id || item.id) === Number(id)
+            ? {
+                ...item,
+                is_visible: newStatus,
+              }
+            : item,
+        ),
+      );
+
+      setAllComponents((previous) =>
+        previous.map((item) =>
+          Number(item.product_id || item.id) === Number(id)
+            ? {
+                ...item,
+                is_visible: newStatus,
+              }
+            : item,
+        ),
+      );
     } catch (error) {
       console.error("Lỗi cập nhật trạng thái:", error);
-      alert("Không thể đổi trạng thái linh kiện này!");
+
+      window.alert("Không thể đổi trạng thái linh kiện này.");
+    } finally {
+      setVisibilityUpdatingId(null);
     }
   };
-  // =====================================================
-  // AUTO BUILD HANDLER
-  // =====================================================
-  const handleAutoBuild = async () => {
-    let componentsToUse = [...(allComponents || [])];
 
-    // 1. Nếu state rỗng, tự động fetch từ API ngay lập tức
-    if (componentsToUse.length === 0) {
+  // =======================================================
+  // COMPONENT MODAL
+  // =======================================================
+
+  const handleOpenComponentModal = async (category) => {
+    if (modalMode === "view") {
+      return;
+    }
+
+    const normalizedCategory = normalizeCategoryKey(category);
+
+    setActiveCategory(normalizedCategory);
+
+    setSearchQuery("");
+
+    setComponentList([]);
+
+    setIsComponentModalOpen(true);
+
+    setIsLoadingComponents(true);
+
+    try {
+      const response = await axiosClient.get("/admin/pc-builds/components");
+
+      let rawData = [];
+
+      if (Array.isArray(response.data)) {
+        rawData = response.data;
+      } else if (Array.isArray(response.data?.data)) {
+        rawData = response.data.data;
+      } else if (Array.isArray(response.data?.products)) {
+        rawData = response.data.products;
+      } else if (Array.isArray(response.data?.components)) {
+        rawData = response.data.components;
+      }
+
+      const filteredData = rawData.filter(
+        (item) => detectItemCategory(item) === normalizedCategory,
+      );
+
+      const normalizedProducts = filteredData.map((product) => {
+        const item = normalizeProduct(product, 1);
+
+        return {
+          ...item,
+
+          type_id: product.type_id || item.type_id,
+
+          category_id: product.category_id || item.category_id,
+
+          specifications: product.specifications || item.specifications,
+        };
+      });
+
+      const uniqueProducts = normalizedProducts.filter(
+        (product, index, array) =>
+          index ===
+          array.findIndex((item) => Number(item.id) === Number(product.id)),
+      );
+
+      setComponentList(uniqueProducts);
+    } catch (error) {
+      console.error(
+        `Lỗi tải ${normalizedCategory}:`,
+        error.response?.data || error.message,
+      );
+
+      setComponentList([]);
+    } finally {
+      setIsLoadingComponents(false);
+    }
+  };
+
+  // =======================================================
+  // SELECT COMPONENT
+  // =======================================================
+
+  const handleSelectComponent = (product) => {
+    const normalizedProduct = normalizeProduct(
+      product,
+      selectedItems[activeCategory]?.quantity || 1,
+    );
+
+    const updatedItems = {
+      ...selectedItems,
+
+      [activeCategory]: normalizedProduct,
+    };
+
+    setSelectedItems(updatedItems);
+
+    const requiredCategories = ["cpu", "mainboard", "ram"];
+
+    const selectedKeys = Object.keys(updatedItems).map((key) =>
+      key.toLowerCase().trim(),
+    );
+
+    const complete = requiredCategories.every((category) =>
+      selectedKeys.includes(category),
+    );
+
+    if (complete && formErrors.components) {
+      setFormErrors((previous) => ({
+        ...previous,
+
+        components: null,
+      }));
+    }
+
+    setIsComponentModalOpen(false);
+  };
+
+  // =======================================================
+  // QUANTITY
+  // =======================================================
+
+  const handleUpdateQuantity = (category, value) => {
+    if (modalMode === "view") {
+      return;
+    }
+
+    const quantity = Number(value);
+
+    if (!Number.isFinite(quantity) || quantity < 1) {
+      return;
+    }
+
+    setSelectedItems((previous) => ({
+      ...previous,
+
+      [category]: {
+        ...previous[category],
+
+        quantity,
+      },
+    }));
+  };
+
+  // =======================================================
+  // REMOVE PART
+  // =======================================================
+
+  const handleRemoveComponent = (category) => {
+    if (modalMode === "view") {
+      return;
+    }
+
+    setSelectedItems((previous) => {
+      const updated = {
+        ...previous,
+      };
+
+      delete updated[category];
+
+      return updated;
+    });
+  };
+
+  // =======================================================
+  // TOTAL
+  // =======================================================
+
+  const totalPrice = useMemo(() => {
+    return Object.values(selectedItems).reduce((total, item) => {
+      const price = Number(item?.price) || 0;
+
+      const quantity = Number(item?.quantity) || 1;
+
+      return total + price * quantity;
+    }, 0);
+  }, [selectedItems]);
+
+  // =======================================================
+  // COMPATIBILITY
+  // =======================================================
+
+  const compatibility = useMemo(() => {
+    const errors = [];
+
+    const cpu = selectedItems.CPU;
+
+    const mainboard = selectedItems.MAINBOARD;
+
+    const ram = selectedItems.RAM;
+
+    const vga = selectedItems.VGA;
+
+    const psu = selectedItems.PSU;
+
+    if (cpu && mainboard && cpu.socket && mainboard.socket) {
+      const cpuSocket = String(cpu.socket).toLowerCase().trim();
+
+      const mainSocket = String(mainboard.socket).toLowerCase().trim();
+
+      if (cpuSocket !== mainSocket) {
+        errors.push(
+          `CPU sử dụng Socket ${cpu.socket} nhưng Mainboard sử dụng Socket ${mainboard.socket}.`,
+        );
+      }
+    }
+
+    if (mainboard && ram && mainboard.ram_type && ram.ram_type) {
+      const mainRam = String(mainboard.ram_type).toLowerCase().trim();
+
+      const ramType = String(ram.ram_type).toLowerCase().trim();
+
+      if (mainRam !== ramType) {
+        errors.push(
+          `Mainboard hỗ trợ ${mainboard.ram_type} nhưng RAM được chọn là ${ram.ram_type}.`,
+        );
+      }
+    }
+
+    if (vga && psu && vga.power_recommend && psu.wattage) {
+      const requiredPower = parseInt(
+        String(vga.power_recommend).replace(/\D/g, ""),
+        10,
+      );
+
+      const psuPower = parseInt(String(psu.wattage).replace(/\D/g, ""), 10);
+
+      if (
+        Number.isFinite(requiredPower) &&
+        Number.isFinite(psuPower) &&
+        psuPower < requiredPower
+      ) {
+        errors.push(
+          `VGA yêu cầu nguồn tối thiểu ${requiredPower}W nhưng PSU hiện tại chỉ có ${psuPower}W.`,
+        );
+      }
+    }
+
+    return {
+      isValid: errors.length === 0,
+
+      errors,
+    };
+  }, [selectedItems]);
+
+  // =======================================================
+  // AUTO BUILD
+  // =======================================================
+
+  const handleAutoBuild = async () => {
+    let source = [...(allComponents || [])];
+
+    if (source.length === 0) {
       try {
         const response = await axiosClient.get("/admin/pc-builds/components");
 
@@ -92,1222 +1014,1252 @@ export default function PCBuilderAdmin() {
           response.data?.products ||
           (Array.isArray(response.data) ? response.data : []);
 
-        if (Array.isArray(raw) && raw.length > 0) {
-          componentsToUse = raw;
+        if (Array.isArray(raw)) {
+          source = raw;
+
           setAllComponents(raw);
         }
-      } catch (err) {
-        console.error("Lỗi tự động fetch linh kiện:", err);
+      } catch (error) {
+        console.error("Lỗi tải linh kiện Auto Build:", error);
       }
     }
 
-    if (componentsToUse.length === 0) {
-      window.alert("Kho linh kiện từ máy chủ trả về rỗng. Vui lòng kiểm tra lại API /admin/pc-builds/components!");
+    if (source.length === 0) {
+      window.alert("Kho linh kiện đang trống.");
+
       return;
     }
 
-    // 2. Tỷ lệ phân bổ ngân sách theo từng nhu cầu (Đã bổ sung COOLING)
-    const BUDGET_RATIOS = {
-      office: { CPU: 0.32, MAINBOARD: 0.18, RAM: 0.18, STORAGE: 0.15, PSU: 0.10, CASE: 0.04, COOLING: 0.03 },
-      gaming: { VGA: 0.36, CPU: 0.20, MAINBOARD: 0.12, RAM: 0.10, STORAGE: 0.08, PSU: 0.06, COOLING: 0.05, CASE: 0.03 },
-      design: { CPU: 0.25, RAM: 0.20, VGA: 0.22, STORAGE: 0.12, MAINBOARD: 0.08, PSU: 0.06, COOLING: 0.05, CASE: 0.02 }
-    };
-
-    const PICK_ORDER = ["VGA", "CPU", "MAINBOARD", "RAM", "STORAGE", "COOLING", "PSU", "CASE"];
-    const ratio = BUDGET_RATIOS[targetUsage] || BUDGET_RATIOS.gaming;
-    const newSelection = {};
-
-    // 3. Chuẩn hóa & lọc các sản phẩm có giá hợp lệ
-    const validComponents = componentsToUse
+    const validComponents = source
       .map((item) => normalizeProduct(item, 1))
       .filter((item) => {
         const price = Number(item.price) || 0;
-        const rawQty = item.quantity ?? item.stock ?? item.in_stock;
-        const stockQty = rawQty !== undefined ? Number(rawQty) : 99;
 
-        return price > 0 && stockQty > 0;
+        const rawQuantity = item.quantity ?? item.stock ?? item.in_stock;
+
+        const stock = rawQuantity !== undefined ? Number(rawQuantity) : 99;
+
+        return price > 0 && stock > 0;
       });
 
     if (validComponents.length === 0) {
-      window.alert("Không tìm thấy linh kiện nào có giá hợp lệ trong kho dữ liệu!");
+      window.alert("Không có linh kiện hợp lệ để tự động tạo cấu hình.");
+
       return;
     }
 
-    // 4. Vòng lặp chọn linh kiện theo thứ tự ưu tiên
-    PICK_ORDER.forEach((catKey) => {
-      const catRatio = ratio[catKey];
-      if (catRatio === undefined || catRatio === null) return; // Bỏ qua nếu cấu hình cố tình không dùng (ví dụ máy Office không chọn VGA)
+    const ratio = BUDGET_RATIOS[targetUsage] || BUDGET_RATIOS.gaming;
 
-      const targetPrice = targetBudget * catRatio;
+    const newSelection = {};
 
-      // Chuẩn hóa & Lọc danh mục chính xác
-      let candidates = validComponents.filter((p) => {
-        const rawCat = detectItemCategory(p) || p.category_key || p.category;
-        const pCat = normalizeCategoryKey(rawCat);
-        return pCat === catKey;
+    AUTO_BUILD_ORDER.forEach((categoryKey) => {
+      const categoryRatio = ratio[categoryKey];
+
+      if (categoryRatio === undefined || categoryRatio === null) {
+        return;
+      }
+
+      const targetPrice = targetBudget * categoryRatio;
+
+      let candidates = validComponents.filter((product) => {
+        const raw =
+          detectItemCategory(product) ||
+          product.category_key ||
+          product.category;
+
+        return normalizeCategoryKey(raw) === categoryKey;
       });
 
-      if (candidates.length === 0) return;
+      if (candidates.length === 0) {
+        return;
+      }
 
-      // --- TƯƠNG THÍCH THEO CẤU HÌNH ---
+      // CPU -> MAINBOARD
+      if (categoryKey === "MAINBOARD" && newSelection.CPU) {
+        const cpu = newSelection.CPU;
 
-      // Socket (CPU <-> Mainboard)
-      if (catKey === "MAINBOARD" && newSelection["CPU"]) {
-        const cpuSpecs = parseSpecifications(newSelection["CPU"]);
-        const cpuSocket = String(cpuSpecs.socket || newSelection["CPU"].socket || "").toLowerCase().trim();
+        const cpuSocket = String(cpu.socket || "")
+          .toLowerCase()
+          .trim();
 
         if (cpuSocket) {
-          const compatibleMain = candidates.filter((m) => {
-            const mainSpecs = parseSpecifications(m);
-            const mainSocket = String(mainSpecs.socket || m.socket || "").toLowerCase().trim();
-            return mainSocket === cpuSocket;
+          const compatible = candidates.filter((item) => {
+            const normalized = normalizeProduct(item);
+
+            return (
+              String(normalized.socket || "")
+                .toLowerCase()
+                .trim() === cpuSocket
+            );
           });
-          if (compatibleMain.length > 0) candidates = compatibleMain;
+
+          if (compatible.length > 0) {
+            candidates = compatible;
+          }
         }
       }
 
-      // RAM Type (Mainboard <-> RAM)
-      if (catKey === "RAM" && newSelection["MAINBOARD"]) {
-        const mainSpecs = parseSpecifications(newSelection["MAINBOARD"]);
-        const mainRamType = String(mainSpecs.ram_type || mainSpecs.ramType || newSelection["MAINBOARD"].ram_type || "").toLowerCase().trim();
+      // MAINBOARD -> RAM
+      if (categoryKey === "RAM" && newSelection.MAINBOARD) {
+        const motherboard = newSelection.MAINBOARD;
 
-        if (mainRamType) {
-          const compatibleRam = candidates.filter((r) => {
-            const ramSpecs = parseSpecifications(r);
-            const ramType = String(ramSpecs.ram_type || ramSpecs.ramType || r.ram_type || "").toLowerCase().trim();
-            return ramType === mainRamType;
+        const requiredRam = String(motherboard.ram_type || "")
+          .toLowerCase()
+          .trim();
+
+        if (requiredRam) {
+          const compatible = candidates.filter((item) => {
+            const normalized = normalizeProduct(item);
+
+            return (
+              String(normalized.ram_type || "")
+                .toLowerCase()
+                .trim() === requiredRam
+            );
           });
-          if (compatibleRam.length > 0) candidates = compatibleRam;
+
+          if (compatible.length > 0) {
+            candidates = compatible;
+          }
         }
       }
 
-      // 1. Tản nhiệt COOLING (Khớp Socket CPU)
-      if (catKey === "COOLING" && newSelection["CPU"]) {
-        const cpuSpecs = parseSpecifications(newSelection["CPU"]);
-        const cpuSocket = String(cpuSpecs.socket || newSelection["CPU"].socket || "").toLowerCase().trim();
+      // CPU -> COOLING
+      if (categoryKey === "COOLING" && newSelection.CPU) {
+        const cpuSocket = String(newSelection.CPU.socket || "")
+          .toLowerCase()
+          .trim();
 
         if (cpuSocket) {
-          const compatibleCooling = candidates.filter((c) => {
-            const specs = parseSpecifications(c);
-            const coolerSockets = String(specs.socket || c.socket || c.supported_sockets || "").toLowerCase();
-            return !coolerSockets || coolerSockets.includes(cpuSocket);
+          const compatible = candidates.filter((item) => {
+            const specs = parseSpecifications(item);
+
+            const sockets = String(
+              specs.socket || item.socket || item.supported_sockets || "",
+            ).toLowerCase();
+
+            return !sockets || sockets.includes(cpuSocket);
           });
-          if (compatibleCooling.length > 0) candidates = compatibleCooling;
+
+          if (compatible.length > 0) {
+            candidates = compatible;
+          }
         }
       }
 
-      // 2. Card màn hình VGA
-      if (catKey === "VGA") {
-        const validVga = candidates.filter((v) => Number(v.quantity ?? 1) > 0);
-        if (validVga.length > 0) candidates = validVga;
-      }
+      // PSU
+      if (categoryKey === "PSU") {
+        let requiredPower = 0;
 
-      // 3. Nguồn PSU (Tính công suất tối thiểu = Nhu cầu VGA + CPU)
-      if (catKey === "PSU") {
-        let reqPower = 0;
-
-        if (newSelection["VGA"]) {
-          const vgaSpecs = parseSpecifications(newSelection["VGA"]);
-          reqPower = parseInt(String(vgaSpecs.power_recommend || newSelection["VGA"].power_recommend || "").replace(/\D/g, ""), 10) || 0;
+        if (newSelection.VGA) {
+          requiredPower =
+            parseInt(
+              String(newSelection.VGA.power_recommend || "").replace(/\D/g, ""),
+              10,
+            ) || 0;
         }
 
-        if (!reqPower) {
-          const vgaSpecs = parseSpecifications(newSelection["VGA"] || {});
-          const cpuSpecs = parseSpecifications(newSelection["CPU"] || {});
+        if (!requiredPower) {
+          const vgaSpecs = parseSpecifications(newSelection.VGA || {});
 
-          const vgaWatt = parseInt(String(vgaSpecs.vga_wattage || 0).replace(/\D/g, ""), 10) || 0;
-          const cpuWatt = parseInt(String(cpuSpecs.wattage || 65).replace(/\D/g, ""), 10) || 65;
-          reqPower = vgaWatt + cpuWatt + 150;
+          const cpuSpecs = parseSpecifications(newSelection.CPU || {});
+
+          const vgaWatt =
+            parseInt(
+              String(vgaSpecs.vga_wattage || 0).replace(/\D/g, ""),
+              10,
+            ) || 0;
+
+          const cpuWatt =
+            parseInt(String(cpuSpecs.wattage || 65).replace(/\D/g, ""), 10) ||
+            65;
+
+          requiredPower = vgaWatt + cpuWatt + 150;
         }
 
-        if (Number.isFinite(reqPower) && reqPower > 0) {
-          const compatiblePsu = candidates.filter((p) => {
-            const psuSpecs = parseSpecifications(p);
-            const psuWatt = parseInt(String(psuSpecs.wattage || p.wattage || p.power || p.name || "").replace(/\D/g, ""), 10);
-            return Number.isFinite(psuWatt) && psuWatt >= reqPower;
+        if (requiredPower > 0) {
+          const compatible = candidates.filter((item) => {
+            const normalized = normalizeProduct(item);
+
+            const power = parseInt(
+              String(
+                normalized.wattage || item.power || item.name || "",
+              ).replace(/\D/g, ""),
+              10,
+            );
+
+            return Number.isFinite(power) && power >= requiredPower;
           });
-          if (compatiblePsu.length > 0) candidates = compatiblePsu;
+
+          if (compatible.length > 0) {
+            candidates = compatible;
+          }
         }
       }
 
-      // 4. Vỏ Case CASE
-      if (catKey === "CASE") {
-        const validCase = candidates.filter((cs) => Number(cs.quantity ?? 1) > 0);
-        if (validCase.length > 0) candidates = validCase;
-      }
+      const bestFit = candidates.reduce((previous, current) => {
+        const previousPrice = Number(previous.price) || 0;
 
-      // 5. Chọn linh kiện có giá sát mức dự tính nhất
-      const bestFit = candidates.reduce((prev, curr) => {
-        const prevPrice = Number(prev.price) || 0;
-        const currPrice = Number(curr.price) || 0;
-        return Math.abs(currPrice - targetPrice) < Math.abs(prevPrice - targetPrice)
-          ? curr
-          : prev;
+        const currentPrice = Number(current.price) || 0;
+
+        return Math.abs(currentPrice - targetPrice) <
+          Math.abs(previousPrice - targetPrice)
+          ? current
+          : previous;
       });
 
-      newSelection[catKey] = bestFit;
+      newSelection[categoryKey] = normalizeProduct(bestFit, 1);
     });
 
     if (Object.keys(newSelection).length === 0) {
-      window.alert("Không chọn được linh kiện phù hợp! Vui lòng kiểm tra lại danh mục sản phẩm.");
+      window.alert("Không chọn được cấu hình phù hợp.");
+
       return;
     }
 
     setSelectedItems(newSelection);
-  };
-  // =====================================================
-  // FALLBACK CATEGORIES
-  // =====================================================
-  const fallbackCategories = useMemo(
-    () => [
-      { key: "CPU", label: "Bộ vi xử lý (CPU)" },
-      { key: "MAINBOARD", label: "Bo mạch chủ (Mainboard)" },
-      { key: "RAM", label: "Bộ nhớ trong (RAM)" },
-      { key: "VGA", label: "Card đồ họa (VGA)" },
-      { key: "COOLING", label: "Tản nhiệt (Cooling)" },
-      { key: "PSU", label: "Nguồn máy tính (PSU)" },
-      { key: "STORAGE", label: "Ổ cứng lưu trữ (Storage)" },
-      { key: "CASE", label: "Vỏ máy tính (Case)" },
-    ],
-    []
-  );
 
-  // =====================================================
-  // FETCH BUILDS
-  // =====================================================
-  const fetchBuilds = async () => {
-    setIsLoadingBuilds(true);
-    try {
-      const response = await axiosClient.get("/admin/pc-builds");
-      const data = Array.isArray(response.data)
-        ? response.data
-        : response.data?.data || [];
-      setBuilds(data);
-    } catch (error) {
-      console.error("Lỗi lấy danh sách cấu hình máy:", error.response?.data || error.message);
-      setBuilds([]);
-    } finally {
-      setIsLoadingBuilds(false);
-    }
-  };
+    setFormErrors((previous) => ({
+      ...previous,
 
-// 1. Hàm chuẩn hóa Key Danh Mục dùng chung
-const normalizeCategoryKey = (key = "") => {
-  if (!key) return "";
-  const str = String(key).trim().toLowerCase();
+      components: null,
 
-  if (str.includes("vga") || str.includes("card") || str.includes("đồ họa") || str === "66") return "VGA";
-  if (str.includes("cpu") || str.includes("vi xử lý") || str.includes("chip")) return "CPU";
-  if (str.includes("main") || str.includes("motherboard") || str.includes("bo mạch")) return "MAINBOARD";
-  if (str.includes("ram") || str.includes("bộ nhớ")) return "RAM";
-  if (str.includes("psu") || str.includes("nguồn") || str.includes("power")) return "PSU";
-  if (str.includes("storage") || str.includes("ssd") || str.includes("hdd") || str.includes("ổ cứng")) return "STORAGE";
-  if (str.includes("case") || str.includes("vỏ")) return "CASE";
-  if (str.includes("cool") || str.includes("tản")) return "COOLING";
-
-  return str.toUpperCase();
-};
-
-  // =====================================================
-  // FETCH CATEGORIES & ALL COMPONENTS
-  // =====================================================
-  const fetchCategories = async () => {
-    setIsLoadingCategories(true);
-    try {
-      const response = await axiosClient.get("/admin/pc-builds/categories");
-      let rawCategories = [];
-
-      if (Array.isArray(response.data)) rawCategories = response.data;
-      else if (Array.isArray(response.data?.data)) rawCategories = response.data.data;
-
-      const apiCategories = rawCategories
-        .filter(Boolean)
-        .map((category) => {
-          if (typeof category === "string") {
-            return { key: category.trim().toUpperCase(), label: category };
-          }
-          const rawKey = category.key || category.category || category.slug || category.code || category.name || "";
-          const normalizedKey = normalizeCategoryKey(rawKey);
-          return {
-            ...category,
-            key: normalizedKey,
-            label: category.label || category.name || category.category || normalizedKey,
-          };
-        })
-        .filter((category) => category.key);
-
-      const categoryMap = new Map();
-      fallbackCategories.forEach((cat) => categoryMap.set(cat.key, cat));
-      apiCategories.forEach((cat) => {
-        const oldCat = categoryMap.get(cat.key);
-        categoryMap.set(cat.key, {
-          ...oldCat,
-          ...cat,
-          key: cat.key,
-          label: cat.label || oldCat?.label || cat.key,
-        });
-      });
-
-      setCategories(Array.from(categoryMap.values()));
-    } catch (error) {
-      console.error("Lỗi lấy categories:", error.response?.data || error.message);
-      setCategories(fallbackCategories);
-    } finally {
-      setIsLoadingCategories(false);
-    }
-  };
-
-const fetchAllComponents = async () => {
-  try {
-    const res = await pcPartService.getBuildComponents();
-    const data = Array.isArray(res.data) ? res.data : res.data?.data || [];
-    setAllComponents(data);
-  } catch (error) {
-    console.error("Lỗi tải linh kiện build PC:", error);
-    setAllComponents([]);
-  }
-};
-
-  useEffect(() => {
-    fetchBuilds();
-    fetchCategories();
-    fetchAllComponents();
-  }, []);
-
-  const resetBuildForm = () => {
-    setEditingBuildId(null);
-    setFormName("");
-    setFormDesc("");
-    setFormImage("");
-    setFormStatus("active");
-    setSelectedItems({});
-    setFormErrors({});
-  };
-
-  const handleOpenAddModal = () => {
-    resetBuildForm();
-    setModalMode("add");
-    setIsModalOpen(true);
-  };
-
-  const detectItemCategory = (item) => {
-    if (!item) return null;
-
-    // Lấy tất cả thông tin tên/danh mục và chuyển hết thành VIẾT HOA
-    const rawCat = String(item?.category_key || item?.category || item?.category_name || "").toUpperCase();
-    const nameUpper = String(item?.name || item?.product_name || "").toUpperCase();
-    const typeId = Number(item?.type_id || item?.part_type_id || item?.pc_part?.type_id);
-
-    // 1. Dò theo type_id chuẩn trong Database
-    if (typeId === 1) return "CPU";
-    if (typeId === 2) return "MAINBOARD";
-    if (typeId === 3) return "RAM";
-    if (typeId === 4) return "VGA";
-    if (typeId === 5) return "COOLING";
-    if (typeId === 6) return "PSU";
-    if (typeId === 7) return "STORAGE";
-    if (typeId === 8) return "CASE";
-
-    // 2. Dò theo Chuỗi kết hợp (Tên + Danh mục)
-    const combined = (rawCat + " " + nameUpper).toUpperCase();
-
-    if (combined.includes("CPU") || combined.includes("RYZEN") || combined.includes("CORE I")) return "CPU";
-    if (combined.includes("MAIN") || combined.includes("MOTHERBOARD") || combined.includes("B550") || combined.includes("H610") || combined.includes("Z690") || combined.includes("B650")) return "MAINBOARD";
-    if (combined.includes("RAM") || combined.includes("DDR4") || combined.includes("DDR5")) return "RAM";
-    
-    // Quy đổi GPU / NVIDIA / RADEON -> VGA
-    if (combined.includes("VGA") || combined.includes("GPU") || combined.includes("RTX") || combined.includes("GTX") || combined.includes("RX ") || combined.includes("NVIDIA") || combined.includes("RADEON")) return "VGA";
-    
-    // Quy đổi Tản nhiệt -> COOLING
-    if (combined.includes("COOL") || combined.includes("TẢN") || combined.includes("THERMALRIGHT") || combined.includes("CR-")) return "COOLING";
-    
-    // Quy đổi Nguồn -> PSU (Nhận diện thêm A650BN, ATOM, BRONZE...)
-    if (combined.includes("PSU") || combined.includes("NGUỒN") || combined.includes("BRONZE") || combined.includes("ATOM") || combined.includes("A650BN") || combined.includes("CV") || combined.includes("MWE")) return "PSU";
-    
-    // Quy đổi Ổ cứng -> STORAGE (Nhận diện thêm HARD-DISK, SSD, HDD, NVME...)
-    if (combined.includes("STORAGE") || combined.includes("DISK") || combined.includes("HARD-DISK") || combined.includes("SSD") || combined.includes("HDD") || combined.includes("NVME") || combined.includes("SATA")) return "STORAGE";
-    
-    // Quy đổi Vỏ case -> CASE
-    if (combined.includes("CASE") || combined.includes("VỎ") || combined.includes("XIGMATEK") || combined.includes("AIRFLOW")) return "CASE";
-
-    return null;
-  };
-
-  const parseSpecifications = (product) => {
-    if (!product?.specifications) return {};
-    try {
-      if (typeof product.specifications === "string") {
-        return JSON.parse(product.specifications);
-      }
-      return product.specifications;
-    } catch (error) {
-      console.error("Không thể parse specifications:", product.specifications, error);
-      return {};
-    }
-  };
-
-  const normalizeProduct = (product, quantity = 1) => {
-    const specifications = parseSpecifications(product);
-
-    return {
-      ...product,
-      id: product.product_id || product.id || product.productId,
-      product_id: product.product_id || product.id || product.productId,
-      name: product.name || product.product_name || "Linh kiện",
-      price: Number(product.price) || Number(product.sale_price) || 0,
-      image: product.image || product.thumbnail || product.image_url || "",
-      quantity: Number(quantity) > 0 ? Number(quantity) : 1,
-      socket: specifications.socket || product.socket || "",
-      ram_type: specifications.ram_type || specifications.ramType || product.ram_type || product.ramType || "",
-      power_recommend: specifications.power_recommend || specifications.powerRecommend || product.power_recommend || product.powerRecommend || "",
-      wattage: specifications.wattage || product.wattage || "",
-    };
-  };
-
-  const handleOpenViewModal = (build) => {
-    console.log("Dữ liệu build nhận vào:", build); // Xem build.items có dữ liệu chuẩn không
-    setEditingBuildId(build.id);
-    setModalMode("view");
-    setFormName(build.name || "");
-    setFormDesc(build.description || "");
-    setFormImage(build.image || build.thumbnail || "");
-    setFormStatus(build.status !== undefined && build.status !== null ? Number(build.status) : 1);
-    const itemsMap = {};
-    const buildItems = Array.isArray(build.items) ? build.items : [];
-
-    buildItems.forEach((item) => {
-      const detectedCategory = detectItemCategory(item);
-      console.log("Linh kiện:", item.name, "-> Phân loại ra:", detectedCategory); // Kiểm tra xem nó có nhận diện ra category không
-      
-      if (!detectedCategory) return;
-      itemsMap[detectedCategory] = normalizeProduct(item, item.quantity || 1);
-    });
-
-    console.log("itemsMap sau khi map:", itemsMap); // Kiểm tra xem object này có bị rỗng {} không
-    setSelectedItems(itemsMap);
-    setIsModalOpen(true);
-  };
-
-  const handleEnableEditMode = (event) => {
-    if (event) event.preventDefault();
-    setModalMode("edit");
-  };
-
-  const handleDeleteBuild = async (id) => {
-    const confirmed = window.confirm("Bạn có chắc muốn xóa cấu hình mẫu này chứ?");
-    if (!confirmed) return;
-
-    try {
-      await axiosClient.delete(`/admin/pc-builds/${id}`);
-      setBuilds((prev) => prev.filter((build) => build.id !== id));
-    } catch (error) {
-      console.error("Lỗi xóa cấu hình:", error.response?.data || error.message);
-      window.alert(error.response?.data?.message || "Không thể xóa cấu hình.");
-    }
-  };
-
-  const handleOpenComponentModal = async (category) => {
-    if (modalMode === "view") return;
-  
-    const normalizedCategory = normalizeCategoryKey(category);
-    setActiveCategory(normalizedCategory);
-    setSearchQuery("");
-    setComponentList([]);
-    setIsComponentModalOpen(true);
-    setIsLoadingComponents(true);
-  
-    try {
-      const response = await axiosClient.get("/admin/pc-builds/components");
-  
-      let rawData = [];
-      if (Array.isArray(response.data)) rawData = response.data;
-      else if (Array.isArray(response.data?.data)) rawData = response.data.data;
-      else if (Array.isArray(response.data?.products)) rawData = response.data.products;
-      else if (Array.isArray(response.data?.components)) rawData = response.data.components;
-  
-
-  
-      // Lọc linh kiện theo danh mục
-      const filteredData = rawData.filter((item) => {
-        const itemCat = detectItemCategory(item);
-        return itemCat === normalizedCategory;
-      });
-  
-  
-      // Chuẩn hóa danh sách sản phẩm
-      const normalizedProducts = filteredData.map((p) => {
-        const norm = normalizeProduct(p, p.quantity || 1);
-        return {
-          ...norm,
-          type_id: p.type_id || norm.type_id,
-          category_id: p.category_id || norm.category_id,
-          specifications: p.specifications || norm.specifications
-        };
-      });
-  
-      // Lọc trùng ID
-      const uniqueProducts = normalizedProducts.filter(
-        (item, index, self) => index === self.findIndex((t) => t.id === item.id)
-      );
-  
-      setComponentList(uniqueProducts);
-    } catch (error) {
-      console.error(`Lỗi tải linh kiện ${normalizedCategory}:`, error.response?.data || error.message);
-      setComponentList([]);
-    } finally {
-      setIsLoadingComponents(false);
-    }
-  };
-
-  const handleSelectComponent = (product) => {
-    const normalizedProduct = normalizeProduct(
-      product,
-      selectedItems[activeCategory]?.quantity || 1
-    );
-
-    const updatedItems = { 
-      ...selectedItems, 
-      [activeCategory]: normalizedProduct 
-    };
-    setSelectedItems(updatedItems);
-
-    // Kiểm tra xem đã đủ 3 món cốt lõi chưa (không phân biệt hoa/thường)
-    const requiredCategories = ['cpu', 'mainboard', 'ram'];
-    const selectedKeys = Object.keys(updatedItems).map(k => k.toLowerCase().trim());
-    const isAllRequiredSelected = requiredCategories.every(cat => selectedKeys.includes(cat));
-
-    // Nếu đủ rồi mà đang hiển thị lỗi thì xóa ngay lập tức
-    if (isAllRequiredSelected && formErrors.components) {
-      setFormErrors(prev => ({ ...prev, components: null }));
-    }
-
-    setIsComponentModalOpen(false);
-  };
-
-  const handleUpdateQuantity = (category, value) => {
-    if (modalMode === "view") return;
-    const numericValue = Number(value);
-    if (!Number.isFinite(numericValue) || numericValue < 1) return;
-
-    setSelectedItems((prev) => ({
-      ...prev,
-      [category]: {
-        ...prev[category],
-        quantity: numericValue,
-      },
+      compatibility: null,
     }));
   };
 
-  const handleRemoveComponent = (category) => {
-    if (modalMode === "view") return;
-    setSelectedItems((prev) => {
-      const updated = { ...prev };
-      delete updated[category];
-      return updated;
-    });
-  };
+  // =======================================================
+  // SAVE BUILD
+  // =======================================================
 
-  const totalPrice = useMemo(() => {
-    return Object.values(selectedItems).reduce((total, item) => {
-      const price = Number(item?.price) || 0;
-      const quantity = Number(item?.quantity) || 1;
-      return total + price * quantity;
-    }, 0);
-  }, [selectedItems]);
-
-  const compatibility = useMemo(() => {
-    const errors = [];
-    const cpu = selectedItems.CPU;
-    const mainboard = selectedItems.MAINBOARD;
-    const ram = selectedItems.RAM;
-    const vga = selectedItems.VGA;
-    const psu = selectedItems.PSU;
-
-    if (cpu && mainboard && cpu.socket && mainboard.socket) {
-      const cpuSocket = String(cpu.socket).toLowerCase().trim();
-      const mainSocket = String(mainboard.socket).toLowerCase().trim();
-      if (cpuSocket !== mainSocket) {
-        errors.push(`CPU sử dụng Socket [${cpu.socket}] không lắp vừa Mainboard dùng chân cắm [${mainboard.socket}].`);
-      }
-    }
-
-    if (mainboard && ram && mainboard.ram_type && ram.ram_type) {
-      const mainRamType = String(mainboard.ram_type).toLowerCase().trim();
-      const ramType = String(ram.ram_type).toLowerCase().trim();
-      if (mainRamType !== ramType) {
-        errors.push(`Bo mạch chủ chỉ hỗ trợ RAM [${mainboard.ram_type}] nhưng bạn đang chọn RAM chuẩn [${ram.ram_type}].`);
-      }
-    }
-
-    if (vga && psu && vga.power_recommend && psu.wattage) {
-      const requiredPower = parseInt(String(vga.power_recommend).replace(/\D/g, ""), 10);
-      const psuPower = parseInt(String(psu.wattage).replace(/\D/g, ""), 10);
-      if (Number.isFinite(requiredPower) && Number.isFinite(psuPower) && psuPower < requiredPower) {
-        errors.push(`Nguồn máy tính yếu: Card đồ họa yêu cầu tối thiểu [${requiredPower}W] nhưng PSU hiện tại chỉ đạt [${psuPower}W].`);
-      }
-    }
-
-    return { isValid: errors.length === 0, errors };
-  }, [selectedItems]);
-  const currentUser = JSON.parse(localStorage.getItem("user")) || JSON.parse(localStorage.getItem("userInfo"));
   const handleSaveBuild = async (event) => {
     event.preventDefault();
-    if (modalMode === "view" || isSaving) return;
 
-    let errors = {};
-
-    // 1. Kiểm tra tên trống
-    const trimmedName = formName.trim();
-    if (!trimmedName) {
-      errors.name = "Vui lòng nhập tên bộ PC.";
-    } else {
-      const isDuplicate = builds.some(
-        (b) => 
-          b.name.trim().toLowerCase() === trimmedName.toLowerCase() && 
-          Number(b.id) !== Number(editingBuildId)
-      );
-
-      if (isDuplicate) {
-        errors.name = "Tên bộ PC này đã tồn tại. Vui lòng chọn tên khác.";
-      }
-    }
-
-    // 2. Kiểm tra mô tả hiệu năng
-    if (!formDesc || formDesc.trim().length < 10) {
-      errors.desc = "Mô tả hiệu năng phải có ít nhất từ 10 ký tự trở lên.";
-    }
-
-    // 3. Kiểm tra tương thích linh kiện
-    if (!compatibility.isValid) {
-      errors.compatibility = "Cấu hình đang có linh kiện không tương thích. Vui lòng kiểm tra lại.";
-    }
-
-// 4. Kiểm tra linh kiện bắt buộc (So sánh không phân biệt hoa thường và khoảng trắng)
-const requiredCategories = ['cpu', 'mainboard', 'ram'];
-    
-// Lấy tất cả các key đang có trong selectedItems và chuẩn hóa về chữ thường
-const selectedKeys = Object.keys(selectedItems).map(k => k.toLowerCase().trim());
-
-// Lọc ra những món bắt buộc còn thiếu
-const missingCategories = requiredCategories.filter(cat => !selectedKeys.includes(cat));
-
-if (missingCategories.length > 0) {
-  const categoryNames = {
-    cpu: 'CPU',
-    mainboard: 'Mainboard',
-    ram: 'RAM'
-  };
-  const missingNames = missingCategories.map(cat => categoryNames[cat] || cat).join(', ');
-  errors.components = `Vui lòng chọn thêm các linh kiện bắt buộc: ${missingNames}.`;
-}
-
-    if (Object.keys(errors).length > 0) {
-      setFormErrors(errors);
+    if (modalMode === "view" || isSaving) {
       return;
     }
 
-    setFormErrors({});
-    // ... phần code gọi API lưu tiếp theo của bạn
-};
+    const errors = {};
+
+    const name = formName.trim();
+
+    if (!name) {
+      errors.name = "Vui lòng nhập tên bộ PC.";
+    } else {
+      const duplicate = builds.some(
+        (build) =>
+          String(build.name || "")
+            .trim()
+            .toLowerCase() === name.toLowerCase() &&
+          Number(build.id) !== Number(editingBuildId),
+      );
+
+      if (duplicate) {
+        errors.name = "Tên bộ PC đã tồn tại.";
+      }
+    }
+
+    if (!formDesc.trim() || formDesc.trim().length < 10) {
+      errors.desc = "Mô tả phải có ít nhất 10 ký tự.";
+    }
+
+    const required = ["CPU", "MAINBOARD", "RAM"];
+
+    const missing = required.filter((category) => !selectedItems[category]);
+
+    if (missing.length > 0) {
+      errors.components = `Vui lòng chọn linh kiện bắt buộc: ${missing.join(", ")}.`;
+    }
+
+    if (!compatibility.isValid) {
+      errors.compatibility = "Cấu hình có linh kiện không tương thích.";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+
+      return;
+    }
+
+    const items = Object.entries(selectedItems).map(([category, item]) => ({
+      category,
+
+      product_id: item.product_id || item.id,
+
+      quantity: Number(item.quantity) || 1,
+    }));
+
+    const payload = {
+      name,
+
+      description: formDesc.trim(),
+
+      image: formImage.trim(),
+
+      status: Number(formStatus),
+
+      total_price: totalPrice,
+
+      items,
+    };
+
+    try {
+      setIsSaving(true);
+
+      if (modalMode === "edit" && editingBuildId) {
+        await axiosClient.put(`/admin/pc-builds/${editingBuildId}`, payload);
+      } else {
+        await axiosClient.post("/admin/pc-builds", payload);
+      }
+
+      await fetchBuilds();
+
+      setIsModalOpen(false);
+
+      resetBuildForm();
+    } catch (error) {
+      console.error("Lỗi lưu cấu hình:", error.response?.data || error.message);
+
+      window.alert(
+        error.response?.data?.message || "Không thể lưu cấu hình Build PC.",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // =======================================================
+  // SEARCH COMPONENT
+  // =======================================================
 
   const filteredComponents = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
-    if (!keyword) return componentList;
+
+    if (!keyword) {
+      return componentList;
+    }
 
     return componentList.filter((item) => {
-      const name = String(item?.name || "").toLowerCase();
-      const sku = String(item?.sku || "").toLowerCase();
+      const name = String(item.name || "").toLowerCase();
+
+      const sku = String(item.sku || "").toLowerCase();
+
       return name.includes(keyword) || sku.includes(keyword);
     });
   }, [componentList, searchQuery]);
 
+  // =======================================================
+  // COUNTERS
+  // =======================================================
+
+  const activeBuildCount = useMemo(() => {
+    return builds.filter((build) => Number(build.status) === 1).length;
+  }, [builds]);
+
+  const hiddenBuildCount = builds.length - activeBuildCount;
+
+  // =======================================================
+  // RENDER
+  // =======================================================
+
   return (
-    <div
-      className="container-fluid px-4 py-4"
-      style={{
-        backgroundColor: "#f8f9fa",
-        minHeight: "100vh",
-        fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
-      }}
-    >
-      {/* TOP BAR */}
-      <div className="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
+    <div className="adm-build-page">
+      {/* =================================================
+          HEADER
+          ================================================= */}
+
+      <section className="adm-build-header">
         <div>
-          <div className="d-flex align-items-center gap-2 mb-1">
-            <span style={{ fontWeight: 700, fontSize: "22px" }}>
-              Hệ Thống Quản Lý Cấu Hình Build PC
-            </span>
-          </div>
-          <p className="text-muted mb-0 small">
-            Thiết kế cấu hình phần cứng đồng bộ, kiểm tra lỗi và cập nhật hệ thống máy mẫu TechStore
+          <span className="adm-build-kicker">
+            <i className="bi bi-pc-display-horizontal" />
+            Build PC
+          </span>
+
+          <h1>Quản lý cấu hình Build PC</h1>
+
+          <p>
+            Xây dựng cấu hình máy tính, kiểm tra khả năng tương thích và quản lý
+            các bộ PC mẫu hiển thị trên website.
           </p>
         </div>
 
         <button
           type="button"
+          className="adm-build-btn adm-build-btn--primary"
           onClick={handleOpenAddModal}
-          className="btn btn-primary d-flex align-items-center gap-2 px-4 shadow-sm"
-          style={{ borderRadius: "8px", fontWeight: 600 }}
         >
-          <Plus size={17} />
+          <i className="bi bi-plus-lg" />
           Thiết kế bộ PC mới
         </button>
-      </div>
+      </section>
 
-      {/* TABLE */}
-      <div className="card shadow-sm border-0 rounded-lg overflow-hidden">
-        <div className="card-body p-0 bg-white">
-          <div className="table-responsive">
-            <table className="table table-hover align-middle mb-0">
-              <thead className="table-light text-secondary small text-uppercase">
-                <tr>
-                  <th className="px-4 py-3" style={{ width: "10%" }}>Hình ảnh</th>
-                  <th className="px-4 py-3" style={{ width: "45%" }}>Tên bộ PC / Mô tả cấu hình</th>
-                  <th className="px-4 py-3">Tổng giá thành</th>
-                  <th className="px-4 py-3">Trạng thái</th>
-                  <th className="px-4 py-3 text-center" style={{ width: "15%" }}>Hành động</th>
-                </tr>
-              </thead>
-              <tbody className="small">
-                {isLoadingBuilds ? (
-                  <tr>
-                    <td colSpan="5" className="text-center py-5">
-                      <RefreshCw size={28} className="mb-2" />
-                      <div>Đang tải danh sách cấu hình...</div>
-                    </td>
-                  </tr>
-                ) : builds.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" className="text-center py-5 bg-white text-muted">
-                      <Layers size={40} className="text-muted mb-2" />
-                      <p className="font-italic mb-0">Hệ thống chưa có cấu hình mẫu nào...</p>
-                    </td>
-                  </tr>
-                ) : (
-                  builds.map((build) => (
-                    <tr key={build.id}>
-                      <td className="px-4 py-3">
-                        <div
-                          className="bg-light rounded d-flex align-items-center justify-content-center border"
-                          style={{ width: "55px", height: "55px", overflow: "hidden" }}
-                        >
-                          {build.image || build.thumbnail ? (
-                            <img
-                              src={build.image || build.thumbnail}
-                              alt={build.name || "PC"}
-                              className="img-fluid"
-                              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                            />
-                          ) : (
-                            <Image size={20} className="text-muted" />
-                          )}
-                        </div>
-                      </td>
+      {/* =================================================
+          STATISTICS
+          ================================================= */}
 
-                      <td className="px-4 py-3">
-                        <div className="text-dark h6 mb-1" style={{ fontWeight: 600 }}>
-                          {build.name}
-                        </div>
-                        <div className="text-muted text-truncate" style={{ maxWidth: "450px", fontSize: "12px" }}>
-                          {build.description || "Chưa nhập mô tả đánh giá hiệu năng"}
-                        </div>
-                      </td>
+      <section className="adm-build-stats">
+        <article className="adm-build-stat">
+          <span className="adm-build-stat__icon adm-build-stat__icon--blue">
+            <i className="bi bi-pc-display-horizontal" />
+          </span>
 
-                      <td className="px-4 py-3 text-danger h6 mb-0" style={{ fontWeight: 700 }}>
-                        {Number(build.total_price || 0).toLocaleString("vi-VN")} đ
-                      </td>
+          <div>
+            <span>Tổng cấu hình</span>
 
-                      <td className="px-4 py-3">
-                      <span>
-  {Number(build.status) === 1 ? (
-    <span className="badge bg-success-subtle text-success border border-success px-3 py-2" 
-          style={{ borderRadius: "20px", fontWeight: "600", fontSize: "12px", boxShadow: "0 2px 4px rgba(25, 135, 84, 0.2)" }}>
-      ● Kinh doanh (Hiện Web)
-    </span>
-  ) : (
-    <span className="badge bg-danger-subtle text-danger border border-danger px-3 py-2" 
-          style={{ borderRadius: "20px", fontWeight: "600", fontSize: "12px", boxShadow: "0 2px 4px rgba(220, 53, 69, 0.2)" }}>
-      ○ Bảo trì (Ẩn kho)
-    </span>
-  )}
-</span>
-                      </td>
-
-                      <td className="px-4 py-3 text-center">
-                        <div className="d-flex justify-content-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenViewModal(build)}
-                            className="btn btn-sm btn-info text-white d-flex align-items-center gap-1 px-3 rounded-pill"
-                          >
-                            <Eye size={13} /> Xem chi tiết
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteBuild(build.id)}
-                            className="btn btn-sm btn-outline-danger p-2 rounded-circle"
-                            aria-label="Xóa cấu hình"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+            <strong>{builds.length}</strong>
           </div>
+        </article>
+
+        <article className="adm-build-stat">
+          <span className="adm-build-stat__icon adm-build-stat__icon--green">
+            <i className="bi bi-check-circle-fill" />
+          </span>
+
+          <div>
+            <span>Đang kinh doanh</span>
+
+            <strong>{activeBuildCount}</strong>
+          </div>
+        </article>
+
+        <article className="adm-build-stat">
+          <span className="adm-build-stat__icon adm-build-stat__icon--red">
+            <i className="bi bi-eye-slash-fill" />
+          </span>
+
+          <div>
+            <span>Đang ẩn</span>
+
+            <strong>{hiddenBuildCount}</strong>
+          </div>
+        </article>
+
+        <article className="adm-build-stat">
+          <span className="adm-build-stat__icon adm-build-stat__icon--orange">
+            <i className="bi bi-boxes" />
+          </span>
+
+          <div>
+            <span>Linh kiện kho</span>
+
+            <strong>{allComponents.length}</strong>
+          </div>
+        </article>
+      </section>
+
+      {/* =================================================
+          TABLE PANEL
+          ================================================= */}
+
+      <section className="adm-build-panel">
+        <div className="adm-build-panel__header">
+          <div className="adm-build-panel__title">
+            <span>
+              <i className="bi bi-list-ul" />
+            </span>
+
+            <div>
+              <h2>Danh sách cấu hình</h2>
+
+              <p>Các cấu hình PC mẫu đang được quản lý trong hệ thống.</p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="adm-build-refresh"
+            onClick={fetchBuilds}
+            disabled={isLoadingBuilds}
+          >
+            <i className="bi bi-arrow-clockwise" />
+            Làm mới
+          </button>
         </div>
-      </div>
 
-      {/* MAIN MODAL */}
+        <div className="adm-build-table-wrap">
+          <table className="adm-build-table">
+            <thead>
+              <tr>
+                <th>Hình ảnh</th>
+
+                <th>Bộ PC / Mô tả</th>
+
+                <th>Tổng giá</th>
+
+                <th>Trạng thái</th>
+
+                <th>Hành động</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {isLoadingBuilds ? (
+                <tr>
+                  <td colSpan="5" className="adm-build-table__state">
+                    <span className="adm-build-spinner" />
+
+                    <strong>Đang tải cấu hình...</strong>
+                  </td>
+                </tr>
+              ) : builds.length === 0 ? (
+                <tr>
+                  <td colSpan="5" className="adm-build-table__state">
+                    <div className="adm-build-empty">
+                      <span>
+                        <i className="bi bi-pc-display" />
+                      </span>
+
+                      <strong>Chưa có cấu hình</strong>
+
+                      <p>Hãy tạo bộ PC mẫu đầu tiên cho hệ thống.</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                builds.map((build) => (
+                  <tr key={build.id}>
+                    <td>
+                      <div className="adm-build-thumb">
+                        {build.image || build.thumbnail ? (
+                          <img
+                            src={getImageUrl(build.image || build.thumbnail)}
+                            alt={build.name || "PC"}
+                            onError={(event) => {
+                              event.currentTarget.style.display = "none";
+                            }}
+                          />
+                        ) : (
+                          <i className="bi bi-image" />
+                        )}
+                      </div>
+                    </td>
+
+                    <td>
+                      <strong className="adm-build-name">{build.name}</strong>
+
+                      <p className="adm-build-description">
+                        {build.description || "Chưa có mô tả hiệu năng."}
+                      </p>
+                    </td>
+
+                    <td>
+                      <strong className="adm-build-price">
+                        {formatMoney(build.total_price)}
+                      </strong>
+                    </td>
+
+                    <td>
+                      <span
+                        className={
+                          Number(build.status) === 1
+                            ? "adm-build-status adm-build-status--active"
+                            : "adm-build-status adm-build-status--hidden"
+                        }
+                      >
+                        <span />
+
+                        {Number(build.status) === 1 ? "Kinh doanh" : "Bảo trì"}
+                      </span>
+                    </td>
+
+                    <td>
+                      <div className="adm-build-row-actions">
+                        <button
+                          type="button"
+                          className="adm-build-action adm-build-action--view"
+                          onClick={() => handleOpenViewModal(build)}
+                        >
+                          <i className="bi bi-eye" />
+                          Chi tiết
+                        </button>
+
+                        <button
+                          type="button"
+                          className="adm-build-action adm-build-action--delete"
+                          onClick={() => handleDeleteBuild(build.id)}
+                          title="Xóa cấu hình"
+                        >
+                          <i className="bi bi-trash3" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* =================================================
+          BUILD MODAL
+          ================================================= */}
+
       {isModalOpen && (
-        <div
-          className="modal d-block"
-          tabIndex="-1"
-          style={{
-            backgroundColor: "rgba(0,0,0,0.55)",
-            backdropFilter: "blur(5px)",
-            zIndex: 1050,
-          }}
-        >
-          <div className="modal-dialog modal-dialog-centered modal-xl">
-            <div className="modal-content border-0 shadow-lg" style={{ borderRadius: "16px", overflow: "hidden" }}>
-              <div className={`modal-header py-3 ${modalMode === "view" ? "bg-primary text-white" : "bg-dark text-white"}`}>
-                <h5 className="modal-title d-flex align-items-center gap-2" style={{ fontWeight: 700 }}>
-                  {modalMode === "view" && "Bản Thiết Kế Chi Tiết Cấu Hình Máy"}
-                  {modalMode === "edit" && "Chỉnh Sửa Phần Cứng Máy Mẫu"}
-                  {modalMode === "add" && "Kiến Trúc Bộ Máy Tính Mới"}
-                </h5>
+        <div className="adm-build-modal" onClick={() => setIsModalOpen(false)}>
+          <div
+            className="adm-build-modal__dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {/* HEADER */}
 
-                <button
-                  type="button"
-                  className="btn border-0 bg-transparent text-white p-1"
-                  onClick={() => setIsModalOpen(false)}
-                  aria-label="Đóng"
-                >
-                  <X size={22} />
-                </button>
+            <div
+              className={
+                modalMode === "view"
+                  ? "adm-build-modal__header adm-build-modal__header--view"
+                  : "adm-build-modal__header"
+              }
+            >
+              <div>
+                <span className="adm-build-modal__kicker">
+                  {modalMode === "view"
+                    ? "Chi tiết cấu hình"
+                    : modalMode === "edit"
+                      ? "Chỉnh sửa cấu hình"
+                      : "Cấu hình mới"}
+                </span>
+
+                <h2>
+                  {modalMode === "view" && "Bản thiết kế cấu hình máy"}
+
+                  {modalMode === "edit" && "Chỉnh sửa bộ PC"}
+
+                  {modalMode === "add" && "Thiết kế bộ PC mới"}
+                </h2>
               </div>
 
-              <form onSubmit={handleSaveBuild}>
-                <div className="modal-body p-4" style={{ maxHeight: "78vh", overflowY: "auto" }}>
-                  {/* BASIC INFORMATION */}
-                  <div className="row g-3 mb-4 bg-light p-3 rounded border">
-<div className="col-md-5">
-  <label className="form-label text-secondary small">TÊN BỘ PC </label>
-  <input
-    type="text"
-    disabled={modalMode === "view"}
-    value={formName}
-    onChange={(event) => {
-      setFormName(event.target.value);
-      if (formErrors.name) setFormErrors({ ...formErrors, name: null }); // Xóa lỗi khi gõ lại
-    }}
-    className={`form-control bg-white shadow-sm ${formErrors.name ? "is-invalid" : ""}`}
-    style={{ borderRadius: "6px" }}
-  />
-  {formErrors.name && (
-    <div className="text-danger small mt-1" style={{ fontSize: "12px", fontWeight: "500" }}>
-      {formErrors.name}
-    </div>
-  )}
-</div>
+              <button
+                type="button"
+                className="adm-build-modal__close"
+                onClick={() => setIsModalOpen(false)}
+              >
+                <i className="bi bi-x-lg" />
+              </button>
+            </div>
 
-                    <div className="col-md-4">
-                      <label className="form-label text-secondary small">ĐƯỜNG DẪN ẢNH ĐẠI DIỆN (URL)</label>
+            <form onSubmit={handleSaveBuild}>
+              <div className="adm-build-modal__body">
+                {/* =========================================
+                    BASIC INFO
+                    ========================================= */}
+
+                <section className="adm-build-form-card">
+                  <div className="adm-build-form-card__title">
+                    <span>
+                      <i className="bi bi-info-circle" />
+                    </span>
+
+                    <div>
+                      <h3>Thông tin cấu hình</h3>
+
+                      <p>Tên, ảnh đại diện, trạng thái và mô tả.</p>
+                    </div>
+                  </div>
+
+                  <div className="adm-build-form-grid">
+                    <div className="adm-build-field adm-build-field--5">
+                      <label>
+                        Tên bộ PC
+                        <b>*</b>
+                      </label>
+
+                      <input
+                        type="text"
+                        disabled={modalMode === "view"}
+                        value={formName}
+                        className={
+                          formErrors.name
+                            ? "adm-build-input adm-build-input--error"
+                            : "adm-build-input"
+                        }
+                        onChange={(event) => {
+                          setFormName(event.target.value);
+
+                          if (formErrors.name) {
+                            setFormErrors((previous) => ({
+                              ...previous,
+
+                              name: null,
+                            }));
+                          }
+                        }}
+                      />
+
+                      {formErrors.name && (
+                        <small className="adm-build-error">
+                          {formErrors.name}
+                        </small>
+                      )}
+                    </div>
+
+                    <div className="adm-build-field adm-build-field--4">
+                      <label>Ảnh đại diện</label>
+
                       <input
                         type="text"
                         disabled={modalMode === "view"}
                         value={formImage}
+                        className="adm-build-input"
+                        placeholder="/uploads/... hoặc https://..."
                         onChange={(event) => setFormImage(event.target.value)}
-                        className="form-control bg-white shadow-sm"
-                        style={{ borderRadius: "6px" }}
                       />
                     </div>
 
-                    <div className="col-md-3">
-  <label className="form-label text-secondary small d-block">TRẠNG THÁI HIỂN THỊ</label>
-  <select
-    disabled={modalMode === "view"}
-    // Ép kiểu về Number để luôn khớp với số 1 hoặc 0
-    value={Number(formStatus)}
-    onChange={(event) => setFormStatus(Number(event.target.value))}
-    className="form-select bg-white shadow-sm mt-1"
-  >
-    <option value={1}>Kinh doanh (Hiện Web)</option>
-    <option value={0}>Bảo trì (Ẩn kho)</option>
-  </select>
-</div>
+                    <div className="adm-build-field adm-build-field--3">
+                      <label>Trạng thái</label>
 
-<div className="col-12">
-  <label className="form-label text-secondary small">MÔ TẢ HIỆU NĂNG / KHUYẾN NGHỊ NHU CẦU SỬ DỤNG</label>
-  <textarea
-    rows={2}
-    disabled={modalMode === "view"}
-    value={formDesc}
-    onChange={(event) => {
-      setFormDesc(event.target.value);
-      if (formErrors.desc) setFormErrors({ ...formErrors, desc: null }); // Xóa lỗi khi gõ lại
-    }}
-    className={`form-control bg-white shadow-sm ${formErrors.desc ? "is-invalid" : ""}`}
-  />
-  {formErrors.desc && (
-    <div className="text-danger small mt-1" style={{ fontSize: "12px", fontWeight: "500" }}>
-      {formErrors.desc}
-    </div>
-  )}
-</div>
+                      <select
+                        disabled={modalMode === "view"}
+                        value={Number(formStatus)}
+                        className="adm-build-input"
+                        onChange={(event) =>
+                          setFormStatus(Number(event.target.value))
+                        }
+                      >
+                        <option value={1}>Kinh doanh</option>
+
+                        <option value={0}>Bảo trì</option>
+                      </select>
+                    </div>
+
+                    <div className="adm-build-field adm-build-field--12">
+                      <label>
+                        Mô tả hiệu năng
+                        <b>*</b>
+                      </label>
+
+                      <textarea
+                        rows={3}
+                        disabled={modalMode === "view"}
+                        value={formDesc}
+                        className={
+                          formErrors.desc
+                            ? "adm-build-textarea adm-build-input--error"
+                            : "adm-build-textarea"
+                        }
+                        onChange={(event) => {
+                          setFormDesc(event.target.value);
+
+                          if (formErrors.desc) {
+                            setFormErrors((previous) => ({
+                              ...previous,
+
+                              desc: null,
+                            }));
+                          }
+                        }}
+                      />
+
+                      {formErrors.desc && (
+                        <small className="adm-build-error">
+                          {formErrors.desc}
+                        </small>
+                      )}
+                    </div>
+                  </div>
+                </section>
+
+                {/* =========================================
+                    AUTO BUILD
+                    ========================================= */}
+
+                {modalMode !== "view" && (
+                  <section className="adm-build-auto">
+                    <div className="adm-build-auto__header">
+                      <span>
+                        <i className="bi bi-stars" />
+                      </span>
+
+                      <div>
+                        <h3>Gợi ý cấu hình tự động</h3>
+
+                        <p>Tự động phân bổ ngân sách theo nhu cầu sử dụng.</p>
+                      </div>
+                    </div>
+
+                    <div className="adm-build-auto__grid">
+                      <div className="adm-build-field">
+                        <label>Nhu cầu sử dụng</label>
+
+                        <select
+                          className="adm-build-input"
+                          value={targetUsage}
+                          onChange={(event) =>
+                            setTargetUsage(event.target.value)
+                          }
+                        >
+                          <option value="office">Văn phòng / Học tập</option>
+
+                          <option value="gaming">Chơi game</option>
+
+                          <option value="design">Đồ họa / Edit Video</option>
+                        </select>
+                      </div>
+
+                      <div className="adm-build-field">
+                        <label className="adm-build-budget-label">
+                          <span>Ngân sách</span>
+
+                          <strong>{formatMoney(targetBudget)}</strong>
+                        </label>
+
+                        <input
+                          type="number"
+                          min="3000000"
+                          step="500000"
+                          className="adm-build-input"
+                          value={targetBudget}
+                          onChange={(event) =>
+                            setTargetBudget(Number(event.target.value))
+                          }
+                        />
+                      </div>
+
+                      <div className="adm-build-auto__button-wrap">
+                        <button
+                          type="button"
+                          className="adm-build-auto__button"
+                          onClick={handleAutoBuild}
+                        >
+                          <i className="bi bi-stars" />
+                          Tự động chọn
+                        </button>
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {/* =========================================
+                    COMPONENTS
+                    ========================================= */}
+
+                <section className="adm-build-components">
+                  <div className="adm-build-section-title">
+                    <span>
+                      <i className="bi bi-diagram-3" />
+                    </span>
+
+                    <div>
+                      <h3>Linh kiện cấu hình</h3>
+
+                      <p>Chọn và kiểm tra 8 nhóm linh kiện chính của bộ máy.</p>
+                    </div>
                   </div>
 
-                  {/* AUTO BUILD BOX */}
-                  {modalMode !== "view" && (
-                    <div className="p-3 my-4 rounded border bg-light shadow-sm">
-                      <div className="d-flex align-items-center gap-2 mb-3 text-primary fw-bold small text-uppercase">
-                         Gợi ý cấu hình tự động
-                      </div>
+                  {formErrors.components && (
+                    <div className="adm-build-alert adm-build-alert--danger">
+                      <i className="bi bi-exclamation-circle-fill" />
 
-                      <div className="row g-3 align-items-end">
-                        <div className="col-md-5">
-                          <label className="form-label text-secondary small fw-bold">NHU CẦU SỬ DỤNG</label>
-                          <select
-                            value={targetUsage}
-                            onChange={(e) => setTargetUsage(e.target.value)}
-                            className="form-select form-select-sm bg-white"
-                          >
-                            <option value="office"> Văn phòng / Học tập (Tối ưu CPU & RAM)</option>
-                            <option value="gaming"> Chơi Game (Tối ưu Card đồ họa VGA)</option>
-                            <option value="design"> Đồ họa / Edit Video (Cân bằng CPU & VGA)</option>
-                          </select>
-                        </div>
-
-                        <div className="col-md-4">
-                          <label className="form-label text-secondary small fw-bold d-flex justify-content-between">
-                            <span>MỨC NGÂN SÁCH</span>
-                            <span className="text-primary fw-bold">
-                              {Number(targetBudget).toLocaleString("vi-VN")} đ
-                            </span>
-                          </label>
-                          <input
-                            type="number"
-                            step="500000"
-                            min="3000000"
-                            value={targetBudget}
-                            onChange={(e) => setTargetBudget(Number(e.target.value))}
-                            className="form-control form-control-sm bg-white"
-                            placeholder="Nhập số tiền..."
-                          />
-                        </div>
-
-                        <div className="col-md-3">
-                          <button
-                            type="button"
-                            onClick={handleAutoBuild}
-                            className="btn btn-sm btn-warning w-100 fw-bold d-flex align-items-center justify-content-center gap-1"
-                          >
-                             Tự động chọn
-                          </button>
-                        </div>
-                      </div>
+                      <span>{formErrors.components}</span>
                     </div>
                   )}
 
-                  {/* COMPONENT LIST */}
-                  <div className="mb-4">
-                    <label
-                      className="form-label text-dark small border-bottom pb-2 mb-3 text-uppercase d-flex align-items-center gap-1"
-                      style={{ letterSpacing: "0.5px", fontWeight: 700 }}
-                    >
-                      Sơ đồ phân mảnh lắp ráp phần cứng máy tính
-                    </label>
-                    {formErrors.components && (
-                      <div className="alert alert-danger py-2 px-3 small mb-3" style={{ fontWeight: 500 }}>
-                        {formErrors.components}
-                      </div>
-                    )}
-                    {isLoadingCategories ? (
-                      <div className="text-center py-4 text-muted">Đang tải danh mục...</div>
-                    ) : (
-                      <div className="row g-3">
-                        {categories.map((category) => {
-                          const item = selectedItems[category.key];
+                  {isLoadingCategories ? (
+                    <div className="adm-build-loading">
+                      <span className="adm-build-spinner" />
+                      Đang tải danh mục...
+                    </div>
+                  ) : (
+                    <div className="adm-build-component-grid">
+                      {categories.map((category) => {
+                        const item = selectedItems[category.key];
 
-                          return (
-                            <div key={category.key} className="col-md-6">
-                              <div
-                                className={`p-3 rounded border d-flex align-items-center justify-content-between bg-white ${
-                                  item ? "border-primary" : ""
-                                }`}
-                                style={{ minHeight: "85px" }}
-                              >
-                                <div style={{ width: "110px" }}>
-                                  <span
-                                    className="badge bg-secondary text-white text-uppercase"
-                                    style={{ padding: "6px 10px", fontSize: "11px", minWidth: "85px" }}
-                                  >
-                                    {category.key}
-                                  </span>
-                                </div>
+                        const icon = CATEGORY_ICONS[category.key] || "bi-box";
 
-                                <div className="flex-grow-1 px-2 text-truncate">
-                                  {item ? (
-                                    <div>
-                                      <div className="text-dark small text-truncate" style={{ fontWeight: 600 }} title={item.name}>
-                                        {item.name}
-                                      </div>
-                                      <div className="text-primary mt-1 d-flex align-items-center flex-wrap gap-2" style={{ fontSize: "11px" }}>
-                                        <span>{Number(item.price || 0).toLocaleString("vi-VN")} đ</span>
-                                        <span className="text-muted">Số lượng: x{item.quantity || 1}</span>
-                                        {item.socket && <span className="badge bg-info text-white">Socket: {item.socket}</span>}
-                                        {item.ram_type && <span className="badge bg-warning text-dark">RAM: {item.ram_type}</span>}
-                                        {item.wattage && <span className="badge bg-dark text-white">{item.wattage}W</span>}
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <span className="text-muted" style={{ fontSize: "12px", fontStyle: "italic" }}>
-                                      Vị trí trống (Chưa có linh kiện)...
-                                    </span>
-                                  )}
-                                </div>
+                        return (
+                          <article
+                            key={category.key}
+                            className={
+                              item
+                                ? "adm-build-slot adm-build-slot--selected"
+                                : "adm-build-slot"
+                            }
+                          >
+                            <div className="adm-build-slot__category">
+                              <span>
+                                <i className={`bi ${icon}`} />
+                              </span>
 
-                                <div className="d-flex align-items-center gap-2">
-                                  {item && (
-                                    <input
-                                      type="number"
-                                      min="1"
-                                      disabled={modalMode === "view"}
-                                      value={item.quantity || 1}
-                                      onChange={(event) => handleUpdateQuantity(category.key, event.target.value)}
-                                      className="form-control form-control-sm text-center"
-                                      style={{ width: "55px" }}
-                                    />
-                                  )}
+                              <div>
+                                <strong>{category.key}</strong>
 
-                                  {modalMode !== "view" && (
-                                    <>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleOpenComponentModal(category.key)}
-                                        className="btn btn-sm btn-outline-primary d-flex align-items-center gap-1"
-                                      >
-                                        {item ? <><RefreshCw size={12} /> Đổi</> : "Lắp linh kiện"}
-                                      </button>
-
-                                      {item && (
-                                        <button
-                                          type="button"
-                                          onClick={() => handleRemoveComponent(category.key)}
-                                          className="btn btn-sm btn-light border text-danger"
-                                        >
-                                          <X size={13} />
-                                        </button>
-                                      )}
-                                    </>
-                                  )}
-                                </div>
+                                <small>{category.label}</small>
                               </div>
                             </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
 
-                  {/* COMPATIBILITY */}
-                  {!compatibility.isValid ? (
-  <div
-    className="alert alert-danger d-flex gap-3 align-items-start mb-4"
-    style={{ borderRadius: "10px", borderLeft: "5px solid #dc3545" }}
-  >
-    <ShieldAlert size={24} className="mt-1" />
-    <div>
-      <strong className="d-block mb-1 text-uppercase">Phát hiện xung đột phần cứng:</strong>
-      <ul className="mb-0 ps-3">
-        {compatibility.errors.map((error, index) => (
-          <li key={index}>{error}</li>
-        ))}
-      </ul>
-      {formErrors.compatibility && (
-        <div className="text-danger small mt-2 fw-bold">{formErrors.compatibility}</div>
-      )}
-    </div>
-  </div>
-) : Object.keys(selectedItems).length > 0 ? (
-  <div className="alert alert-success d-flex gap-2 align-items-center mb-4">
-    <CheckCircle2 size={17} />
-    <span>Các linh kiện hiện tại tương thích với nhau.</span>
-  </div>
-) : null}
+                            <div className="adm-build-slot__content">
+                              {item ? (
+                                <>
+                                  <strong
+                                    className="adm-build-slot__name"
+                                    title={item.name}
+                                  >
+                                    {item.name}
+                                  </strong>
 
-                  {/* TOTAL */}
-                  <div className="p-3 bg-dark text-white rounded d-flex justify-content-between align-items-center">
-                    <span className="small" style={{ fontWeight: 700 }}>ĐỊNH GIÁ TOÀN BỘ GIÁ TRỊ BỘ PC:</span>
-                    <span className="h3 text-warning mb-0" style={{ fontWeight: 800 }}>
-                      {totalPrice.toLocaleString("vi-VN")} đ
+                                  <div className="adm-build-slot__price">
+                                    {formatMoney(item.price)}
+                                  </div>
+
+                                  <div className="adm-build-slot__specs">
+                                    {item.socket && (
+                                      <span>Socket {item.socket}</span>
+                                    )}
+
+                                    {item.ram_type && (
+                                      <span>{item.ram_type}</span>
+                                    )}
+
+                                    {item.wattage && (
+                                      <span>{item.wattage}W</span>
+                                    )}
+
+                                    <span>SL: {item.quantity || 1}</span>
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="adm-build-slot__empty">
+                                  <i className="bi bi-plus-circle" />
+                                  Chưa chọn linh kiện
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="adm-build-slot__actions">
+                              {item && (
+                                <input
+                                  type="number"
+                                  min="1"
+                                  disabled={modalMode === "view"}
+                                  value={item.quantity || 1}
+                                  onChange={(event) =>
+                                    handleUpdateQuantity(
+                                      category.key,
+                                      event.target.value,
+                                    )
+                                  }
+                                />
+                              )}
+
+                              {modalMode !== "view" && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="adm-build-slot__change"
+                                    onClick={() =>
+                                      handleOpenComponentModal(category.key)
+                                    }
+                                  >
+                                    <i
+                                      className={
+                                        item
+                                          ? "bi bi-arrow-repeat"
+                                          : "bi bi-plus-lg"
+                                      }
+                                    />
+
+                                    {item ? "Đổi" : "Lắp"}
+                                  </button>
+
+                                  {item && (
+                                    <button
+                                      type="button"
+                                      className="adm-build-slot__remove"
+                                      onClick={() =>
+                                        handleRemoveComponent(category.key)
+                                      }
+                                    >
+                                      <i className="bi bi-x-lg" />
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+
+                {/* =========================================
+                    COMPATIBILITY
+                    ========================================= */}
+
+                {!compatibility.isValid ? (
+                  <div className="adm-build-compatibility adm-build-compatibility--error">
+                    <span className="adm-build-compatibility__icon">
+                      <i className="bi bi-shield-exclamation" />
                     </span>
-                  </div>
-                </div>
 
-                {/* FOOTER */}
-                <div className="modal-footer bg-light">
+                    <div>
+                      <strong>Phát hiện xung đột phần cứng</strong>
+
+                      <ul>
+                        {compatibility.errors.map((error, index) => (
+                          <li key={index}>{error}</li>
+                        ))}
+                      </ul>
+
+                      {formErrors.compatibility && (
+                        <p>{formErrors.compatibility}</p>
+                      )}
+                    </div>
+                  </div>
+                ) : Object.keys(selectedItems).length > 0 ? (
+                  <div className="adm-build-compatibility adm-build-compatibility--success">
+                    <span className="adm-build-compatibility__icon">
+                      <i className="bi bi-shield-check" />
+                    </span>
+
+                    <div>
+                      <strong>Cấu hình tương thích</strong>
+
+                      <p>Các linh kiện hiện tại không phát hiện xung đột.</p>
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* =========================================
+                    TOTAL
+                    ========================================= */}
+
+                <div className="adm-build-total">
+                  <div>
+                    <span>Tổng giá trị cấu hình</span>
+
+                    <small>Tổng tiền của toàn bộ linh kiện đang chọn.</small>
+                  </div>
+
+                  <strong>{formatMoney(totalPrice)}</strong>
+                </div>
+              </div>
+
+              {/* FOOTER */}
+
+              <div className="adm-build-modal__footer">
+                <button
+                  type="button"
+                  className="adm-build-btn adm-build-btn--light"
+                  onClick={() => setIsModalOpen(false)}
+                >
+                  Đóng
+                </button>
+
+                {modalMode === "view" ? (
                   <button
                     type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="btn btn-secondary px-4 btn-sm"
+                    className="adm-build-btn adm-build-btn--warning"
+                    onClick={handleEnableEditMode}
                   >
-                    Đóng
+                    <i className="bi bi-pencil-square" />
+                    Chuyển sang chỉnh sửa
                   </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={isSaving}
+                    className="adm-build-btn adm-build-btn--success"
+                  >
+                    {isSaving ? (
+                      <>
+                        <span className="adm-build-spinner adm-build-spinner--small" />
+                        Đang lưu...
+                      </>
+                    ) : (
+                      <>
+                        <i className="bi bi-check-circle" />
 
-                  {modalMode === "view" ? (
-                    <button
-                      type="button"
-                      onClick={handleEnableEditMode}
-                      className="btn btn-warning px-4 btn-sm d-flex align-items-center gap-2"
-                    >
-                       Chuyển sang chỉnh sửa
-                    </button>
-                  ) : (
-                    <button
-                      type="submit"
-                      disabled={!compatibility.isValid || isSaving}
-                      className="btn btn-success px-4 btn-sm d-flex align-items-center gap-2"
-                    >
-                      
-                      {isSaving ? "Đang lưu..." : "Xác nhận ghi nhận cấu hình"}
-                    </button>
-                  )}
-                </div>
-              </form>
-            </div>
+                        {modalMode === "add" ? "Tạo cấu hình" : "Lưu thay đổi"}
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            </form>
           </div>
         </div>
       )}
 
-      {/* COMPONENT MODAL */}
+      {/* =================================================
+          COMPONENT PICKER MODAL
+          ================================================= */}
+
       {isComponentModalOpen && (
         <div
-          className="modal d-block"
-          tabIndex="-1"
-          style={{
-            backgroundColor: "rgba(15, 23, 42, 0.65)",
-            backdropFilter: "blur(4px)",
-            zIndex: 1060,
-          }}
+          className="adm-build-picker"
+          onClick={() => setIsComponentModalOpen(false)}
         >
-          <div className="modal-dialog modal-dialog-centered modal-lg">
-            <div className="modal-content border-0 shadow-lg" style={{ borderRadius: "14px", overflow: "hidden" }}>
-              <div className="modal-header bg-primary text-white py-3 px-4">
+          <div
+            className="adm-build-picker__dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {/* HEADER */}
+
+            <div className="adm-build-picker__header">
+              <div>
+                <span className="adm-build-picker__icon">
+                  <i
+                    className={`bi ${
+                      CATEGORY_ICONS[activeCategory] || "bi-box-seam"
+                    }`}
+                  />
+                </span>
+
                 <div>
-                  <h6 className="modal-title mb-0 d-flex align-items-center gap-2" style={{ fontWeight: 700 }}>
-                    <HardDrive size={18} />
-                    Kho linh kiện TechStore: [{activeCategory}]
-                  </h6>
-                  <small className="text-white-50">Chọn linh kiện từ kho để đưa vào cấu hình.</small>
-                </div>
+                  <h2>Kho linh kiện {activeCategory}</h2>
 
-                <button
-                  type="button"
-                  className="btn border-0 bg-transparent text-white"
-                  onClick={() => setIsComponentModalOpen(false)}
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div className="p-3 bg-light border-bottom position-relative">
-                <Search
-                  className="position-absolute text-muted"
-                  size={16}
-                  style={{ left: "24px", top: "22px" }}
-                />
-                <input
-                  type="text"
-                  placeholder={`Tìm kiếm linh kiện ${activeCategory}...`}
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  className="form-control shadow-sm"
-                  style={{ paddingLeft: "40px" }}
-                />
-              </div>
-              <div className="modal-body p-3 bg-white" style={{ maxHeight: "50vh", overflowY: "auto" }}>
-  {isLoadingComponents ? (
-    <div className="text-center py-5 text-muted">Đang tải linh kiện...</div>
-  ) : filteredComponents.length === 0 ? (
-    <div className="text-center py-5 text-muted d-flex flex-column align-items-center gap-2">
-      <Layers size={32} />
-      <span>Không tìm thấy linh kiện phù hợp.</span>
-    </div>
-  ) : (
-    <div className="d-flex flex-column gap-2">
-      {filteredComponents
-        // Lọc bỏ bản ghi bị trùng ID trong danh sách
-        .filter((product, index, self) => index === self.findIndex((p) => p.id === product.id))
-        .map((product, index) => {
-          const specs = parseSpecifications(product);
-          const socket = specs.socket || product.socket;
-          const ramType = specs.ram_type || specs.ramType || product.ram_type;
-          const powerRecommend = specs.power_recommend || specs.powerRecommend || product.power_recommend;
-          const wattage = specs.wattage || product.wattage;
-          return (
-            <div
-              key={product.id}
-              className="p-3 border rounded d-flex justify-content-between align-items-center"
-              style={{ 
-                cursor: "pointer", 
-                borderLeft: "4px solid " + (product.is_visible !== 0 ? "#0d6efd" : "#dc3545"),
-                backgroundColor: product.is_visible !== 0 ? "white" : "#fff5f5" 
-              }}
-            >
-              {/* PHẦN CLICK ĐỂ CHỌN LINH KIỆN */}
-              <div onClick={() => handleSelectComponent(product)} className="pe-3 text-truncate flex-grow-1">
-                <div className="text-dark mb-1 d-flex align-items-center gap-2" style={{ fontWeight: 600 }}>
-                  <span>{product.name}</span>
-                  {product.is_visible === 0 && <span className="badge bg-danger" style={{ fontSize: "10px" }}>Đang ẩn</span>}
-                </div>
-                <div className="d-flex align-items-center gap-2 flex-wrap">
-                  <span className="text-muted" style={{ fontSize: "11px" }}>
-                    SKU: {product.sku || `SP-${product.id}`}
-                  </span>
-                  {socket && <span className="badge bg-light text-dark border">Socket: {socket}</span>}
-                  {ramType && <span className="badge bg-light text-dark border">RAM: {ramType}</span>}
-                  {powerRecommend && <span className="badge bg-danger text-white">Nguồn khuyến nghị: {powerRecommend}</span>}
-                  {wattage && <span className="badge bg-dark text-white">{wattage}W</span>}
+                  <p>Chọn linh kiện để đưa vào cấu hình.</p>
                 </div>
               </div>
 
-              {/* PHẦN GIÁ VÀ NÚT ẨN/HIỆN CHO ADMIN */}
-              <div className="d-flex align-items-center gap-3">
-                <div className="text-end" onClick={() => handleSelectComponent(product)}>
-                  <div className="text-primary" style={{ fontWeight: 700 }}>
-                    {Number(product.price || 0).toLocaleString("vi-VN")} đ
-                  </div>
-                  <div className="text-muted" style={{ fontSize: "11px" }}>
-                    Kho: {product.quantity ?? 0}
-                  </div>
-                </div>
-
-                {/* NÚT BẬT/TẮT TRẠNG THÁI ẨN HIỆN */}
-                <button
-                  type="button"
-                  className={`btn btn-sm ${product.is_visible !== 0 ? "btn-outline-secondary" : "btn-outline-success"}`}
-                  style={{ fontSize: "12px", whiteSpace: "nowrap" }}
-                  onClick={(e) => {
-                    e.stopPropagation(); // Chặn sự kiện click nhầm vào ô chọn linh kiện
-                    handleToggleVisibility(product.product_id || product.id, product.is_visible);
-                  }}
-                  title="Bấm để ẩn hoặc hiện linh kiện này với khách hàng"
-                >
-                  {product.is_visible !== 0 ? "👁️ Ẩn" : "✅ Hiện"}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setIsComponentModalOpen(false)}
+              >
+                <i className="bi bi-x-lg" />
+              </button>
             </div>
-          );
-        })}
-                  </div>
-                )}
-              </div>
+
+            {/* SEARCH */}
+
+            <div className="adm-build-picker__search">
+              <i className="bi bi-search" />
+
+              <input
+                type="text"
+                value={searchQuery}
+                placeholder={`Tìm ${activeCategory} theo tên hoặc SKU...`}
+                onChange={(event) => setSearchQuery(event.target.value)}
+              />
+
+              {searchQuery && (
+                <button type="button" onClick={() => setSearchQuery("")}>
+                  <i className="bi bi-x-circle-fill" />
+                </button>
+              )}
+            </div>
+
+            {/* BODY */}
+
+            <div className="adm-build-picker__body">
+              {isLoadingComponents ? (
+                <div className="adm-build-loading">
+                  <span className="adm-build-spinner" />
+                  Đang tải linh kiện...
+                </div>
+              ) : filteredComponents.length === 0 ? (
+                <div className="adm-build-picker__empty">
+                  <span>
+                    <i className="bi bi-search" />
+                  </span>
+
+                  <strong>Không tìm thấy linh kiện</strong>
+
+                  <p>Hãy thử từ khóa khác hoặc kiểm tra dữ liệu kho.</p>
+                </div>
+              ) : (
+                <div className="adm-build-picker__list">
+                  {filteredComponents.map((product) => {
+                    const specs = parseSpecifications(product);
+
+                    const socket = specs.socket || product.socket;
+
+                    const ramType =
+                      specs.ram_type || specs.ramType || product.ram_type;
+
+                    const powerRecommend =
+                      specs.power_recommend ||
+                      specs.powerRecommend ||
+                      product.power_recommend;
+
+                    const wattage = specs.wattage || product.wattage;
+
+                    const visible = Number(product.is_visible) !== 0;
+
+                    const updating =
+                      Number(visibilityUpdatingId) ===
+                      Number(product.product_id || product.id);
+
+                    return (
+                      <article
+                        key={product.id}
+                        className={
+                          visible
+                            ? "adm-build-part"
+                            : "adm-build-part adm-build-part--hidden"
+                        }
+                      >
+                        <button
+                          type="button"
+                          className="adm-build-part__select"
+                          onClick={() => handleSelectComponent(product)}
+                        >
+                          <div className="adm-build-part__main">
+                            <div className="adm-build-part__title">
+                              <strong>{product.name}</strong>
+
+                              {!visible && <span>Đang ẩn</span>}
+                            </div>
+
+                            <div className="adm-build-part__meta">
+                              <span>
+                                SKU: {product.sku || `SP-${product.id}`}
+                              </span>
+
+                              {socket && <span>Socket {socket}</span>}
+
+                              {ramType && <span>{ramType}</span>}
+
+                              {powerRecommend && (
+                                <span className="adm-build-part__meta--danger">
+                                  PSU {powerRecommend}
+                                </span>
+                              )}
+
+                              {wattage && <span>{wattage}W</span>}
+                            </div>
+                          </div>
+
+                          <div className="adm-build-part__price">
+                            <strong>{formatMoney(product.price)}</strong>
+
+                            <span>Kho: {product.quantity ?? 0}</span>
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          className={
+                            visible
+                              ? "adm-build-visibility adm-build-visibility--hide"
+                              : "adm-build-visibility adm-build-visibility--show"
+                          }
+                          disabled={updating}
+                          onClick={() =>
+                            handleToggleVisibility(
+                              product.product_id || product.id,
+                              product.is_visible,
+                            )
+                          }
+                        >
+                          {updating ? (
+                            <span className="adm-build-spinner adm-build-spinner--tiny" />
+                          ) : (
+                            <i
+                              className={
+                                visible ? "bi bi-eye-slash" : "bi bi-eye"
+                              }
+                            />
+                          )}
+
+                          {visible ? "Ẩn" : "Hiện"}
+                        </button>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>

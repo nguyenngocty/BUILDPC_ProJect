@@ -1,43 +1,52 @@
 function LogoutModal({ isOpen, onClose, onConfirm }) {
   return (
     <div
-      className={`logout-modal ${isOpen ? "show" : ""}`}
+      className={["adm-logout-modal", isOpen && "adm-logout-modal--show"]
+        .filter(Boolean)
+        .join(" ")}
       aria-hidden={!isOpen}
     >
-      <div
-        className="logout-modal__backdrop"
+      <button
+        type="button"
+        className="adm-logout-modal__backdrop"
         onClick={onClose}
-        aria-hidden="true"
+        aria-label="Đóng hộp thoại"
+        tabIndex={isOpen ? 0 : -1}
       />
 
       <div
-        className="logout-modal__dialog"
+        className="adm-logout-modal__dialog"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="logoutModalTitle"
+        aria-labelledby="admLogoutTitle"
+        aria-describedby="admLogoutDescription"
       >
         <button
-          className="logout-modal__close"
+          className="adm-logout-modal__close"
           type="button"
           onClick={onClose}
-          aria-label="Đóng popup"
+          aria-label="Đóng"
         >
           <i className="bi bi-x-lg" />
         </button>
 
-        <div className="logout-modal__icon">
+        <div className="adm-logout-modal__icon">
           <i className="bi bi-box-arrow-right" />
         </div>
 
-        <h2 id="logoutModalTitle">Xác nhận đăng xuất</h2>
+        <div className="adm-logout-modal__content">
+          <span className="adm-logout-modal__label">Tài khoản quản trị</span>
 
-        <p>
-          Bạn có chắc chắn muốn đăng xuất khỏi trang quản trị không?
-        </p>
+          <h2 id="admLogoutTitle">Xác nhận đăng xuất</h2>
 
-        <div className="logout-modal__actions">
+          <p id="admLogoutDescription">
+            Bạn có chắc chắn muốn đăng xuất khỏi trang quản trị không?
+          </p>
+        </div>
+
+        <div className="adm-logout-modal__actions">
           <button
-            className="ghost-action"
+            className="adm-button adm-button--secondary"
             type="button"
             onClick={onClose}
           >
@@ -45,12 +54,13 @@ function LogoutModal({ isOpen, onClose, onConfirm }) {
           </button>
 
           <button
-            className="primary-action logout-confirm-btn"
+            className="adm-button adm-button--danger"
             type="button"
             onClick={onConfirm}
           >
             <i className="bi bi-box-arrow-right" />
-            Đăng xuất
+
+            <span>Đăng xuất</span>
           </button>
         </div>
       </div>

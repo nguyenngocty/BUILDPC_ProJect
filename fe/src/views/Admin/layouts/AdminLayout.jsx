@@ -6,15 +6,21 @@ import useAuth from "../../../hooks/useAuth";
 import AdminTopbar from "../components/AdminTopbar";
 import AdminSidebar from "../components/AdminSidebar";
 import LogoutModal from "../components/LogoutModal";
+
 import "../styles/Admin.css";
 
 function AdminLayout() {
   const navigate = useNavigate();
   const { logout } = useAuth();
+
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
+
+  // =========================================================
+  // SIDEBAR
+  // =========================================================
 
   const handleToggleSidebar = () => {
     if (window.innerWidth <= 991.98) {
@@ -24,6 +30,20 @@ function AdminLayout() {
 
     setIsSidebarCollapsed((current) => !current);
   };
+
+  const handleNavigate = () => {
+    if (window.innerWidth <= 991.98) {
+      setIsSidebarOpen(false);
+    }
+  };
+
+  const handleCloseMobileSidebar = () => {
+    setIsSidebarOpen(false);
+  };
+
+  // =========================================================
+  // ACCOUNT
+  // =========================================================
 
   const handleToggleAccount = () => {
     setIsAccountOpen((current) => !current);
@@ -48,42 +68,63 @@ function AdminLayout() {
     navigate("/");
   };
 
+  // =========================================================
+  // LOGOUT
+  // =========================================================
+
   const handleOpenLogout = () => {
     setIsAccountOpen(false);
     setIsLogoutOpen(true);
   };
 
+  const handleCloseLogout = () => {
+    setIsLogoutOpen(false);
+  };
+
   const handleConfirmLogout = () => {
     setIsLogoutOpen(false);
+
     logout();
-    navigate("/", { replace: true });
+
+    navigate("/", {
+      replace: true,
+    });
+
     toast.success("Đăng xuất trang quản trị thành công!");
   };
 
-  const handleNavigate = () => {
-    if (window.innerWidth <= 991.98) {
-      setIsSidebarOpen(false);
-    }
-  };
+  // =========================================================
+  // LOCK BODY WHEN MODAL OPEN
+  // =========================================================
 
   useEffect(() => {
-    document.body.classList.toggle("logout-modal-open", isLogoutOpen);
+    document.body.classList.toggle("adm-body-modal-open", isLogoutOpen);
 
     return () => {
-      document.body.classList.remove("logout-modal-open");
+      document.body.classList.remove("adm-body-modal-open");
     };
   }, [isLogoutOpen]);
 
+  // =========================================================
+  // ESC KEY
+  // =========================================================
+
   useEffect(() => {
     const handleKeyDown = (event) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape") {
+        return;
+      }
 
       if (isLogoutOpen) {
         setIsLogoutOpen(false);
         return;
       }
 
-      setIsAccountOpen(false);
+      if (isAccountOpen) {
+        setIsAccountOpen(false);
+        return;
+      }
+
       setIsSidebarOpen(false);
     };
 
@@ -92,14 +133,32 @@ function AdminLayout() {
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isLogoutOpen]);
+  }, [isLogoutOpen, isAccountOpen]);
+
+  // =========================================================
+  // RESIZE
+  // =========================================================
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth > 991.98) {
+        setIsSidebarOpen(false);
+      }
+    };
+
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
 
   return (
     <div
       className={[
-        "admin-layout",
-        isSidebarCollapsed && "sidebar-collapsed",
-        isSidebarOpen && "sidebar-open",
+        "adm-layout",
+        isSidebarCollapsed && "adm-layout--sidebar-collapsed",
+        isSidebarOpen && "adm-layout--sidebar-open",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -117,13 +176,22 @@ function AdminLayout() {
 
       <AdminSidebar onNavigate={handleNavigate} />
 
-      <main className="admin-main">
-        <Outlet />
+      <button
+        type="button"
+        className="adm-sidebar-overlay"
+        onClick={handleCloseMobileSidebar}
+        aria-label="Đóng menu quản trị"
+      />
+
+      <main className="adm-main">
+        <div className="adm-content">
+          <Outlet />
+        </div>
       </main>
 
       <LogoutModal
         isOpen={isLogoutOpen}
-        onClose={() => setIsLogoutOpen(false)}
+        onClose={handleCloseLogout}
         onConfirm={handleConfirmLogout}
       />
     </div>

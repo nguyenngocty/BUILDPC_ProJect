@@ -1,47 +1,65 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import toast from "react-hot-toast"; 
+import toast from "react-hot-toast";
+
 import "./PostManagement.css";
+
 import postService from "../../../../services/postService";
 import categoryService from "../../../../services/categoryService";
 
-const PostManagement = () => {
+const NO_IMAGE_SVG =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Crect width='80' height='80' rx='12' fill='%23f1f5f9'/%3E%3Cpath d='M22 24h36v32H22z' fill='%23e2e8f0'/%3E%3Ccircle cx='32' cy='34' r='5' fill='%2394a3b8'/%3E%3Cpath d='M26 50l9-9 7 7 5-5 7 7H26z' fill='%2394a3b8'/%3E%3C/svg%3E";
+
+function PostManagement() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+
   const [keyword, setKeyword] = useState("");
   const [category, setCategory] = useState("");
   const [status, setStatus] = useState("");
   const [featured, setFeatured] = useState("");
+
   const [categoryList, setCategoryList] = useState([]);
+
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [total, setTotal] = useState(0);
-  
+
   const [openMenuId, setOpenMenuId] = useState(null);
 
-  // 👇 State quản lý Modal xác nhận xóa mới
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
     postId: null,
   });
 
-  const NO_IMAGE_SVG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'%3E%3Crect width='60' height='60' fill='%23f0f0f0'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='12' fill='%23999'%3ENo Image%3C/text%3E%3C/svg%3E";
+  // =====================================================
+  // LOAD CATEGORIES
+  // =====================================================
 
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const res = await categoryService.getCategories({ status: 1 });
+        const res = await categoryService.getCategories({
+          status: 1,
+        });
+
         setCategoryList(res.data || []);
-      } catch (err) {
-        console.error("Lỗi tải danh mục", err);
+      } catch (error) {
+        console.error("Lỗi tải danh mục:", error);
       }
     };
+
     fetchCategories();
   }, []);
+
+  // =====================================================
+  // LOAD POSTS
+  // =====================================================
 
   const fetchPosts = async () => {
     try {
       setLoading(true);
+
       const res = await postService.getPosts({
         keyword,
         category_id: category,
@@ -50,184 +68,554 @@ const PostManagement = () => {
         sortBy: "created_at",
         order: "DESC",
         page,
-        limit
+        limit,
       });
+
       setPosts(res.data.data || []);
       setTotal(res.data.total || 0);
+
       setOpenMenuId(null);
-    } catch (err) {
-      console.error(err);
-      toast.error("Không tải được danh sách bài viết");
+    } catch (error) {
+      console.error(error);
+
+      toast.error("Không tải được danh sách bài viết.");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { setPage(1); }, [keyword, category, status, featured]);
-  useEffect(() => { fetchPosts(); }, [keyword, category, status, featured, page, limit]);
+  useEffect(() => {
+    setPage(1);
+  }, [keyword, category, status, featured]);
 
-  // 👇 Hàm mở Modal
+  useEffect(() => {
+    fetchPosts();
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyword, category, status, featured, page, limit]);
+
+  // =====================================================
+  // DELETE
+  // =====================================================
+
   const handleOpenDeleteConfirm = (id) => {
-    setConfirmModal({ isOpen: true, postId: id });
+    setConfirmModal({
+      isOpen: true,
+      postId: id,
+    });
   };
 
-  // 👇 Hàm thực hiện xóa (sau khi bấm nút Xóa đỏ)
+  const handleCloseDeleteConfirm = () => {
+    setConfirmModal({
+      isOpen: false,
+      postId: null,
+    });
+  };
+
   const handleConfirmDelete = async () => {
     const id = confirmModal.postId;
-    setConfirmModal({ isOpen: false, postId: null });
-    
+
+    if (!id) return;
+
     try {
       await postService.deletePost(id);
-      toast.success("Xóa bài viết thành công!");
-      fetchPosts();
-    } catch (err) {
-      console.error(err);
-      toast.error("Xóa thất bại!");
+
+      toast.success("Xóa bài viết thành công.");
+
+      setConfirmModal({
+        isOpen: false,
+        postId: null,
+      });
+
+      await fetchPosts();
+    } catch (error) {
+      console.error(error);
+
+      toast.error(error?.response?.data?.message || "Không thể xóa bài viết.");
     }
   };
 
-  // 👇 Hàm đóng Modal (khi bấm Hủy)
-  const handleCloseDeleteConfirm = () => {
-    setConfirmModal({ isOpen: false, postId: null });
-  };
+  // =====================================================
+  // FORMAT
+  // =====================================================
 
   const formatDate = (date) => {
-    if (!date) return "";
-    return new Date(date).toLocaleDateString("vi-VN");
+    if (!date) return "--";
+
+    const parsed = new Date(date);
+
+    if (Number.isNaN(parsed.getTime())) {
+      return "--";
+    }
+
+    return parsed.toLocaleDateString("vi-VN");
   };
 
-  const totalPages = Math.ceil(total / limit) || 1;
+  // =====================================================
+  // PAGINATION
+  // =====================================================
+
+  const totalPages = Math.max(Math.ceil(total / limit), 1);
+
   const startResult = total === 0 ? 0 : (page - 1) * limit + 1;
+
   const endResult = Math.min(page * limit, total);
 
   const getPageNumbers = () => {
-    const pages = [];
-    const maxVisible = 5;
-    let startPage = Math.max(1, page - 2);
-    let endPage = Math.min(totalPages, startPage + maxVisible - 1);
-    if (endPage - startPage < maxVisible - 1) startPage = Math.max(1, endPage - maxVisible + 1);
-    for (let i = startPage; i <= endPage; i++) pages.push(i);
+    if (totalPages <= 7) {
+      return Array.from(
+        {
+          length: totalPages,
+        },
+        (_, index) => index + 1,
+      );
+    }
+
+    const pages = [1];
+
+    if (page > 4) {
+      pages.push("...");
+    }
+
+    const start = Math.max(2, page - 1);
+
+    const end = Math.min(totalPages - 1, page + 1);
+
+    for (let current = start; current <= end; current += 1) {
+      pages.push(current);
+    }
+
+    if (page < totalPages - 3) {
+      pages.push("...");
+    }
+
+    pages.push(totalPages);
+
     return pages;
   };
 
   return (
-    <div className="admin-post-management">
-      
-      {/* 👇 MODAL XÁC NHẬN XÓA (Tích hợp trực tiếp ở đây) */}
+    <div className="post-admin-page">
+      {/* =================================================
+          DELETE CONFIRM
+      ================================================= */}
+
       {confirmModal.isOpen && (
-        <div className="custom-confirm-overlay" onClick={handleCloseDeleteConfirm}>
-          <div className="custom-confirm-box" onClick={(e) => e.stopPropagation()}>
-            {/* Icon thùng rác */}
-            <div className="custom-confirm-icon">
-              <i className="bi bi-trash3"></i>
+        <div
+          className="post-confirm-overlay"
+          onMouseDown={handleCloseDeleteConfirm}
+        >
+          <div
+            className="post-confirm-dialog"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="post-confirm-icon">
+              <i className="bi bi-trash3" />
             </div>
-            <h3 className="custom-confirm-title">Xóa bài viết</h3>
-            <p className="custom-confirm-message">Bạn có chắc muốn xóa bài viết này?</p>
-            <div className="custom-confirm-actions">
-              <button className="custom-btn-cancel" onClick={handleCloseDeleteConfirm}>
+
+            <span className="post-confirm-kicker">Xác nhận thao tác</span>
+
+            <h2>Xóa bài viết</h2>
+
+            <p>
+              Bài viết sẽ bị xóa khỏi hệ thống. Bạn có chắc chắn muốn tiếp tục?
+            </p>
+
+            <div className="post-confirm-actions">
+              <button
+                type="button"
+                className="post-button post-button-neutral"
+                onClick={handleCloseDeleteConfirm}
+              >
                 Hủy
               </button>
-              <button className="custom-btn-delete" onClick={handleConfirmDelete}>
-                Xóa
+
+              <button
+                type="button"
+                className="post-button post-button-danger"
+                onClick={handleConfirmDelete}
+              >
+                <i className="bi bi-trash3" />
+                Xóa bài viết
               </button>
             </div>
           </div>
         </div>
       )}
 
-      <div className="page-header">
-        <div className="header-title">
-          <h2>Quản lý bài viết</h2>
-          <p>Quản lý tin tức, hướng dẫn Build PC và khuyến mãi.</p>
+      {/* =================================================
+          HEADER
+      ================================================= */}
+
+      <section className="post-page-heading">
+        <div className="post-heading-content">
+          <span className="post-heading-kicker">
+            <i className="bi bi-grid-1x2-fill" />
+            Content Center
+          </span>
+
+          <h1>Quản lý bài viết</h1>
+
+          <p>
+            Quản lý tin tức, hướng dẫn Build PC, nội dung SEO và chương trình
+            khuyến mãi.
+          </p>
         </div>
-        <Link to="/admin/posts/create" className="btn-create-post" style={{ textDecoration: "none" }}>
-          <i className="bi bi-plus-lg"></i> Tạo bài viết mới
+
+        <Link to="/admin/posts/create" className="post-create-button">
+          <i className="bi bi-plus-lg" />
+          <span>Tạo bài viết mới</span>
         </Link>
-      </div>
+      </section>
 
-      <div className="filter-bar">
-        <div className="search-box">
-          <i className="bi bi-search"></i>
-          <input type="text" placeholder="Tìm kiếm..." value={keyword} onChange={(e) => setKeyword(e.target.value)} />
-        </div>
-        <div className="filter-actions">
-          <select className="filter-select" value={category} onChange={(e) => setCategory(e.target.value)}>
-            <option value="">Tất cả danh mục</option>
-            {categoryList.map((cat) => (<option key={cat.id} value={cat.id}>{cat.name}</option>))}
-          </select>
-          <select className="filter-select" value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="">Tất cả trạng thái</option>
-            <option value="1">Đã xuất bản</option>
-            <option value="0">Bản nháp</option>
-          </select>
-          <select className="filter-select" value={featured} onChange={(e) => setFeatured(e.target.value)}>
-            <option value="">Tất cả</option>
-            <option value="1">Nổi bật</option>
-            <option value="0">Không nổi bật</option>
-          </select>
-        </div>
-      </div>
+      {/* =================================================
+          STATS
+      ================================================= */}
 
-      {loading ? (
-        <div style={{ padding: 20 }}>Đang tải dữ liệu...</div>
-      ) : (
-        <>
-          <div className="table-container">
-            <table className="admin-table">
+      <section className="post-overview-grid">
+        <article className="post-overview-card post-overview-card-primary">
+          <div className="post-overview-icon">
+            <i className="bi bi-journal-richtext" />
+          </div>
+
+          <div>
+            <span>Tổng bài viết</span>
+            <strong>{total}</strong>
+            <small>Nội dung trong hệ thống</small>
+          </div>
+        </article>
+
+        <article className="post-overview-card post-overview-card-green">
+          <div className="post-overview-icon">
+            <i className="bi bi-broadcast-pin" />
+          </div>
+
+          <div>
+            <span>Trang hiện tại</span>
+            <strong>{page}</strong>
+            <small>Tổng {totalPages} trang dữ liệu</small>
+          </div>
+        </article>
+
+        <article className="post-overview-card post-overview-card-blue">
+          <div className="post-overview-icon">
+            <i className="bi bi-list-ul" />
+          </div>
+
+          <div>
+            <span>Hiển thị</span>
+            <strong>{posts.length}</strong>
+            <small>{limit} bài viết mỗi trang</small>
+          </div>
+        </article>
+
+        <article className="post-overview-card post-overview-card-yellow">
+          <div className="post-overview-icon">
+            <i className="bi bi-stars" />
+          </div>
+
+          <div>
+            <span>Nổi bật</span>
+
+            <strong>
+              {posts.filter((post) => Number(post.is_featured) === 1).length}
+            </strong>
+
+            <small>Trong trang hiện tại</small>
+          </div>
+        </article>
+      </section>
+
+      {/* =================================================
+          CONTENT CARD
+      ================================================= */}
+
+      <section className="post-content-card">
+        <div className="post-content-header">
+          <div>
+            <span className="post-section-kicker">Danh sách nội dung</span>
+
+            <h2>Bài viết</h2>
+
+            <p>Tìm kiếm, lọc và quản lý toàn bộ bài viết trên website.</p>
+          </div>
+
+          <div className="post-result-chip">
+            <i className="bi bi-file-earmark-text" />
+
+            <span>{total} bài viết</span>
+          </div>
+        </div>
+
+        {/* =================================================
+            FILTER
+        ================================================= */}
+
+        <div className="post-filter-panel">
+          <label className="post-search-field">
+            <i className="bi bi-search" />
+
+            <input
+              type="search"
+              placeholder="Tìm theo tiêu đề bài viết..."
+              value={keyword}
+              onChange={(event) => setKeyword(event.target.value)}
+            />
+
+            {keyword && (
+              <button
+                type="button"
+                onClick={() => setKeyword("")}
+                aria-label="Xóa từ khóa"
+              >
+                <i className="bi bi-x-lg" />
+              </button>
+            )}
+          </label>
+
+          <div className="post-filter-select-wrap">
+            <i className="bi bi-folder2-open" />
+
+            <select
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+            >
+              <option value="">Tất cả danh mục</option>
+
+              {categoryList.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="post-filter-select-wrap">
+            <i className="bi bi-toggle2-on" />
+
+            <select
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+            >
+              <option value="">Tất cả trạng thái</option>
+
+              <option value="1">Đã xuất bản</option>
+
+              <option value="0">Bản nháp</option>
+            </select>
+          </div>
+
+          <div className="post-filter-select-wrap">
+            <i className="bi bi-star" />
+
+            <select
+              value={featured}
+              onChange={(event) => setFeatured(event.target.value)}
+            >
+              <option value="">Tất cả bài viết</option>
+
+              <option value="1">Nổi bật</option>
+
+              <option value="0">Không nổi bật</option>
+            </select>
+          </div>
+
+          <div className="post-filter-select-wrap post-limit-select">
+            <i className="bi bi-layout-text-window" />
+
+            <select
+              value={limit}
+              onChange={(event) => {
+                setLimit(Number(event.target.value));
+
+                setPage(1);
+              }}
+            >
+              <option value={5}>5 / trang</option>
+
+              <option value={10}>10 / trang</option>
+
+              <option value={20}>20 / trang</option>
+            </select>
+          </div>
+        </div>
+
+        {/* =================================================
+            TABLE
+        ================================================= */}
+
+        <div className="post-table-shell">
+          <div className="post-table-scroll">
+            <table className="post-data-table">
               <thead>
                 <tr>
-                  <th style={{ width: 'auto', minWidth: '250px' }}>Tiêu đề</th>
-                  <th style={{ width: '120px' }}>Tác giả</th>
-                  <th style={{ width: '140px' }}>Danh mục</th>
-                  <th style={{ width: '110px' }}>Ngày đăng</th>
-                  <th style={{ width: '80px', textAlign: 'center' }}>Lượt xem</th>
-                  <th style={{ width: '100px', textAlign: 'center' }}>Nổi bật</th>
-                  <th style={{ width: '120px', textAlign: 'center' }}>Trạng thái</th>
-                  <th style={{ width: '80px', textAlign: 'center' }}>Thao tác</th>
+                  <th className="post-column-content">Bài viết</th>
+
+                  <th>Tác giả</th>
+                  <th>Danh mục</th>
+                  <th>Ngày đăng</th>
+                  <th className="post-text-center">Lượt xem</th>
+
+                  <th className="post-text-center">Nổi bật</th>
+
+                  <th className="post-text-center">Trạng thái</th>
+
+                  <th className="post-text-center">Thao tác</th>
                 </tr>
               </thead>
+
               <tbody>
-                {posts.length === 0 ? (
-                  <tr><td colSpan="8" style={{ textAlign: "center" }}>Không có bài viết.</td></tr>
+                {loading ? (
+                  <tr>
+                    <td colSpan="8" className="post-table-state">
+                      <div className="post-loading-state">
+                        <span className="post-loader" />
+
+                        <strong>Đang tải dữ liệu</strong>
+
+                        <p>Hệ thống đang đồng bộ danh sách bài viết...</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : posts.length === 0 ? (
+                  <tr>
+                    <td colSpan="8" className="post-table-state">
+                      <div className="post-empty-state">
+                        <div className="post-empty-icon">
+                          <i className="bi bi-file-earmark-richtext" />
+                        </div>
+
+                        <strong>Không tìm thấy bài viết</strong>
+
+                        <p>
+                          Hãy thử thay đổi từ khóa hoặc bộ lọc đang sử dụng.
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
                 ) : (
                   posts.map((post) => (
                     <tr key={post.id}>
                       <td>
-                        <div className="post-info">
-                          <img src={post.thumbnail ? `http://localhost:5000${post.thumbnail}` : NO_IMAGE_SVG} alt={post.title} className="post-thumb" onError={(e) => e.target.src = NO_IMAGE_SVG} />
-                          <div className="post-meta">
-                            <h4>{post.title}</h4>
-                            <span><i className="bi bi-link-45deg"></i>{post.slug}</span>
+                        <div className="post-identity">
+                          <img
+                            src={
+                              post.thumbnail
+                                ? `http://localhost:5000${post.thumbnail}`
+                                : NO_IMAGE_SVG
+                            }
+                            alt={post.title || "Bài viết"}
+                            className="post-list-thumbnail"
+                            onError={(event) => {
+                              event.currentTarget.onerror = null;
+
+                              event.currentTarget.src = NO_IMAGE_SVG;
+                            }}
+                          />
+
+                          <div className="post-identity-content">
+                            <strong title={post.title}>{post.title}</strong>
+
+                            <span title={post.slug}>
+                              <i className="bi bi-link-45deg" />
+
+                              {post.slug}
+                            </span>
                           </div>
                         </div>
                       </td>
-                      <td>{post.author}</td>
-                      <td><span className="category-tag">{post.category_name}</span></td>
-                      <td>{formatDate(post.created_at)}</td>
-                      <td style={{ textAlign: 'center' }}>{post.views || 0}</td>
-                      <td style={{ textAlign: 'center' }}>
-                        {post.is_featured ? (
-                          <span className="featured-badge" style={{ color: "#f59e0b", fontWeight: "bold" }}><i className="bi bi-star-fill" style={{ marginRight: "4px" }}></i>Nổi bật</span>
-                        ) : (<span style={{ color: "#aaa" }}>—</span>)}
+
+                      <td>
+                        <span className="post-author">
+                          <i className="bi bi-person-circle" />
+                          {post.author || "Không rõ"}
+                        </span>
                       </td>
-                      <td style={{ textAlign: 'center' }}><span className={`status-badge ${Number(post.status) === 1 ? "published" : "draft"}`}>{Number(post.status) === 1 ? "Đã xuất bản" : "Bản nháp"}</span></td>
-                      
-                      <td style={{ textAlign: 'center' }}>
-                        <div className="action-dropdown">
-                          <button 
-                            className="action-trigger" 
-                            onClick={() => setOpenMenuId(openMenuId === post.id ? null : post.id)}
+
+                      <td>
+                        <span className="post-category-pill">
+                          {post.category_name}
+                        </span>
+                      </td>
+
+                      <td>
+                        <span className="post-date">
+                          {formatDate(post.created_at)}
+                        </span>
+                      </td>
+
+                      <td className="post-text-center">
+                        <span className="post-view-count">
+                          <i className="bi bi-eye" />
+                          {post.views || 0}
+                        </span>
+                      </td>
+
+                      <td className="post-text-center">
+                        {Number(post.is_featured) === 1 ? (
+                          <span className="post-featured-pill">
+                            <i className="bi bi-star-fill" />
+                            Nổi bật
+                          </span>
+                        ) : (
+                          <span className="post-no-featured">—</span>
+                        )}
+                      </td>
+
+                      <td className="post-text-center">
+                        <span
+                          className={
+                            Number(post.status) === 1
+                              ? "post-status-pill post-status-published"
+                              : "post-status-pill post-status-draft"
+                          }
+                        >
+                          <span className="post-status-dot" />
+
+                          {Number(post.status) === 1
+                            ? "Đã xuất bản"
+                            : "Bản nháp"}
+                        </span>
+                      </td>
+
+                      <td className="post-text-center">
+                        <div className="post-row-action">
+                          <button
+                            type="button"
+                            className="post-action-trigger"
+                            onClick={() =>
+                              setOpenMenuId(
+                                openMenuId === post.id ? null : post.id,
+                              )
+                            }
+                            aria-label="Mở menu thao tác"
                           >
-                            <i className="bi bi-three-dots-vertical"></i>
+                            <i className="bi bi-three-dots-vertical" />
                           </button>
-                          
+
                           {openMenuId === post.id && (
-                            <div className="action-menu">
-                              <Link to={`/admin/posts/edit/${post.id}`} className="action-item">
-                                <i className="bi bi-pencil"></i> Sửa
+                            <div className="post-action-menu">
+                              <Link
+                                to={`/admin/posts/edit/${post.id}`}
+                                className="post-action-menu-item"
+                              >
+                                <span className="post-action-menu-icon post-action-menu-icon-edit">
+                                  <i className="bi bi-pencil-square" />
+                                </span>
+
+                                <span>Chỉnh sửa</span>
                               </Link>
-                              <button className="action-item delete-item" onClick={() => handleOpenDeleteConfirm(post.id)}>
-                                <i className="bi bi-trash"></i> Xóa
+
+                              <button
+                                type="button"
+                                className="post-action-menu-item post-action-menu-delete"
+                                onClick={() => handleOpenDeleteConfirm(post.id)}
+                              >
+                                <span className="post-action-menu-icon post-action-menu-icon-delete">
+                                  <i className="bi bi-trash3" />
+                                </span>
+
+                                <span>Xóa bài viết</span>
                               </button>
                             </div>
                           )}
@@ -239,25 +627,91 @@ const PostManagement = () => {
               </tbody>
             </table>
           </div>
+        </div>
 
-                           {/* 👇 SỬA LẠI THÀNH DÒNG NÀY: Luôn hiện phân trang khi có bài viết */}
-          {total > 0 && (
-            <div className="pagination-wrapper">
-              <div className="pagination-info">Hiển thị {startResult} - {endResult} / {total} sản phẩm</div>
-              <div className="pagination-controls">
-                <button className="page-btn" disabled={page === 1} onClick={() => setPage(1)}>«</button>
-                <button className="page-btn" disabled={page === 1} onClick={() => setPage(page - 1)}>‹</button>
-                {getPageNumbers().map((p) => (
-                  <button key={p} className={`page-btn ${p === page ? 'active' : ''}`} onClick={() => setPage(p)}>{p}</button>
-                ))}
-                <button className="page-btn" disabled={page === totalPages} onClick={() => setPage(page + 1)}>›</button>
-                <button className="page-btn" disabled={page === totalPages} onClick={() => setPage(totalPages)}>»</button>
-              </div>
+        {/* =================================================
+            PAGINATION
+        ================================================= */}
+
+        {total > 0 && (
+          <div className="post-pagination">
+            <div className="post-pagination-info">
+              Hiển thị <strong>{startResult}</strong> -{" "}
+              <strong>{endResult}</strong> trong tổng <strong>{total}</strong>{" "}
+              bài viết
             </div>
-          )}
-        </>
-      )}
+
+            <div className="post-pagination-controls">
+              <button
+                type="button"
+                className="post-page-button"
+                disabled={page === 1}
+                onClick={() => setPage(1)}
+                title="Trang đầu"
+              >
+                <i className="bi bi-chevron-double-left" />
+              </button>
+
+              <button
+                type="button"
+                className="post-page-button"
+                disabled={page === 1}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                title="Trang trước"
+              >
+                <i className="bi bi-chevron-left" />
+              </button>
+
+              <div className="post-page-numbers">
+                {getPageNumbers().map((pageNumber, index) =>
+                  pageNumber === "..." ? (
+                    <span key={`dots-${index}`} className="post-page-dots">
+                      ...
+                    </span>
+                  ) : (
+                    <button
+                      key={pageNumber}
+                      type="button"
+                      className={
+                        page === pageNumber
+                          ? "post-page-number post-page-number-active"
+                          : "post-page-number"
+                      }
+                      onClick={() => setPage(pageNumber)}
+                    >
+                      {pageNumber}
+                    </button>
+                  ),
+                )}
+              </div>
+
+              <button
+                type="button"
+                className="post-page-button"
+                disabled={page === totalPages}
+                onClick={() =>
+                  setPage((current) => Math.min(totalPages, current + 1))
+                }
+                title="Trang sau"
+              >
+                <i className="bi bi-chevron-right" />
+              </button>
+
+              <button
+                type="button"
+                className="post-page-button"
+                disabled={page === totalPages}
+                onClick={() => setPage(totalPages)}
+                title="Trang cuối"
+              >
+                <i className="bi bi-chevron-double-right" />
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
     </div>
   );
-};
+}
+
 export default PostManagement;

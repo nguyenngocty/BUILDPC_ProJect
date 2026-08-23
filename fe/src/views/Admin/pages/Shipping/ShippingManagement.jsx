@@ -14,6 +14,7 @@ const DEFAULT_FORM = {
 
 const ShippingManagement = () => {
   const [shippingRates, setShippingRates] = useState([]);
+
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -37,6 +38,7 @@ const ShippingManagement = () => {
   // =====================================================
   // FORMAT MONEY
   // =====================================================
+
   const formatMoney = (value) => {
     return `${Number(value || 0).toLocaleString("vi-VN")}đ`;
   };
@@ -44,6 +46,7 @@ const ShippingManagement = () => {
   // =====================================================
   // ERROR
   // =====================================================
+
   const getErrorMessage = (error, fallback = "Có lỗi xảy ra") => {
     return error?.response?.data?.message || error?.message || fallback;
   };
@@ -51,6 +54,7 @@ const ShippingManagement = () => {
   // =====================================================
   // LOAD DATA
   // =====================================================
+
   const fetchShippingRates = async (targetPage = page) => {
     try {
       setLoading(true);
@@ -89,6 +93,7 @@ const ShippingManagement = () => {
   // =====================================================
   // INITIAL LOAD
   // =====================================================
+
   useEffect(() => {
     fetchShippingRates(page);
 
@@ -98,6 +103,7 @@ const ShippingManagement = () => {
   // =====================================================
   // FORM CHANGE
   // =====================================================
+
   const handleFormChange = (event) => {
     const { name, value } = event.target;
 
@@ -110,6 +116,7 @@ const ShippingManagement = () => {
   // =====================================================
   // PROVINCE CODE
   // =====================================================
+
   const handleProvinceCodeChange = (event) => {
     const value = event.target.value
       .toUpperCase()
@@ -125,6 +132,7 @@ const ShippingManagement = () => {
   // =====================================================
   // RESET FORM
   // =====================================================
+
   const resetForm = () => {
     setForm(DEFAULT_FORM);
     setEditingId(null);
@@ -133,6 +141,7 @@ const ShippingManagement = () => {
   // =====================================================
   // VALIDATE
   // =====================================================
+
   const validateForm = () => {
     if (!form.province_code.trim()) {
       toast.error("Vui lòng nhập mã tỉnh/thành");
@@ -176,6 +185,7 @@ const ShippingManagement = () => {
   // =====================================================
   // CREATE / UPDATE
   // =====================================================
+
   const handleSubmit = async (event) => {
     event.preventDefault();
 
@@ -229,6 +239,7 @@ const ShippingManagement = () => {
   // =====================================================
   // EDIT
   // =====================================================
+
   const handleEdit = (item) => {
     setEditingId(item.id);
 
@@ -253,6 +264,7 @@ const ShippingManagement = () => {
   // =====================================================
   // DELETE
   // =====================================================
+
   const handleDelete = async (item) => {
     const confirmed = window.confirm(
       `Bạn có chắc muốn xóa phí vận chuyển của "${item.province_name}" không?`,
@@ -286,6 +298,7 @@ const ShippingManagement = () => {
   // =====================================================
   // STATUS
   // =====================================================
+
   const handleToggleStatus = async (item) => {
     const nextStatus = Number(item.status) === 1 ? 0 : 1;
 
@@ -311,11 +324,13 @@ const ShippingManagement = () => {
   // =====================================================
   // SEARCH
   // =====================================================
+
   const handleSearch = async (event) => {
     event.preventDefault();
 
     if (page !== 1) {
       setPage(1);
+
       return;
     }
 
@@ -327,6 +342,7 @@ const ShippingManagement = () => {
 
     if (page !== 1) {
       setPage(1);
+
       return;
     }
 
@@ -365,6 +381,7 @@ const ShippingManagement = () => {
   // =====================================================
   // PAGINATION
   // =====================================================
+
   const changePage = (nextPage) => {
     if (nextPage < 1 || nextPage > pagination.totalPages || nextPage === page) {
       return;
@@ -373,44 +390,59 @@ const ShippingManagement = () => {
     setPage(nextPage);
   };
 
+  // =====================================================
+  // RENDER
+  // =====================================================
+
   return (
-    <div className="shipping-admin-page">
+    <div className="adm-shipping-page">
       {/* =================================================
           HEADER
-      ================================================= */}
-      <div className="shipping-page-header">
-        <div>
-          <span className="shipping-page-kicker">
-            <i className="bi bi-truck" />
-            Vận chuyển
-          </span>
+          ================================================= */}
 
-          <h1>Quản lý vận chuyển</h1>
+      <section className="adm-shipping-header">
+        <div className="adm-shipping-header__content">
+          <span className="adm-shipping-header__kicker">Vận chuyển</span>
 
-          <p>
+          <h1 className="adm-shipping-header__title">
+            <span className="adm-shipping-header__title-icon">
+              <i className="bi bi-truck" />
+            </span>
+
+            <span>Quản lý vận chuyển</span>
+          </h1>
+
+          <p className="adm-shipping-header__description">
             Thiết lập phí giao hàng và mức miễn phí vận chuyển theo từng tỉnh /
             thành phố.
           </p>
         </div>
 
-        <div className="shipping-total-card">
-          <span>Tổng khu vực</span>
+        <div className="adm-shipping-total-card">
+          <span className="adm-shipping-total-card__icon">
+            <i className="bi bi-geo-alt" />
+          </span>
 
-          <strong>{pagination.total}</strong>
+          <div>
+            <strong>{pagination.total}</strong>
+
+            <span>Tổng khu vực</span>
+          </div>
         </div>
-      </div>
+      </section>
 
       {/* =================================================
           ADD / EDIT
-      ================================================= */}
-      <section className="shipping-card">
-        <div className="shipping-card-header">
-          <div className="shipping-card-title">
-            <div className="shipping-title-icon">
+          ================================================= */}
+
+      <section className="adm-shipping-panel">
+        <div className="adm-shipping-panel__header">
+          <div className="adm-shipping-panel__heading">
+            <span className="adm-shipping-panel__icon">
               <i
                 className={editingId ? "bi bi-pencil-square" : "bi bi-plus-lg"}
               />
-            </div>
+            </span>
 
             <div>
               <h2>
@@ -426,28 +458,32 @@ const ShippingManagement = () => {
           {editingId && (
             <button
               type="button"
-              className="shipping-btn shipping-btn-light"
+              className="adm-shipping-button adm-shipping-button--secondary"
               onClick={resetForm}
               disabled={saving}
             >
               <i className="bi bi-x-lg" />
-              Hủy chỉnh sửa
+
+              <span>Hủy chỉnh sửa</span>
             </button>
           )}
         </div>
 
-        <form className="shipping-form" onSubmit={handleSubmit}>
-          <div className="shipping-form-grid">
-            <div className="shipping-field">
-              <label>
+        <form className="adm-shipping-form" onSubmit={handleSubmit}>
+          <div className="adm-shipping-form__grid">
+            {/* PROVINCE CODE */}
+
+            <div className="adm-shipping-field">
+              <label className="adm-shipping-field__label">
                 Mã tỉnh / thành
                 <span>*</span>
               </label>
 
-              <div className="shipping-input-wrap">
-                <i className="bi bi-upc-scan" />
+              <div className="adm-shipping-input-wrap">
+                <i className="bi bi-upc-scan adm-shipping-input-wrap__icon" />
 
                 <input
+                  className="adm-shipping-input"
                   type="text"
                   name="province_code"
                   placeholder="VD: CAN_THO"
@@ -458,19 +494,24 @@ const ShippingManagement = () => {
                 />
               </div>
 
-              <small>Ví dụ: CAN_THO, HA_NOI, DA_NANG.</small>
+              <small className="adm-shipping-field__help">
+                Ví dụ: CAN_THO, HA_NOI, DA_NANG.
+              </small>
             </div>
 
-            <div className="shipping-field">
-              <label>
+            {/* PROVINCE NAME */}
+
+            <div className="adm-shipping-field">
+              <label className="adm-shipping-field__label">
                 Tỉnh / Thành phố
                 <span>*</span>
               </label>
 
-              <div className="shipping-input-wrap">
-                <i className="bi bi-geo-alt" />
+              <div className="adm-shipping-input-wrap">
+                <i className="bi bi-geo-alt adm-shipping-input-wrap__icon" />
 
                 <input
+                  className="adm-shipping-input"
                   type="text"
                   name="province_name"
                   placeholder="VD: Cần Thơ"
@@ -482,16 +523,19 @@ const ShippingManagement = () => {
               </div>
             </div>
 
-            <div className="shipping-field">
-              <label>
+            {/* SHIPPING FEE */}
+
+            <div className="adm-shipping-field">
+              <label className="adm-shipping-field__label">
                 Phí vận chuyển
                 <span>*</span>
               </label>
 
-              <div className="shipping-input-wrap shipping-money-input">
-                <i className="bi bi-cash-coin" />
+              <div className="adm-shipping-input-wrap">
+                <i className="bi bi-cash-coin adm-shipping-input-wrap__icon" />
 
                 <input
+                  className="adm-shipping-input adm-shipping-input--money"
                   type="number"
                   name="shipping_fee"
                   placeholder="20000"
@@ -502,17 +546,20 @@ const ShippingManagement = () => {
                   disabled={saving}
                 />
 
-                <b>đ</b>
+                <span className="adm-shipping-input-wrap__suffix">đ</span>
               </div>
             </div>
 
-            <div className="shipping-field">
-              <label>Miễn phí từ</label>
+            {/* FREE SHIPPING */}
 
-              <div className="shipping-input-wrap shipping-money-input">
-                <i className="bi bi-gift" />
+            <div className="adm-shipping-field">
+              <label className="adm-shipping-field__label">Miễn phí từ</label>
+
+              <div className="adm-shipping-input-wrap">
+                <i className="bi bi-gift adm-shipping-input-wrap__icon" />
 
                 <input
+                  className="adm-shipping-input adm-shipping-input--money"
                   type="number"
                   name="free_shipping_min"
                   placeholder="5000000"
@@ -523,19 +570,24 @@ const ShippingManagement = () => {
                   disabled={saving}
                 />
 
-                <b>đ</b>
+                <span className="adm-shipping-input-wrap__suffix">đ</span>
               </div>
 
-              <small>Để trống nếu không áp dụng miễn phí ship.</small>
+              <small className="adm-shipping-field__help">
+                Để trống nếu không áp dụng miễn phí ship.
+              </small>
             </div>
 
-            <div className="shipping-field">
-              <label>Trạng thái</label>
+            {/* STATUS */}
 
-              <div className="shipping-input-wrap">
-                <i className="bi bi-toggle-on" />
+            <div className="adm-shipping-field">
+              <label className="adm-shipping-field__label">Trạng thái</label>
+
+              <div className="adm-shipping-input-wrap">
+                <i className="bi bi-toggle-on adm-shipping-input-wrap__icon" />
 
                 <select
+                  className="adm-shipping-select"
                   name="status"
                   value={form.status}
                   onChange={handleFormChange}
@@ -549,26 +601,29 @@ const ShippingManagement = () => {
             </div>
           </div>
 
-          <div className="shipping-form-actions">
+          <div className="adm-shipping-form__actions">
             <button
               type="submit"
-              className="shipping-btn shipping-btn-primary"
+              className="adm-shipping-button adm-shipping-button--primary"
               disabled={saving}
             >
               {saving ? (
                 <>
-                  <span className="spinner-border spinner-border-sm" />
-                  Đang lưu...
+                  <span className="adm-shipping-spinner adm-shipping-spinner--small" />
+
+                  <span>Đang lưu...</span>
                 </>
               ) : editingId ? (
                 <>
                   <i className="bi bi-check-lg" />
-                  Lưu thay đổi
+
+                  <span>Lưu thay đổi</span>
                 </>
               ) : (
                 <>
                   <i className="bi bi-plus-lg" />
-                  Thêm mới
+
+                  <span>Thêm mới</span>
                 </>
               )}
             </button>
@@ -576,11 +631,13 @@ const ShippingManagement = () => {
             {editingId && (
               <button
                 type="button"
-                className="shipping-btn shipping-btn-light"
+                className="adm-shipping-button adm-shipping-button--secondary"
                 onClick={resetForm}
                 disabled={saving}
               >
-                Hủy
+                <i className="bi bi-x-circle" />
+
+                <span>Hủy</span>
               </button>
             )}
           </div>
@@ -589,96 +646,109 @@ const ShippingManagement = () => {
 
       {/* =================================================
           FILTER
-      ================================================= */}
-      <section className="shipping-card shipping-filter-card">
-        <div className="shipping-filter-title">
-          <i className="bi bi-funnel" />
+          ================================================= */}
 
-          <div>
-            <h2>Tìm kiếm & lọc</h2>
+      <section className="adm-shipping-panel">
+        <div className="adm-shipping-panel__header">
+          <div className="adm-shipping-panel__heading">
+            <span className="adm-shipping-panel__icon adm-shipping-panel__icon--purple">
+              <i className="bi bi-funnel" />
+            </span>
 
-            <p>Tìm nhanh khu vực vận chuyển.</p>
+            <div>
+              <h2>Tìm kiếm & lọc</h2>
+
+              <p>Tìm nhanh khu vực vận chuyển theo tên, mã hoặc trạng thái.</p>
+            </div>
           </div>
         </div>
 
-        <div className="shipping-filter-grid">
-          <form className="shipping-search" onSubmit={handleSearch}>
-            <div className="shipping-search-input">
-              <i className="bi bi-search" />
+        <div className="adm-shipping-panel__body">
+          <div className="adm-shipping-filter">
+            <form className="adm-shipping-search" onSubmit={handleSearch}>
+              <div className="adm-shipping-search__input-wrap">
+                <i className="bi bi-search" />
 
-              <input
-                type="text"
-                placeholder="Tìm theo tên hoặc mã tỉnh/thành..."
-                value={keyword}
-                onChange={(event) => setKeyword(event.target.value)}
-              />
-            </div>
+                <input
+                  type="text"
+                  placeholder="Tìm theo tên hoặc mã tỉnh/thành..."
+                  value={keyword}
+                  onChange={(event) => setKeyword(event.target.value)}
+                />
+              </div>
 
-            <button
-              type="submit"
-              className="shipping-btn shipping-btn-primary"
-              disabled={loading}
-            >
-              Tìm kiếm
-            </button>
-
-            {keyword && (
               <button
-                type="button"
-                className="shipping-btn shipping-btn-light"
-                onClick={handleClearSearch}
+                type="submit"
+                className="adm-shipping-button adm-shipping-button--primary"
                 disabled={loading}
               >
-                Xóa lọc
+                <i className="bi bi-search" />
+
+                <span>Tìm kiếm</span>
               </button>
-            )}
-          </form>
 
-          <div className="shipping-status-filter">
-            <i className="bi bi-sliders" />
+              {keyword && (
+                <button
+                  type="button"
+                  className="adm-shipping-button adm-shipping-button--secondary"
+                  onClick={handleClearSearch}
+                  disabled={loading}
+                >
+                  <i className="bi bi-x-circle" />
 
-            <select
-              value={statusFilter}
-              onChange={(event) => {
-                setStatusFilter(event.target.value);
+                  <span>Xóa lọc</span>
+                </button>
+              )}
+            </form>
 
-                setPage(1);
-              }}
-            >
-              <option value="">Tất cả trạng thái</option>
+            <div className="adm-shipping-filter__status">
+              <i className="bi bi-sliders" />
 
-              <option value="1">Hoạt động</option>
+              <select
+                value={statusFilter}
+                onChange={(event) => {
+                  setStatusFilter(event.target.value);
 
-              <option value="0">Tạm tắt</option>
-            </select>
+                  setPage(1);
+                }}
+              >
+                <option value="">Tất cả trạng thái</option>
+
+                <option value="1">Hoạt động</option>
+
+                <option value="0">Tạm tắt</option>
+              </select>
+            </div>
           </div>
         </div>
       </section>
 
       {/* =================================================
           TABLE
-      ================================================= */}
-      <section className="shipping-card shipping-list-card">
-        <div className="shipping-card-header">
-          <div className="shipping-card-title">
-            <div className="shipping-title-icon shipping-title-icon-blue">
+          ================================================= */}
+
+      <section className="adm-shipping-panel">
+        <div className="adm-shipping-panel__header">
+          <div className="adm-shipping-panel__heading">
+            <span className="adm-shipping-panel__icon adm-shipping-panel__icon--blue">
               <i className="bi bi-list-ul" />
-            </div>
+            </span>
 
             <div>
               <h2>Danh sách phí vận chuyển</h2>
 
-              <p>Quản lý khu vực đang được áp dụng trên hệ thống.</p>
+              <p>Quản lý các khu vực đang được áp dụng trên hệ thống.</p>
             </div>
           </div>
 
-          <span className="shipping-result-count">
+          <span className="adm-shipping-result-count">
+            <i className="bi bi-geo-alt" />
             {pagination.total} khu vực
           </span>
         </div>
 
-        <div className="shipping-table-wrap">
-          <table className="shipping-table">
+        <div className="adm-shipping-table-wrap">
+          <table className="adm-shipping-table">
             <thead>
               <tr>
                 <th>#</th>
@@ -693,16 +763,16 @@ const ShippingManagement = () => {
 
                 <th>Trạng thái</th>
 
-                <th className="shipping-text-right">Thao tác</th>
+                <th>Thao tác</th>
               </tr>
             </thead>
 
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="7" className="shipping-table-state">
-                    <div className="shipping-loading">
-                      <span className="spinner-border" />
+                  <td colSpan="7" className="adm-shipping-table__state">
+                    <div className="adm-shipping-loading">
+                      <span className="adm-shipping-spinner" />
 
                       <strong>Đang tải dữ liệu...</strong>
 
@@ -712,11 +782,11 @@ const ShippingManagement = () => {
                 </tr>
               ) : shippingRates.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="shipping-table-state">
-                    <div className="shipping-empty">
-                      <div className="shipping-empty-icon">
+                  <td colSpan="7" className="adm-shipping-table__state">
+                    <div className="adm-shipping-empty">
+                      <span className="adm-shipping-empty__icon">
                         <i className="bi bi-truck" />
-                      </div>
+                      </span>
 
                       <strong>Chưa có dữ liệu vận chuyển</strong>
 
@@ -726,32 +796,34 @@ const ShippingManagement = () => {
                 </tr>
               ) : (
                 shippingRates.map((item, index) => {
-                  const active = Number(item.status) === 1;
+                  const isActive = Number(item.status) === 1;
 
                   return (
                     <tr key={item.id}>
-                      <td className="shipping-index">
-                        {(pagination.page - 1) * pagination.limit + index + 1}
+                      <td>
+                        <span className="adm-shipping-index">
+                          {(pagination.page - 1) * pagination.limit + index + 1}
+                        </span>
                       </td>
 
                       <td>
-                        <span className="shipping-code">
+                        <span className="adm-shipping-code">
                           {item.province_code}
                         </span>
                       </td>
 
                       <td>
-                        <div className="shipping-province">
-                          <div className="shipping-location-icon">
+                        <div className="adm-shipping-province">
+                          <span className="adm-shipping-province__icon">
                             <i className="bi bi-geo-alt-fill" />
-                          </div>
+                          </span>
 
                           <strong>{item.province_name}</strong>
                         </div>
                       </td>
 
                       <td>
-                        <strong className="shipping-fee">
+                        <strong className="adm-shipping-fee">
                           {formatMoney(item.shipping_fee)}
                         </strong>
                       </td>
@@ -759,16 +831,16 @@ const ShippingManagement = () => {
                       <td>
                         {item.free_shipping_min === null ||
                         item.free_shipping_min === undefined ? (
-                          <span className="shipping-no-free">
+                          <span className="adm-shipping-free adm-shipping-free--none">
                             Không áp dụng
                           </span>
                         ) : Number(item.free_shipping_min) === 0 ? (
-                          <span className="shipping-free-badge">
+                          <span className="adm-shipping-free adm-shipping-free--always">
                             <i className="bi bi-gift-fill" />
                             Luôn miễn phí
                           </span>
                         ) : (
-                          <span className="shipping-free-min">
+                          <span className="adm-shipping-free adm-shipping-free--minimum">
                             {formatMoney(item.free_shipping_min)}
                           </span>
                         )}
@@ -777,55 +849,56 @@ const ShippingManagement = () => {
                       <td>
                         <button
                           type="button"
-                          className={
-                            active
-                              ? "shipping-status shipping-status-active"
-                              : "shipping-status shipping-status-disabled"
-                          }
+                          className={[
+                            "adm-shipping-status",
+                            isActive
+                              ? "adm-shipping-status--active"
+                              : "adm-shipping-status--disabled",
+                          ]
+                            .filter(Boolean)
+                            .join(" ")}
                           onClick={() => handleToggleStatus(item)}
                           disabled={statusUpdatingId === item.id}
                         >
                           {statusUpdatingId === item.id ? (
-                            <span className="spinner-border spinner-border-sm" />
-                          ) : active ? (
-                            <>
-                              <span className="shipping-status-dot" />
-                              Hoạt động
-                            </>
+                            <span className="adm-shipping-spinner adm-shipping-spinner--tiny" />
                           ) : (
                             <>
-                              <span className="shipping-status-dot" />
-                              Tạm tắt
+                              <span className="adm-shipping-status__dot" />
+
+                              <span>{isActive ? "Hoạt động" : "Tạm tắt"}</span>
                             </>
                           )}
                         </button>
                       </td>
 
                       <td>
-                        <div className="shipping-actions">
+                        <div className="adm-shipping-row-actions">
                           <button
                             type="button"
-                            className="shipping-action-btn shipping-edit-btn"
+                            className="adm-shipping-action-button adm-shipping-action-button--edit"
                             onClick={() => handleEdit(item)}
                             title="Chỉnh sửa"
                           >
                             <i className="bi bi-pencil-square" />
-                            Sửa
+
+                            <span>Sửa</span>
                           </button>
 
                           <button
                             type="button"
-                            className="shipping-action-btn shipping-delete-btn"
+                            className="adm-shipping-action-button adm-shipping-action-button--delete"
                             onClick={() => handleDelete(item)}
                             disabled={deletingId === item.id}
                             title="Xóa"
                           >
                             {deletingId === item.id ? (
-                              <span className="spinner-border spinner-border-sm" />
+                              <span className="adm-shipping-spinner adm-shipping-spinner--tiny" />
                             ) : (
                               <>
                                 <i className="bi bi-trash" />
-                                Xóa
+
+                                <span>Xóa</span>
                               </>
                             )}
                           </button>
@@ -841,20 +914,23 @@ const ShippingManagement = () => {
 
         {/* =================================================
             PAGINATION
-        ================================================= */}
+            ================================================= */}
+
         {!loading && pagination.totalPages > 1 && (
-          <div className="shipping-pagination">
-            <div>
+          <div className="adm-shipping-pagination">
+            <div className="adm-shipping-pagination__info">
               Trang <strong>{pagination.page}</strong> /{" "}
               <strong>{pagination.totalPages}</strong>
-              <span>• {pagination.total} khu vực</span>
+              <span>{pagination.total} khu vực</span>
             </div>
 
-            <div className="shipping-pagination-buttons">
+            <div className="adm-shipping-pagination__controls">
               <button
                 type="button"
+                className="adm-shipping-pagination__button"
                 onClick={() => changePage(page - 1)}
                 disabled={page <= 1}
+                aria-label="Trang trước"
               >
                 <i className="bi bi-chevron-left" />
               </button>
@@ -870,7 +946,13 @@ const ShippingManagement = () => {
                     <button
                       key={pageNumber}
                       type="button"
-                      className={page === pageNumber ? "active" : ""}
+                      className={[
+                        "adm-shipping-pagination__button",
+                        page === pageNumber &&
+                          "adm-shipping-pagination__button--current",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
                       onClick={() => changePage(pageNumber)}
                     >
                       {pageNumber}
@@ -881,8 +963,10 @@ const ShippingManagement = () => {
 
               <button
                 type="button"
+                className="adm-shipping-pagination__button"
                 onClick={() => changePage(page + 1)}
                 disabled={page >= pagination.totalPages}
+                aria-label="Trang sau"
               >
                 <i className="bi bi-chevron-right" />
               </button>

@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
+
 import bannerService from "../../../../services/bannerService";
+
 import "./BannerManagement.css";
 
 const IMAGE_BASE_URL = "http://localhost:5000";
@@ -23,8 +25,14 @@ const DEFAULT_FORM = {
   status: 1,
 };
 
+// =========================================================
+// IMAGE
+// =========================================================
+
 const getImageUrl = (imageUrl) => {
-  if (!imageUrl) return "";
+  if (!imageUrl) {
+    return "";
+  }
 
   if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
     return imageUrl;
@@ -33,8 +41,14 @@ const getImageUrl = (imageUrl) => {
   return `${IMAGE_BASE_URL}${imageUrl}`;
 };
 
+// =========================================================
+// DATE
+// =========================================================
+
 const toDateTimeLocal = (value) => {
-  if (!value) return "";
+  if (!value) {
+    return "";
+  }
 
   const date = new Date(value);
 
@@ -43,18 +57,24 @@ const toDateTimeLocal = (value) => {
   }
 
   const offset = date.getTimezoneOffset();
+
   const localDate = new Date(date.getTime() - offset * 60 * 1000);
 
   return localDate.toISOString().slice(0, 16);
 };
 
 const formatDateForApi = (value) => {
-  if (!value) return "";
+  if (!value) {
+    return "";
+  }
+
   return `${value.replace("T", " ")}:00`;
 };
 
 const formatDateTime = (value) => {
-  if (!value) return "Không giới hạn";
+  if (!value) {
+    return "Không giới hạn";
+  }
 
   const date = new Date(value);
 
@@ -65,8 +85,14 @@ const formatDateTime = (value) => {
   return date.toLocaleString("vi-VN");
 };
 
+// =========================================================
+// LINK
+// =========================================================
+
 const isValidLink = (link = "") => {
-  if (!link.trim()) return true;
+  if (!link.trim()) {
+    return true;
+  }
 
   return (
     link.startsWith("/") ||
@@ -75,39 +101,51 @@ const isValidLink = (link = "") => {
   );
 };
 
-const errorTextStyle = {
-  color: "#ef233c",
-  fontSize: "12px",
-  fontWeight: 700,
-  marginTop: "4px",
-  display: "block",
-};
+// =========================================================
+// POSITION
+// =========================================================
 
-const positionBadgeStyle = (position) => {
+const getPositionMeta = (position) => {
   if (position === "BLOG") {
     return {
-      background: "#dbeafe",
-      color: "#1d4ed8",
-      border: "1px solid rgba(37, 99, 235, 0.25)",
+      type: "blog",
+      icon: "bi-file-earmark-text",
+      label: "Trang Blog",
     };
   }
 
   return {
-    background: "#dcfce7",
-    color: "#15803d",
-    border: "1px solid rgba(22, 163, 74, 0.25)",
+    type: "home",
+    icon: "bi-house",
+    label: "Trang chủ",
   };
 };
 
+// =========================================================
+// COMPONENT
+// =========================================================
+
 const BannerManagement = () => {
   const [banners, setBanners] = useState([]);
+
   const [keyword, setKeyword] = useState("");
+
   const [status, setStatus] = useState("");
+
   const [positionFilter, setPositionFilter] = useState("");
+
   const [loading, setLoading] = useState(false);
 
+  const [saving, setSaving] = useState(false);
+
+  const [deletingId, setDeletingId] = useState(null);
+
+  const [statusUpdatingId, setStatusUpdatingId] = useState(null);
+
   const [page, setPage] = useState(1);
+
   const [limit, setLimit] = useState(5);
+
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 5,
@@ -116,11 +154,22 @@ const BannerManagement = () => {
   });
 
   const [editingBanner, setEditingBanner] = useState(null);
+
   const [detailBanner, setDetailBanner] = useState(null);
+
   const [errors, setErrors] = useState({});
+
   const [toast, setToast] = useState(null);
+
   const [fileInputKey, setFileInputKey] = useState(Date.now());
-  const [form, setForm] = useState({ ...DEFAULT_FORM });
+
+  const [form, setForm] = useState({
+    ...DEFAULT_FORM,
+  });
+
+  // =====================================================
+  // TOAST
+  // =====================================================
 
   const showToast = (type, message) => {
     setToast({
@@ -128,29 +177,39 @@ const BannerManagement = () => {
       message,
     });
 
-    setTimeout(() => {
+    window.setTimeout(() => {
       setToast(null);
     }, 3000);
   };
 
-  const getInputStyle = (fieldName) => {
-    if (!errors[fieldName]) return {};
+  // =====================================================
+  // FORM CLASS
+  // =====================================================
 
-    return {
-      borderColor: "#ef233c",
-      boxShadow: "0 0 0 4px rgba(239, 35, 60, 0.12)",
-    };
+  const getFieldClass = (fieldName, baseClass = "adm-banner-input") => {
+    return [baseClass, errors[fieldName] && `${baseClass}--error`]
+      .filter(Boolean)
+      .join(" ");
   };
+
+  // =====================================================
+  // KEYWORD
+  // =====================================================
 
   const normalizeKeyword = (value = "") => {
     return value.toLowerCase().replace(/\s+/g, "");
   };
+
+  // =====================================================
+  // FETCH
+  // =====================================================
 
   const fetchBanners = async (customFilters = {}) => {
     try {
       setLoading(true);
 
       const nextPage = customFilters.page ?? page;
+
       const nextLimit = customFilters.limit ?? limit;
 
       const filters = {
@@ -158,25 +217,32 @@ const BannerManagement = () => {
           customFilters.keyword !== undefined
             ? normalizeKeyword(customFilters.keyword)
             : normalizeKeyword(keyword),
+
         status:
           customFilters.status !== undefined ? customFilters.status : status,
+
         position:
           customFilters.position !== undefined
             ? customFilters.position
             : positionFilter,
+
         page: nextPage,
         limit: nextLimit,
       };
 
       const res = await bannerService.getAll(filters);
 
-      setBanners(res.data.data || []);
+      const responseData = res?.data || {};
+
+      setBanners(responseData.data || []);
 
       setPagination(
-        res.data.pagination || {
+        responseData.pagination || {
           page: nextPage,
           limit: nextLimit,
-          total: res.data.data?.length || 0,
+
+          total: responseData.data?.length || 0,
+
           totalPages: 1,
         },
       );
@@ -185,6 +251,7 @@ const BannerManagement = () => {
       setLimit(nextLimit);
     } catch (error) {
       console.error(error);
+
       showToast(
         "error",
         error.response?.data?.message || "Lỗi lấy danh sách banner",
@@ -194,6 +261,10 @@ const BannerManagement = () => {
     }
   };
 
+  // =====================================================
+  // INITIAL LOAD
+  // =====================================================
+
   useEffect(() => {
     fetchBanners({
       keyword: "",
@@ -202,15 +273,29 @@ const BannerManagement = () => {
       page: 1,
       limit: 5,
     });
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // =====================================================
+  // RESET FORM
+  // =====================================================
+
   const resetForm = () => {
     setEditingBanner(null);
+
     setErrors({});
+
     setFileInputKey(Date.now());
-    setForm({ ...DEFAULT_FORM });
+
+    setForm({
+      ...DEFAULT_FORM,
+    });
   };
+
+  // =====================================================
+  // RESET FILTER
+  // =====================================================
 
   const handleResetFilter = () => {
     setKeyword("");
@@ -227,8 +312,14 @@ const BannerManagement = () => {
     });
   };
 
+  // =====================================================
+  // PAGINATION
+  // =====================================================
+
   const handleChangePage = (newPage) => {
-    if (newPage < 1 || newPage > pagination.totalPages) return;
+    if (newPage < 1 || newPage > pagination.totalPages) {
+      return;
+    }
 
     fetchBanners({
       page: newPage,
@@ -236,8 +327,8 @@ const BannerManagement = () => {
     });
   };
 
-  const handleChangeLimit = (e) => {
-    const newLimit = Number(e.target.value);
+  const handleChangeLimit = (event) => {
+    const newLimit = Number(event.target.value);
 
     setLimit(newLimit);
     setPage(1);
@@ -248,31 +339,45 @@ const BannerManagement = () => {
     });
   };
 
+  // =====================================================
+  // ERROR
+  // =====================================================
+
   const clearFieldError = (fieldName) => {
-    setErrors((prev) => ({
-      ...prev,
+    setErrors((previous) => ({
+      ...previous,
       [fieldName]: "",
     }));
   };
 
-  const handleChange = (e) => {
-    const { name, value, files } = e.target;
+  // =====================================================
+  // CHANGE
+  // =====================================================
+
+  const handleChange = (event) => {
+    const { name, value, files } = event.target;
 
     clearFieldError(name);
 
     if (name === "image") {
-      setForm({
-        ...form,
+      setForm((previous) => ({
+        ...previous,
+
         image: files?.[0] || null,
-      });
+      }));
+
       return;
     }
 
-    setForm({
-      ...form,
+    setForm((previous) => ({
+      ...previous,
       [name]: value,
-    });
+    }));
   };
+
+  // =====================================================
+  // VALIDATE
+  // =====================================================
 
   const validateForm = () => {
     const newErrors = {};
@@ -375,6 +480,7 @@ const BannerManagement = () => {
 
     if (form.start_at && form.end_at) {
       const startTime = new Date(form.start_at).getTime();
+
       const endTime = new Date(form.end_at).getTime();
 
       if (startTime > endTime) {
@@ -387,23 +493,41 @@ const BannerManagement = () => {
     return Object.keys(newErrors).length === 0;
   };
 
+  // =====================================================
+  // FORM DATA
+  // =====================================================
+
   const buildFormData = () => {
     const formData = new FormData();
 
     formData.append("position", form.position);
+
     formData.append("title", form.title.trim());
+
     formData.append("subtitle", form.subtitle.trim());
+
     formData.append("description", form.description.trim());
+
     formData.append("badge_text", form.badge_text.trim());
+
     formData.append("link_url", form.link_url.trim());
+
     formData.append("primary_button_text", form.primary_button_text.trim());
+
     formData.append("secondary_button_text", form.secondary_button_text.trim());
+
     formData.append("text_color", form.text_color);
+
     formData.append("highlight_color", form.highlight_color);
+
     formData.append("overlay_opacity", form.overlay_opacity);
+
     formData.append("display_order", form.display_order);
+
     formData.append("start_at", formatDateForApi(form.start_at));
+
     formData.append("end_at", formatDateForApi(form.end_at));
+
     formData.append("status", form.status);
 
     if (form.image) {
@@ -413,31 +537,42 @@ const BannerManagement = () => {
     return formData;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  // =====================================================
+  // SUBMIT
+  // =====================================================
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
 
     if (!validateForm()) {
       showToast("error", "Vui lòng kiểm tra lại thông tin banner");
+
       return;
     }
 
     try {
+      setSaving(true);
+
       const formData = buildFormData();
 
       if (editingBanner) {
         await bannerService.update(editingBanner.id, formData);
+
         showToast("success", "Cập nhật banner thành công");
 
         resetForm();
+
         await fetchBanners({
           page,
           limit,
         });
       } else {
         await bannerService.create(formData);
+
         showToast("success", "Thêm banner thành công");
 
         resetForm();
+
         await fetchBanners({
           page: 1,
           limit,
@@ -445,31 +580,55 @@ const BannerManagement = () => {
       }
     } catch (error) {
       console.error(error);
+
       showToast("error", error.response?.data?.message || "Lỗi lưu banner");
+    } finally {
+      setSaving(false);
     }
   };
 
+  // =====================================================
+  // EDIT
+  // =====================================================
+
   const handleEdit = (banner) => {
     setEditingBanner(banner);
+
     setErrors({});
+
     setFileInputKey(Date.now());
 
     setForm({
       position: banner.position || "HOME",
+
       title: banner.title || "",
+
       subtitle: banner.subtitle || "",
+
       description: banner.description || "",
+
       badge_text: banner.badge_text || "",
+
       image: null,
+
       link_url: banner.link_url || "",
+
       primary_button_text: banner.primary_button_text || "",
+
       secondary_button_text: banner.secondary_button_text || "",
+
       text_color: banner.text_color || "#ffffff",
+
       highlight_color: banner.highlight_color || "#38bdf8",
+
       overlay_opacity: banner.overlay_opacity ?? 0.65,
+
       display_order: banner.display_order || 0,
+
       start_at: toDateTimeLocal(banner.start_at),
+
       end_at: toDateTimeLocal(banner.end_at),
+
       status: banner.status,
     });
 
@@ -479,11 +638,20 @@ const BannerManagement = () => {
     });
   };
 
+  // =====================================================
+  // DELETE
+  // =====================================================
+
   const handleDelete = async (id) => {
-    if (!window.confirm("Bạn có chắc muốn xóa banner này?")) return;
+    if (!window.confirm("Bạn có chắc muốn xóa banner này?")) {
+      return;
+    }
 
     try {
+      setDeletingId(id);
+
       await bannerService.delete(id);
+
       showToast("success", "Xóa banner thành công");
 
       const nextPage = banners.length === 1 && page > 1 ? page - 1 : page;
@@ -494,21 +662,36 @@ const BannerManagement = () => {
       });
     } catch (error) {
       console.error(error);
+
       showToast("error", error.response?.data?.message || "Lỗi xóa banner");
+    } finally {
+      setDeletingId(null);
     }
   };
 
+  // =====================================================
+  // STATUS
+  // =====================================================
+
   const handleToggleStatus = async (id) => {
     const oldBanners = [...banners];
-    const oldPagination = { ...pagination };
+
+    const oldPagination = {
+      ...pagination,
+    };
 
     try {
-      setBanners((prev) => {
-        let nextBanners = prev.map((banner) => {
-          if (banner.id !== id) return banner;
+      setStatusUpdatingId(id);
+
+      setBanners((previous) => {
+        let nextBanners = previous.map((banner) => {
+          if (banner.id !== id) {
+            return banner;
+          }
 
           return {
             ...banner,
+
             status: Number(banner.status) === 1 ? 0 : 1,
           };
         });
@@ -523,9 +706,10 @@ const BannerManagement = () => {
       });
 
       if (status !== "") {
-        setPagination((prev) => ({
-          ...prev,
-          total: Math.max(Number(prev.total || 0) - 1, 0),
+        setPagination((previous) => ({
+          ...previous,
+
+          total: Math.max(Number(previous.total || 0) - 1, 0),
         }));
       }
 
@@ -536,18 +720,31 @@ const BannerManagement = () => {
       console.error(error);
 
       setBanners(oldBanners);
+
       setPagination(oldPagination);
 
       showToast("error", error.response?.data?.message || "Lỗi bật/tắt banner");
+    } finally {
+      setStatusUpdatingId(null);
     }
   };
 
+  // =====================================================
+  // PAGE NUMBERS
+  // =====================================================
+
   const renderPageNumbers = () => {
     const totalPages = pagination.totalPages || 1;
+
     const currentPage = pagination.page || page;
 
     if (totalPages <= 7) {
-      return Array.from({ length: totalPages }, (_, index) => index + 1);
+      return Array.from(
+        {
+          length: totalPages,
+        },
+        (_, index) => index + 1,
+      );
     }
 
     const pages = [1];
@@ -557,6 +754,7 @@ const BannerManagement = () => {
     }
 
     const start = Math.max(2, currentPage - 1);
+
     const end = Math.min(totalPages - 1, currentPage + 1);
 
     for (let pageNumber = start; pageNumber <= end; pageNumber += 1) {
@@ -572,429 +770,631 @@ const BannerManagement = () => {
     return pages;
   };
 
+  // =====================================================
+  // RENDER
+  // =====================================================
+
   return (
-    <div className="banner-page">
+    <div className="adm-banner-page">
+      {/* TOAST */}
+
       {toast && (
         <div
-          style={{
-            position: "fixed",
-            top: "24px",
-            right: "24px",
-            zIndex: 99999,
-            minWidth: "280px",
-            maxWidth: "420px",
-            padding: "14px 18px",
-            borderRadius: "14px",
-            fontSize: "14px",
-            fontWeight: 800,
-            boxShadow: "0 14px 35px rgba(15, 23, 42, 0.18)",
-            background: toast.type === "success" ? "#dcfce7" : "#fee2e2",
-            color: toast.type === "success" ? "#15803d" : "#ef233c",
-            border:
-              toast.type === "success"
-                ? "1px solid rgba(22, 163, 74, 0.25)"
-                : "1px solid rgba(239, 35, 60, 0.25)",
-          }}
+          className={[
+            "adm-banner-toast",
+
+            toast.type === "success"
+              ? "adm-banner-toast--success"
+              : "adm-banner-toast--error",
+          ]
+            .filter(Boolean)
+            .join(" ")}
         >
-          {toast.message}
+          <span className="adm-banner-toast__icon">
+            <i
+              className={
+                toast.type === "success"
+                  ? "bi bi-check-circle-fill"
+                  : "bi bi-exclamation-circle-fill"
+              }
+            />
+          </span>
+
+          <span>{toast.message}</span>
         </div>
       )}
 
-      <div className="banner-page-header">
-        <div>
-          <h3 className="banner-page-title">Quản lý Banner / Slider</h3>
-          <p className="banner-page-subtitle">
-            Thêm, sửa, xóa, bật/tắt banner và thiết lập nội dung hiển thị.
+      {/* =================================================
+            HEADER
+            ================================================= */}
+
+      <section className="adm-banner-header">
+        <div className="adm-banner-header__content">
+          <span className="adm-banner-header__kicker">Banner / Slider</span>
+
+          <h1 className="adm-banner-header__title">
+            <span className="adm-banner-header__title-icon">
+              <i className="bi bi-images" />
+            </span>
+
+            <span>Quản lý Banner / Slider</span>
+          </h1>
+
+          <p className="adm-banner-header__description">
+            Thêm, chỉnh sửa, bật/tắt banner và quản lý nội dung hiển thị trên
+            website.
           </p>
         </div>
 
-        <div className="banner-page-count">
-          <span>{pagination.total}</span>
-          <small>banner</small>
-        </div>
-      </div>
+        <div className="adm-banner-total-card">
+          <span className="adm-banner-total-card__icon">
+            <i className="bi bi-images" />
+          </span>
 
-      <div className="banner-card">
-        <div className="banner-card-header">
-          <h4 className="banner-card-title">
-            {editingBanner ? "Cập nhật banner" : "Thêm banner mới"}
-          </h4>
+          <div>
+            <strong>{pagination.total}</strong>
+
+            <span>Tổng banner</span>
+          </div>
+        </div>
+      </section>
+
+      {/* =================================================
+            FORM PANEL
+            ================================================= */}
+
+      <section className="adm-banner-panel">
+        <div className="adm-banner-panel__header">
+          <div className="adm-banner-panel__heading">
+            <span className="adm-banner-panel__icon">
+              <i
+                className={
+                  editingBanner ? "bi bi-pencil-square" : "bi bi-plus-lg"
+                }
+              />
+            </span>
+
+            <div>
+              <h2>{editingBanner ? "Cập nhật banner" : "Thêm banner mới"}</h2>
+
+              <p>Thiết lập nội dung, hình ảnh và thời gian hiển thị.</p>
+            </div>
+          </div>
 
           {editingBanner && (
             <button
               type="button"
-              className="banner-btn banner-btn-sm banner-btn-secondary"
+              className="adm-banner-button adm-banner-button--secondary"
               onClick={resetForm}
+              disabled={saving}
             >
+              <i className="bi bi-x-lg" />
               Hủy chỉnh sửa
             </button>
           )}
         </div>
 
-        <div className="banner-card-body">
-          <form onSubmit={handleSubmit}>
-            <div className="banner-form-grid">
-              <div className="banner-form-group banner-col-6">
-                <label className="banner-label">Tiêu đề chính</label>
-                <input
-                  type="text"
-                  name="title"
-                  className="banner-input"
-                  style={getInputStyle("title")}
-                  value={form.title}
-                  onChange={handleChange}
-                  placeholder="VD: Build PC Gaming cao cấp"
-                />
-                {errors.title && (
-                  <small style={errorTextStyle}>{errors.title}</small>
-                )}
-              </div>
+        <form className="adm-banner-form" onSubmit={handleSubmit}>
+          <div className="adm-banner-form__grid">
+            {/* TITLE */}
 
-              <div className="banner-form-group banner-col-6">
-                <label className="banner-label">Dòng chữ nổi bật</label>
-                <input
-                  type="text"
-                  name="subtitle"
-                  className="banner-input"
-                  style={getInputStyle("subtitle")}
-                  value={form.subtitle}
-                  onChange={handleChange}
-                  placeholder="VD: Hiệu năng cho mọi nhu cầu"
-                />
-                {errors.subtitle && (
-                  <small style={errorTextStyle}>{errors.subtitle}</small>
-                )}
-              </div>
+            <div className="adm-banner-field adm-banner-col--6">
+              <label className="adm-banner-field__label">
+                Tiêu đề chính
+                <span>*</span>
+              </label>
 
-              <div className="banner-form-group banner-col-6">
-                <label className="banner-label">Badge banner</label>
-                <input
-                  type="text"
-                  name="badge_text"
-                  className="banner-input"
-                  style={getInputStyle("badge_text")}
-                  value={form.badge_text}
-                  onChange={handleChange}
-                  placeholder="VD: Flash Sale giảm đến 35%"
-                />
-                {errors.badge_text && (
-                  <small style={errorTextStyle}>{errors.badge_text}</small>
-                )}
-              </div>
+              <input
+                type="text"
+                name="title"
+                className={getFieldClass("title")}
+                value={form.title}
+                onChange={handleChange}
+                placeholder="VD: Build PC Gaming cao cấp"
+                disabled={saving}
+              />
 
-              <div className="banner-form-group banner-col-6">
-                <label className="banner-label">Link banner tổng</label>
-                <input
-                  type="text"
-                  name="link_url"
-                  className="banner-input"
-                  style={getInputStyle("link_url")}
-                  value={form.link_url}
-                  onChange={handleChange}
-                  placeholder="/products hoặc https://..."
-                />
-                {errors.link_url && (
-                  <small style={errorTextStyle}>{errors.link_url}</small>
-                )}
-              </div>
+              {errors.title && (
+                <small className="adm-banner-field__error">
+                  {errors.title}
+                </small>
+              )}
+            </div>
 
-              <div className="banner-form-group banner-col-12">
-                <label className="banner-label">Mô tả banner</label>
-                <textarea
-                  name="description"
-                  className="banner-input"
-                  style={{
-                    ...getInputStyle("description"),
-                    height: "92px",
-                    paddingTop: "12px",
-                    resize: "vertical",
-                  }}
-                  value={form.description}
-                  onChange={handleChange}
-                  placeholder="Nhập mô tả banner hiển thị bên dưới tiêu đề"
-                />
-                {errors.description && (
-                  <small style={errorTextStyle}>{errors.description}</small>
-                )}
-              </div>
+            {/* SUBTITLE */}
 
-              <div className="banner-form-group banner-col-5">
-                <label className="banner-label">Ảnh banner</label>
-                <input
-                  key={fileInputKey}
-                  type="file"
-                  name="image"
-                  className="banner-input"
-                  style={getInputStyle("image")}
-                  accept="image/*"
-                  onChange={handleChange}
-                />
+            <div className="adm-banner-field adm-banner-col--6">
+              <label className="adm-banner-field__label">
+                Dòng chữ nổi bật
+                <span>*</span>
+              </label>
 
-                {editingBanner && (
-                  <small className="banner-muted">
-                    Không chọn ảnh mới thì hệ thống giữ ảnh cũ.
-                  </small>
-                )}
+              <input
+                type="text"
+                name="subtitle"
+                className={getFieldClass("subtitle")}
+                value={form.subtitle}
+                onChange={handleChange}
+                placeholder="VD: Hiệu năng cho mọi nhu cầu"
+                disabled={saving}
+              />
 
-                {form.image && (
-                  <small className="banner-muted">
-                    Đã chọn: {form.image.name}
-                  </small>
-                )}
+              {errors.subtitle && (
+                <small className="adm-banner-field__error">
+                  {errors.subtitle}
+                </small>
+              )}
+            </div>
 
-                {errors.image && (
-                  <small style={errorTextStyle}>{errors.image}</small>
-                )}
-              </div>
+            {/* BADGE */}
 
-              <div className="banner-form-group banner-col-2">
-                <label className="banner-label">Thứ tự</label>
-                <input
-                  type="number"
-                  name="display_order"
-                  className="banner-input"
-                  style={getInputStyle("display_order")}
-                  value={form.display_order}
-                  onChange={handleChange}
-                  min="0"
-                />
-                {errors.display_order && (
-                  <small style={errorTextStyle}>{errors.display_order}</small>
-                )}
-              </div>
+            <div className="adm-banner-field adm-banner-col--6">
+              <label className="adm-banner-field__label">
+                Badge banner
+                <span>*</span>
+              </label>
 
-              <div className="banner-form-group banner-col-2">
-                <label className="banner-label">Trạng thái</label>
-                <select
-                  name="status"
-                  className="banner-select"
-                  value={form.status}
-                  onChange={handleChange}
-                >
-                  <option value={1}>Bật</option>
-                  <option value={0}>Tắt</option>
-                </select>
-              </div>
+              <input
+                type="text"
+                name="badge_text"
+                className={getFieldClass("badge_text")}
+                value={form.badge_text}
+                onChange={handleChange}
+                placeholder="VD: Flash Sale giảm đến 35%"
+                disabled={saving}
+              />
 
-              <div className="banner-form-group banner-col-3">
-                <label className="banner-label">Vị trí hiển thị</label>
-                <select
-                  name="position"
-                  className="banner-select"
-                  style={getInputStyle("position")}
-                  value={form.position}
-                  onChange={handleChange}
-                >
-                  <option value="HOME">Trang chủ</option>
-                  <option value="BLOG">Trang Blog</option>
-                </select>
-                {errors.position && (
-                  <small style={errorTextStyle}>{errors.position}</small>
-                )}
-              </div>
+              {errors.badge_text && (
+                <small className="adm-banner-field__error">
+                  {errors.badge_text}
+                </small>
+              )}
+            </div>
 
-              <div className="banner-form-group banner-col-3">
-                <label className="banner-label">Độ tối nền</label>
-                <input
-                  type="number"
-                  name="overlay_opacity"
-                  className="banner-input"
-                  style={getInputStyle("overlay_opacity")}
-                  value={form.overlay_opacity}
-                  onChange={handleChange}
-                  step="0.05"
-                  min="0"
-                  max="1"
-                />
-                {errors.overlay_opacity && (
-                  <small style={errorTextStyle}>{errors.overlay_opacity}</small>
-                )}
-              </div>
+            {/* LINK */}
 
-              <div className="banner-form-group banner-col-3">
-                <label className="banner-label">Text nút chính</label>
-                <input
-                  type="text"
-                  name="primary_button_text"
-                  className="banner-input"
-                  style={getInputStyle("primary_button_text")}
-                  value={form.primary_button_text}
-                  onChange={handleChange}
-                  placeholder="VD: Khám phá ngay"
-                />
-                {errors.primary_button_text && (
-                  <small style={errorTextStyle}>
-                    {errors.primary_button_text}
-                  </small>
-                )}
-              </div>
+            <div className="adm-banner-field adm-banner-col--6">
+              <label className="adm-banner-field__label">
+                Link banner tổng
+                <span>*</span>
+              </label>
 
-              <div className="banner-form-group banner-col-3">
-                <label className="banner-label">Text nút phụ</label>
-                <input
-                  type="text"
-                  name="secondary_button_text"
-                  className="banner-input"
-                  style={getInputStyle("secondary_button_text")}
-                  value={form.secondary_button_text}
-                  onChange={handleChange}
-                  placeholder="VD: Deal Hot"
-                />
-                {errors.secondary_button_text && (
-                  <small style={errorTextStyle}>
-                    {errors.secondary_button_text}
-                  </small>
-                )}
-              </div>
+              <input
+                type="text"
+                name="link_url"
+                className={getFieldClass("link_url")}
+                value={form.link_url}
+                onChange={handleChange}
+                placeholder="/products hoặc https://..."
+                disabled={saving}
+              />
 
-              <div className="banner-form-group banner-col-3">
-                <label className="banner-label">Màu tiêu đề</label>
+              {errors.link_url && (
+                <small className="adm-banner-field__error">
+                  {errors.link_url}
+                </small>
+              )}
+            </div>
+
+            {/* DESCRIPTION */}
+
+            <div className="adm-banner-field adm-banner-col--12">
+              <label className="adm-banner-field__label">
+                Mô tả banner
+                <span>*</span>
+              </label>
+
+              <textarea
+                name="description"
+                className={[
+                  getFieldClass("description"),
+                  "adm-banner-textarea",
+                ].join(" ")}
+                value={form.description}
+                onChange={handleChange}
+                placeholder="Nhập mô tả banner hiển thị bên dưới tiêu đề"
+                disabled={saving}
+              />
+
+              {errors.description && (
+                <small className="adm-banner-field__error">
+                  {errors.description}
+                </small>
+              )}
+            </div>
+
+            {/* IMAGE */}
+
+            <div className="adm-banner-field adm-banner-col--5">
+              <label className="adm-banner-field__label">
+                Ảnh banner
+                <span>*</span>
+              </label>
+
+              <input
+                key={fileInputKey}
+                type="file"
+                name="image"
+                className={[
+                  getFieldClass("image"),
+                  "adm-banner-file-input",
+                ].join(" ")}
+                accept="image/jpeg,image/jpg,image/png,image/webp"
+                onChange={handleChange}
+                disabled={saving}
+              />
+
+              {editingBanner && (
+                <small className="adm-banner-field__help">
+                  Không chọn ảnh mới thì hệ thống giữ ảnh cũ.
+                </small>
+              )}
+
+              {form.image && (
+                <small className="adm-banner-field__help adm-banner-field__help--selected">
+                  <i className="bi bi-check-circle" />
+                  Đã chọn: {form.image.name}
+                </small>
+              )}
+
+              {errors.image && (
+                <small className="adm-banner-field__error">
+                  {errors.image}
+                </small>
+              )}
+            </div>
+
+            {/* ORDER */}
+
+            <div className="adm-banner-field adm-banner-col--2">
+              <label className="adm-banner-field__label">Thứ tự</label>
+
+              <input
+                type="number"
+                name="display_order"
+                className={getFieldClass("display_order")}
+                value={form.display_order}
+                onChange={handleChange}
+                min="0"
+                disabled={saving}
+              />
+
+              {errors.display_order && (
+                <small className="adm-banner-field__error">
+                  {errors.display_order}
+                </small>
+              )}
+            </div>
+
+            {/* STATUS */}
+
+            <div className="adm-banner-field adm-banner-col--2">
+              <label className="adm-banner-field__label">Trạng thái</label>
+
+              <select
+                name="status"
+                className="adm-banner-select"
+                value={form.status}
+                onChange={handleChange}
+                disabled={saving}
+              >
+                <option value={1}>Bật</option>
+
+                <option value={0}>Tắt</option>
+              </select>
+            </div>
+
+            {/* POSITION */}
+
+            <div className="adm-banner-field adm-banner-col--3">
+              <label className="adm-banner-field__label">Vị trí hiển thị</label>
+
+              <select
+                name="position"
+                className={getFieldClass("position", "adm-banner-select")}
+                value={form.position}
+                onChange={handleChange}
+                disabled={saving}
+              >
+                <option value="HOME">Trang chủ</option>
+
+                <option value="BLOG">Trang Blog</option>
+              </select>
+
+              {errors.position && (
+                <small className="adm-banner-field__error">
+                  {errors.position}
+                </small>
+              )}
+            </div>
+
+            {/* OPACITY */}
+
+            <div className="adm-banner-field adm-banner-col--3">
+              <label className="adm-banner-field__label">Độ tối nền</label>
+
+              <input
+                type="number"
+                name="overlay_opacity"
+                className={getFieldClass("overlay_opacity")}
+                value={form.overlay_opacity}
+                onChange={handleChange}
+                step="0.05"
+                min="0"
+                max="1"
+                disabled={saving}
+              />
+
+              {errors.overlay_opacity && (
+                <small className="adm-banner-field__error">
+                  {errors.overlay_opacity}
+                </small>
+              )}
+            </div>
+
+            {/* PRIMARY BUTTON */}
+
+            <div className="adm-banner-field adm-banner-col--3">
+              <label className="adm-banner-field__label">Text nút chính</label>
+
+              <input
+                type="text"
+                name="primary_button_text"
+                className={getFieldClass("primary_button_text")}
+                value={form.primary_button_text}
+                onChange={handleChange}
+                placeholder="VD: Khám phá ngay"
+                disabled={saving}
+              />
+
+              {errors.primary_button_text && (
+                <small className="adm-banner-field__error">
+                  {errors.primary_button_text}
+                </small>
+              )}
+            </div>
+
+            {/* SECONDARY BUTTON */}
+
+            <div className="adm-banner-field adm-banner-col--3">
+              <label className="adm-banner-field__label">Text nút phụ</label>
+
+              <input
+                type="text"
+                name="secondary_button_text"
+                className={getFieldClass("secondary_button_text")}
+                value={form.secondary_button_text}
+                onChange={handleChange}
+                placeholder="VD: Deal Hot"
+                disabled={saving}
+              />
+
+              {errors.secondary_button_text && (
+                <small className="adm-banner-field__error">
+                  {errors.secondary_button_text}
+                </small>
+              )}
+            </div>
+
+            {/* TEXT COLOR */}
+
+            <div className="adm-banner-field adm-banner-col--3">
+              <label className="adm-banner-field__label">Màu tiêu đề</label>
+
+              <div className="adm-banner-color-input">
                 <input
                   type="color"
                   name="text_color"
-                  className="banner-input"
-                  style={{
-                    ...getInputStyle("text_color"),
-                    padding: "6px",
-                    cursor: "pointer",
-                  }}
                   value={form.text_color}
                   onChange={handleChange}
+                  disabled={saving}
                 />
-                {errors.text_color && (
-                  <small style={errorTextStyle}>{errors.text_color}</small>
-                )}
+
+                <span>{form.text_color}</span>
               </div>
 
-              <div className="banner-form-group banner-col-3">
-                <label className="banner-label">Màu chữ nổi bật</label>
+              {errors.text_color && (
+                <small className="adm-banner-field__error">
+                  {errors.text_color}
+                </small>
+              )}
+            </div>
+
+            {/* HIGHLIGHT COLOR */}
+
+            <div className="adm-banner-field adm-banner-col--3">
+              <label className="adm-banner-field__label">Màu chữ nổi bật</label>
+
+              <div className="adm-banner-color-input">
                 <input
                   type="color"
                   name="highlight_color"
-                  className="banner-input"
-                  style={{
-                    ...getInputStyle("highlight_color"),
-                    padding: "6px",
-                    cursor: "pointer",
-                  }}
                   value={form.highlight_color}
                   onChange={handleChange}
+                  disabled={saving}
                 />
-                {errors.highlight_color && (
-                  <small style={errorTextStyle}>{errors.highlight_color}</small>
-                )}
+
+                <span>{form.highlight_color}</span>
               </div>
 
-              <div className="banner-form-group banner-col-3">
-                <label className="banner-label">Bắt đầu</label>
-                <input
-                  type="datetime-local"
-                  name="start_at"
-                  className="banner-input"
-                  style={getInputStyle("start_at")}
-                  value={form.start_at}
-                  onChange={handleChange}
-                />
-                {errors.start_at && (
-                  <small style={errorTextStyle}>{errors.start_at}</small>
-                )}
-              </div>
-
-              <div className="banner-form-group banner-col-3">
-                <label className="banner-label">Kết thúc</label>
-                <input
-                  type="datetime-local"
-                  name="end_at"
-                  className="banner-input"
-                  style={getInputStyle("end_at")}
-                  value={form.end_at}
-                  onChange={handleChange}
-                />
-                {errors.end_at && (
-                  <small style={errorTextStyle}>{errors.end_at}</small>
-                )}
-              </div>
-
-              <div className="banner-form-group banner-col-12">
-                <div className="banner-actions">
-                  <button
-                    className="banner-btn banner-btn-primary"
-                    type="submit"
-                  >
-                    {editingBanner ? "Cập nhật banner" : "Thêm banner"}
-                  </button>
-
-                  <button
-                    type="button"
-                    className="banner-btn banner-btn-secondary"
-                    onClick={resetForm}
-                  >
-                    Làm mới form
-                  </button>
-                </div>
-              </div>
+              {errors.highlight_color && (
+                <small className="adm-banner-field__error">
+                  {errors.highlight_color}
+                </small>
+              )}
             </div>
-          </form>
-        </div>
-      </div>
 
-      <div className="banner-card">
-        <div className="banner-card-header">
-          <h4 className="banner-card-title">Danh sách banner</h4>
-          <span className="banner-muted">Tổng: {pagination.total} banner</span>
-        </div>
+            {/* START */}
 
-        <div className="banner-card-body">
-          <div className="banner-filter-grid">
-            <div className="banner-form-group">
-              <label className="banner-label">Tìm kiếm</label>
+            <div className="adm-banner-field adm-banner-col--3">
+              <label className="adm-banner-field__label">Bắt đầu</label>
+
               <input
-                type="text"
-                className="banner-input"
-                placeholder="Nhập tiêu đề hoặc link..."
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    fetchBanners({
-                      page: 1,
-                      limit,
-                    });
-                  }
-                }}
+                type="datetime-local"
+                name="start_at"
+                className={getFieldClass("start_at")}
+                value={form.start_at}
+                onChange={handleChange}
+                disabled={saving}
               />
+
+              {errors.start_at && (
+                <small className="adm-banner-field__error">
+                  {errors.start_at}
+                </small>
+              )}
             </div>
 
-            <div className="banner-form-group">
-              <label className="banner-label">Trạng thái</label>
+            {/* END */}
+
+            <div className="adm-banner-field adm-banner-col--3">
+              <label className="adm-banner-field__label">Kết thúc</label>
+
+              <input
+                type="datetime-local"
+                name="end_at"
+                className={getFieldClass("end_at")}
+                value={form.end_at}
+                onChange={handleChange}
+                disabled={saving}
+              />
+
+              {errors.end_at && (
+                <small className="adm-banner-field__error">
+                  {errors.end_at}
+                </small>
+              )}
+            </div>
+
+            {/* ACTIONS */}
+
+            <div className="adm-banner-col--12">
+              <div className="adm-banner-form__actions">
+                <button
+                  className="adm-banner-button adm-banner-button--primary"
+                  type="submit"
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <>
+                      <span className="adm-banner-spinner adm-banner-spinner--small" />
+                      Đang lưu...
+                    </>
+                  ) : editingBanner ? (
+                    <>
+                      <i className="bi bi-check-lg" />
+                      Cập nhật banner
+                    </>
+                  ) : (
+                    <>
+                      <i className="bi bi-plus-lg" />
+                      Thêm banner
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  className="adm-banner-button adm-banner-button--secondary"
+                  onClick={resetForm}
+                  disabled={saving}
+                >
+                  <i className="bi bi-arrow-counterclockwise" />
+                  Làm mới form
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      {/* =================================================
+            LIST PANEL
+            ================================================= */}
+
+      <section className="adm-banner-panel">
+        <div className="adm-banner-panel__header">
+          <div className="adm-banner-panel__heading">
+            <span className="adm-banner-panel__icon adm-banner-panel__icon--blue">
+              <i className="bi bi-list-ul" />
+            </span>
+
+            <div>
+              <h2>Danh sách banner</h2>
+
+              <p>Tìm kiếm, theo dõi và quản lý các banner hiện có.</p>
+            </div>
+          </div>
+
+          <span className="adm-banner-result-count">
+            <i className="bi bi-images" />
+            {pagination.total} banner
+          </span>
+        </div>
+
+        <div className="adm-banner-panel__body">
+          {/* FILTER */}
+
+          <div className="adm-banner-filter">
+            <div className="adm-banner-field">
+              <label className="adm-banner-field__label">Tìm kiếm</label>
+
+              <div className="adm-banner-search">
+                <i className="bi bi-search" />
+
+                <input
+                  type="text"
+                  placeholder="Nhập tiêu đề hoặc link..."
+                  value={keyword}
+                  onChange={(event) => setKeyword(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      fetchBanners({
+                        page: 1,
+                        limit,
+                      });
+                    }
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="adm-banner-field">
+              <label className="adm-banner-field__label">Trạng thái</label>
+
               <select
-                className="banner-select"
+                className="adm-banner-select"
                 value={status}
-                onChange={(e) => setStatus(e.target.value)}
+                onChange={(event) => setStatus(event.target.value)}
               >
                 <option value="">Tất cả</option>
+
                 <option value="1">Đang bật</option>
+
                 <option value="0">Đang tắt</option>
               </select>
             </div>
 
-            <div className="banner-form-group">
-              <label className="banner-label">Vị trí</label>
+            <div className="adm-banner-field">
+              <label className="adm-banner-field__label">Vị trí</label>
+
               <select
-                className="banner-select"
+                className="adm-banner-select"
                 value={positionFilter}
-                onChange={(e) => setPositionFilter(e.target.value)}
+                onChange={(event) => setPositionFilter(event.target.value)}
               >
                 <option value="">Tất cả</option>
+
                 <option value="HOME">Trang chủ</option>
+
                 <option value="BLOG">Trang Blog</option>
               </select>
             </div>
 
-            <div className="banner-actions banner-filter-actions">
+            <div className="adm-banner-filter__actions">
               <button
                 type="button"
-                className="banner-btn banner-btn-dark"
+                className="adm-banner-button adm-banner-button--primary"
                 onClick={() =>
                   fetchBanners({
                     page: 1,
@@ -1002,25 +1402,35 @@ const BannerManagement = () => {
                   })
                 }
               >
+                <i className="bi bi-funnel-fill" />
                 Lọc
               </button>
 
               <button
                 type="button"
-                className="banner-btn banner-btn-secondary"
+                className="adm-banner-button adm-banner-button--secondary"
                 onClick={handleResetFilter}
               >
+                <i className="bi bi-arrow-counterclockwise" />
                 Làm mới
               </button>
             </div>
           </div>
 
+          {/* TABLE */}
+
           {loading ? (
-            <div className="banner-loading">Đang tải dữ liệu...</div>
+            <div className="adm-banner-loading">
+              <span className="adm-banner-spinner" />
+
+              <strong>Đang tải dữ liệu...</strong>
+
+              <p>Vui lòng chờ trong giây lát.</p>
+            </div>
           ) : (
             <>
-              <div className="banner-table-wrap">
-                <table className="banner-table">
+              <div className="adm-banner-table-wrap">
+                <table className="adm-banner-table">
                   <thead>
                     <tr>
                       <th>ID</th>
@@ -1037,129 +1447,179 @@ const BannerManagement = () => {
                   <tbody>
                     {banners.length === 0 ? (
                       <tr>
-                        <td colSpan="8" className="banner-empty">
-                          Chưa có banner
+                        <td colSpan="8" className="adm-banner-table__empty">
+                          <div className="adm-banner-empty">
+                            <span className="adm-banner-empty__icon">
+                              <i className="bi bi-images" />
+                            </span>
+
+                            <strong>Chưa có banner</strong>
+
+                            <p>Chưa tìm thấy banner phù hợp.</p>
+                          </div>
                         </td>
                       </tr>
                     ) : (
-                      banners.map((banner) => (
-                        <tr key={banner.id}>
-                          <td className="banner-id">#{banner.id}</td>
+                      banners.map((banner) => {
+                        const positionMeta = getPositionMeta(banner.position);
 
-                          <td>
-                            {banner.image_url ? (
-                              <img
-                                className="banner-image"
-                                src={getImageUrl(banner.image_url)}
-                                alt={banner.title}
-                              />
-                            ) : (
-                              <div className="banner-image-placeholder">
-                                Không ảnh
+                        const isActive = Number(banner.status) === 1;
+
+                        return (
+                          <tr key={banner.id}>
+                            <td>
+                              <span className="adm-banner-table__id">
+                                #{banner.id}
+                              </span>
+                            </td>
+
+                            <td>
+                              {banner.image_url ? (
+                                <img
+                                  className="adm-banner-image"
+                                  src={getImageUrl(banner.image_url)}
+                                  alt={banner.title}
+                                />
+                              ) : (
+                                <div className="adm-banner-image-placeholder">
+                                  <i className="bi bi-image" />
+
+                                  <span>Không ảnh</span>
+                                </div>
+                              )}
+                            </td>
+
+                            <td>
+                              <div className="adm-banner-content">
+                                <strong>{banner.title}</strong>
+
+                                <span>
+                                  {banner.subtitle || "Không có dòng nổi bật"}
+                                </span>
+
+                                <span>
+                                  Badge: {banner.badge_text || "Không có"}
+                                </span>
+
+                                <span className="adm-banner-content__link">
+                                  <i className="bi bi-link-45deg" />
+
+                                  {banner.link_url || "Không có link"}
+                                </span>
                               </div>
-                            )}
-                          </td>
+                            </td>
 
-                          <td>
-                            <div>
-                              <strong>{banner.title}</strong>
-                            </div>
-
-                            <div className="banner-muted">
-                              {banner.subtitle || "Không có dòng nổi bật"}
-                            </div>
-
-                            <div className="banner-muted">
-                              Badge: {banner.badge_text || "Không có"}
-                            </div>
-
-                            <div className="banner-link-text">
-                              Link banner: {banner.link_url || "Không có"}
-                            </div>
-                          </td>
-
-                          <td>
-                            <span
-                              className="banner-badge"
-                              style={positionBadgeStyle(banner.position)}
-                            >
-                              {banner.position === "BLOG"
-                                ? "Trang Blog"
-                                : "Trang chủ"}
-                            </span>
-                          </td>
-
-                          <td>{banner.display_order}</td>
-
-                          <td>
-                            <div className="banner-muted">
-                              Bắt đầu: {formatDateTime(banner.start_at)}
-                            </div>
-
-                            <div className="banner-muted">
-                              Kết thúc: {formatDateTime(banner.end_at)}
-                            </div>
-                          </td>
-
-                          <td>
-                            <span
-                              className={
-                                Number(banner.status) === 1
-                                  ? "banner-badge banner-badge-active"
-                                  : "banner-badge banner-badge-inactive"
-                              }
-                            >
-                              {Number(banner.status) === 1
-                                ? "Đang bật"
-                                : "Đang tắt"}
-                            </span>
-                          </td>
-
-                          <td>
-                            <div className="banner-row-actions">
-                              <button
-                                type="button"
-                                className="banner-action-btn banner-action-view"
-                                onClick={() => setDetailBanner(banner)}
+                            <td>
+                              <span
+                                className={`adm-banner-position adm-banner-position--${positionMeta.type}`}
                               >
-                                Chi tiết
-                              </button>
+                                <i className={`bi ${positionMeta.icon}`} />
 
+                                {positionMeta.label}
+                              </span>
+                            </td>
+
+                            <td>
+                              <span className="adm-banner-order">
+                                {banner.display_order}
+                              </span>
+                            </td>
+
+                            <td>
+                              <div className="adm-banner-time">
+                                <span>
+                                  <i className="bi bi-calendar-check" />
+                                  Bắt đầu:
+                                </span>
+
+                                <strong>
+                                  {formatDateTime(banner.start_at)}
+                                </strong>
+
+                                <span>
+                                  <i className="bi bi-calendar-x" />
+                                  Kết thúc:
+                                </span>
+
+                                <strong>{formatDateTime(banner.end_at)}</strong>
+                              </div>
+                            </td>
+
+                            <td>
                               <button
                                 type="button"
-                                className="banner-action-btn banner-action-edit"
-                                onClick={() => handleEdit(banner)}
-                              >
-                                Sửa
-                              </button>
+                                className={[
+                                  "adm-banner-status",
 
-                              <button
-                                type="button"
-                                className="banner-action-btn banner-action-toggle"
+                                  isActive
+                                    ? "adm-banner-status--active"
+                                    : "adm-banner-status--inactive",
+                                ]
+                                  .filter(Boolean)
+                                  .join(" ")}
+                                disabled={statusUpdatingId === banner.id}
                                 onClick={() => handleToggleStatus(banner.id)}
                               >
-                                Bật/Tắt
-                              </button>
+                                {statusUpdatingId === banner.id ? (
+                                  <span className="adm-banner-spinner adm-banner-spinner--tiny" />
+                                ) : (
+                                  <>
+                                    <span className="adm-banner-status__dot" />
 
-                              <button
-                                type="button"
-                                className="banner-action-btn banner-action-delete"
-                                onClick={() => handleDelete(banner.id)}
-                              >
-                                Xóa
+                                    {isActive ? "Đang bật" : "Đang tắt"}
+                                  </>
+                                )}
                               </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
+                            </td>
+
+                            <td>
+                              <div className="adm-banner-row-actions">
+                                <button
+                                  type="button"
+                                  className="adm-banner-action-button adm-banner-action-button--view"
+                                  onClick={() => setDetailBanner(banner)}
+                                  title="Chi tiết"
+                                >
+                                  <i className="bi bi-eye" />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="adm-banner-action-button adm-banner-action-button--edit"
+                                  onClick={() => handleEdit(banner)}
+                                  title="Chỉnh sửa"
+                                >
+                                  <i className="bi bi-pencil-square" />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="adm-banner-action-button adm-banner-action-button--delete"
+                                  disabled={deletingId === banner.id}
+                                  onClick={() => handleDelete(banner.id)}
+                                  title="Xóa"
+                                >
+                                  {deletingId === banner.id ? (
+                                    <span className="adm-banner-spinner adm-banner-spinner--tiny" />
+                                  ) : (
+                                    <i className="bi bi-trash" />
+                                  )}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
               </div>
 
+              {/* PAGINATION */}
+
               {pagination.total > 0 && (
-                <div className="banner-pagination">
-                  <div className="banner-pagination-info">
+                <div className="adm-banner-pagination">
+                  <div className="adm-banner-pagination__info">
                     Hiển thị{" "}
                     <strong>
                       {(pagination.page - 1) * pagination.limit + 1}
@@ -1168,38 +1628,42 @@ const BannerManagement = () => {
                     <strong>
                       {Math.min(
                         pagination.page * pagination.limit,
+
                         pagination.total,
                       )}
                     </strong>{" "}
                     trong tổng <strong>{pagination.total}</strong> banner
                   </div>
 
-                  <div className="banner-pagination-controls">
+                  <div className="adm-banner-pagination__controls">
                     <select
-                      className="banner-page-size"
+                      className="adm-banner-pagination__size"
                       value={limit}
                       onChange={handleChangeLimit}
                     >
                       <option value={5}>5 / trang</option>
+
                       <option value={10}>10 / trang</option>
+
                       <option value={20}>20 / trang</option>
                     </select>
 
                     <button
                       type="button"
-                      className="banner-page-btn"
+                      className="adm-banner-pagination__button adm-banner-pagination__button--wide"
                       disabled={pagination.page <= 1}
                       onClick={() => handleChangePage(pagination.page - 1)}
                     >
+                      <i className="bi bi-chevron-left" />
                       Trước
                     </button>
 
-                    <div className="banner-page-numbers">
+                    <div className="adm-banner-pagination__numbers">
                       {renderPageNumbers().map((pageNumber, index) =>
                         pageNumber === "..." ? (
                           <span
                             key={`dots-${index}`}
-                            className="banner-page-dots"
+                            className="adm-banner-pagination__dots"
                           >
                             ...
                           </span>
@@ -1207,11 +1671,14 @@ const BannerManagement = () => {
                           <button
                             key={pageNumber}
                             type="button"
-                            className={
-                              pageNumber === pagination.page
-                                ? "banner-page-number active"
-                                : "banner-page-number"
-                            }
+                            className={[
+                              "adm-banner-pagination__button",
+
+                              pageNumber === pagination.page &&
+                                "adm-banner-pagination__button--current",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
                             onClick={() => handleChangePage(pageNumber)}
                           >
                             {pageNumber}
@@ -1222,11 +1689,12 @@ const BannerManagement = () => {
 
                     <button
                       type="button"
-                      className="banner-page-btn"
+                      className="adm-banner-pagination__button adm-banner-pagination__button--wide"
                       disabled={pagination.page >= pagination.totalPages}
                       onClick={() => handleChangePage(pagination.page + 1)}
                     >
                       Sau
+                      <i className="bi bi-chevron-right" />
                     </button>
                   </div>
                 </div>
@@ -1234,178 +1702,200 @@ const BannerManagement = () => {
             </>
           )}
         </div>
-      </div>
+      </section>
+
+      {/* =================================================
+            DETAIL MODAL
+            ================================================= */}
 
       {detailBanner && (
-        <div
-          className="banner-detail-overlay"
-          onClick={() => setDetailBanner(null)}
-        >
+        <div className="adm-banner-modal" onClick={() => setDetailBanner(null)}>
           <div
-            className="banner-detail-modal"
+            className="adm-banner-modal__dialog"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="banner-detail-header">
+            <div className="adm-banner-modal__header">
               <div>
-                <span className="banner-detail-kicker">
+                <span className="adm-banner-modal__kicker">
                   Chi tiết banner #{detailBanner.id}
                 </span>
-                <h3>{detailBanner.title}</h3>
+
+                <h2>{detailBanner.title}</h2>
+
                 <p>{detailBanner.subtitle || "Không có dòng nổi bật"}</p>
               </div>
 
               <button
                 type="button"
-                className="banner-detail-close"
+                className="adm-banner-modal__close"
                 onClick={() => setDetailBanner(null)}
+                aria-label="Đóng"
               >
-                ×
+                <i className="bi bi-x-lg" />
               </button>
             </div>
 
-            <div className="banner-detail-preview">
+            {/* PREVIEW */}
+
+            <div className="adm-banner-preview">
               {detailBanner.image_url ? (
                 <img
                   src={getImageUrl(detailBanner.image_url)}
                   alt={detailBanner.title}
                 />
               ) : (
-                <div className="banner-detail-no-image">
+                <div className="adm-banner-preview__no-image">
+                  <i className="bi bi-image" />
                   Không có ảnh banner
                 </div>
               )}
 
               <div
-                className="banner-detail-preview-overlay"
+                className="adm-banner-preview__overlay"
                 style={{
-                  background: `linear-gradient(90deg, rgba(8, 13, 25, ${
-                    detailBanner.overlay_opacity ?? 0.65
-                  }) 0%, rgba(8, 13, 25, 0.18) 100%)`,
+                  "--adm-banner-overlay": detailBanner.overlay_opacity ?? 0.65,
+
+                  "--adm-banner-title-color":
+                    detailBanner.text_color || "#ffffff",
+
+                  "--adm-banner-highlight-color":
+                    detailBanner.highlight_color || "#38bdf8",
                 }}
               >
                 <div>
-                  <span>{detailBanner.badge_text || "Không có badge"}</span>
+                  <span className="adm-banner-preview__badge">
+                    {detailBanner.badge_text || "Không có badge"}
+                  </span>
 
-                  <h2 style={{ color: detailBanner.text_color || "#ffffff" }}>
-                    {detailBanner.title}
-                  </h2>
+                  <h2>{detailBanner.title}</h2>
 
-                  <h4
-                    style={{
-                      color: detailBanner.highlight_color || "#38bdf8",
-                    }}
-                  >
-                    {detailBanner.subtitle || "Không có dòng nổi bật"}
-                  </h4>
+                  <h3>{detailBanner.subtitle || "Không có dòng nổi bật"}</h3>
 
                   <p>{detailBanner.description || "Không có mô tả"}</p>
                 </div>
               </div>
             </div>
 
-            <div className="banner-detail-grid">
-              <div className="banner-detail-item">
+            {/* DETAIL GRID */}
+
+            <div className="adm-banner-detail-grid">
+              <div className="adm-banner-detail-item">
                 <span>Vị trí hiển thị</span>
-                <strong>
-                  {detailBanner.position === "BLOG"
-                    ? "Trang Blog"
-                    : "Trang chủ"}
-                </strong>
+
+                <strong>{getPositionMeta(detailBanner.position).label}</strong>
               </div>
 
-              <div className="banner-detail-item">
+              <div className="adm-banner-detail-item">
                 <span>Trạng thái</span>
+
                 <strong>
                   {Number(detailBanner.status) === 1 ? "Đang bật" : "Đang tắt"}
                 </strong>
               </div>
 
-              <div className="banner-detail-item">
+              <div className="adm-banner-detail-item">
                 <span>Thứ tự</span>
+
                 <strong>{detailBanner.display_order}</strong>
               </div>
 
-              <div className="banner-detail-item">
+              <div className="adm-banner-detail-item">
                 <span>Độ tối nền</span>
+
                 <strong>{detailBanner.overlay_opacity ?? 0.65}</strong>
               </div>
 
-              <div className="banner-detail-item">
+              <div className="adm-banner-detail-item">
                 <span>Text nút chính</span>
+
                 <strong>
                   {detailBanner.primary_button_text || "Không có"}
                 </strong>
               </div>
 
-              <div className="banner-detail-item">
+              <div className="adm-banner-detail-item">
                 <span>Text nút phụ</span>
+
                 <strong>
                   {detailBanner.secondary_button_text || "Không có"}
                 </strong>
               </div>
 
-              <div className="banner-detail-item">
+              <div className="adm-banner-detail-item">
                 <span>Màu tiêu đề</span>
-                <strong className="banner-color-value">
+
+                <strong className="adm-banner-color-value">
                   <i
                     style={{
-                      background: detailBanner.text_color || "#ffffff",
+                      "--adm-banner-chip-color":
+                        detailBanner.text_color || "#ffffff",
                     }}
-                  ></i>
+                  />
+
                   {detailBanner.text_color || "#ffffff"}
                 </strong>
               </div>
 
-              <div className="banner-detail-item">
+              <div className="adm-banner-detail-item">
                 <span>Màu chữ nổi bật</span>
-                <strong className="banner-color-value">
+
+                <strong className="adm-banner-color-value">
                   <i
                     style={{
-                      background: detailBanner.highlight_color || "#38bdf8",
+                      "--adm-banner-chip-color":
+                        detailBanner.highlight_color || "#38bdf8",
                     }}
-                  ></i>
+                  />
+
                   {detailBanner.highlight_color || "#38bdf8"}
                 </strong>
               </div>
 
-              <div className="banner-detail-item banner-detail-wide">
+              <div className="adm-banner-detail-item adm-banner-detail-item--wide">
                 <span>Link banner</span>
+
                 <strong>{detailBanner.link_url || "Không có"}</strong>
               </div>
 
-              <div className="banner-detail-item banner-detail-wide">
+              <div className="adm-banner-detail-item adm-banner-detail-item--wide">
                 <span>Thời gian bắt đầu</span>
+
                 <strong>{formatDateTime(detailBanner.start_at)}</strong>
               </div>
 
-              <div className="banner-detail-item banner-detail-wide">
+              <div className="adm-banner-detail-item adm-banner-detail-item--wide">
                 <span>Thời gian kết thúc</span>
+
                 <strong>{formatDateTime(detailBanner.end_at)}</strong>
               </div>
 
-              <div className="banner-detail-item banner-detail-wide">
+              <div className="adm-banner-detail-item adm-banner-detail-item--wide">
                 <span>Mô tả</span>
+
                 <strong>{detailBanner.description || "Không có mô tả"}</strong>
               </div>
             </div>
 
-            <div className="banner-detail-footer">
+            <div className="adm-banner-modal__footer">
               <button
                 type="button"
-                className="banner-btn banner-btn-secondary"
+                className="adm-banner-button adm-banner-button--secondary"
                 onClick={() => setDetailBanner(null)}
               >
+                <i className="bi bi-x-lg" />
                 Đóng
               </button>
 
               <button
                 type="button"
-                className="banner-btn banner-btn-warning"
+                className="adm-banner-button adm-banner-button--warning"
                 onClick={() => {
                   handleEdit(detailBanner);
+
                   setDetailBanner(null);
                 }}
               >
+                <i className="bi bi-pencil-square" />
                 Sửa banner
               </button>
             </div>

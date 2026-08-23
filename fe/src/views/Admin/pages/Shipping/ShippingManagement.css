@@ -1,758 +1,1462 @@
-.shipping-admin-page {
+/* =========================================================
+   SHIPPING MANAGEMENT
+   Namespace riêng: adm-shipping-*
+   Bootstrap CSS: KHÔNG sử dụng
+   Bootstrap Icons: chỉ dùng bi bi-*
+   ========================================================= */
+
+/* =========================================================
+   PAGE
+   ========================================================= */
+
+.adm-shipping-page {
   width: 100%;
-  min-height: 100%;
-  padding: 26px;
-  background: var(--light);
-  color: var(--text);
+  min-width: 0;
+
+  color: var(--adm-text);
 }
 
-/* ======================================================
+/* =========================================================
    HEADER
-====================================================== */
+   ========================================================= */
 
-.shipping-page-header {
+.adm-shipping-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+
   gap: 24px;
+
+  width: 100%;
+
   margin-bottom: 24px;
 }
 
-.shipping-page-kicker {
+.adm-shipping-header__content {
+  min-width: 0;
+}
+
+.adm-shipping-header__kicker {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  margin-bottom: 8px;
-  color: var(--primary);
-  font-size: 12px;
+
+  min-height: 27px;
+
+  margin-bottom: 9px;
+
+  padding: 0 11px;
+
+  border: 1px solid rgba(239, 35, 60, 0.1);
+
+  border-radius: 999px;
+
+  color: var(--adm-primary);
+
+  background: var(--adm-primary-soft);
+
+  font-size: 10px;
   font-weight: 800;
-  text-transform: uppercase;
+
   letter-spacing: 0.08em;
+
+  text-transform: uppercase;
 }
 
-.shipping-page-header h1 {
-  margin: 0 0 7px;
-  color: var(--dark);
-  font-size: 28px;
-  font-weight: 800;
-  line-height: 1.2;
-}
-
-.shipping-page-header p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 14px;
-}
-
-.shipping-total-card {
-  min-width: 130px;
-  padding: 15px 20px;
-  border: 1px solid var(--border);
-  border-left: 4px solid var(--primary);
-  border-radius: 12px;
-  background: var(--card);
-  text-align: right;
-  box-shadow: 0 5px 18px rgba(31, 41, 55, 0.05);
-}
-
-.shipping-total-card span {
-  display: block;
-  margin-bottom: 3px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.shipping-total-card strong {
-  color: var(--primary);
-  font-size: 26px;
-  font-weight: 800;
-}
-
-/* ======================================================
-   CARD
-====================================================== */
-
-.shipping-card {
-  margin-bottom: 22px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--card);
-  box-shadow: 0 5px 20px rgba(31, 41, 55, 0.05);
-}
-
-.shipping-card-header {
+.adm-shipping-header__title {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 19px 22px;
-  border-bottom: 1px solid var(--border);
-}
 
-.shipping-card-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
+  gap: 10px;
 
-.shipping-card-title h2,
-.shipping-filter-title h2 {
-  margin: 0 0 3px;
-  color: var(--dark);
-  font-size: 16px;
-  font-weight: 800;
-}
-
-.shipping-card-title p,
-.shipping-filter-title p {
   margin: 0;
-  color: var(--muted);
-  font-size: 12px;
+
+  color: var(--adm-heading);
+
+  font-size: clamp(25px, 3vw, 32px);
+
+  font-weight: 800;
+
+  line-height: 1.25;
 }
 
-.shipping-title-icon {
+.adm-shipping-header__title-icon {
   display: grid;
+
   width: 38px;
   height: 38px;
+
   flex: 0 0 38px;
+
   place-items: center;
+
   border-radius: 10px;
-  background: var(--primary);
-  color: var(--card);
+
+  color: var(--adm-primary);
+
+  background: var(--adm-primary-soft);
+
+  font-size: 18px;
+}
+
+.adm-shipping-header__description {
+  max-width: 720px;
+
+  margin: 9px 0 0;
+
+  color: var(--adm-muted);
+
+  font-size: 13px;
+
+  line-height: 1.7;
+}
+
+/* =========================================================
+   TOTAL CARD
+   ========================================================= */
+
+.adm-shipping-total-card {
+  display: flex;
+  align-items: center;
+
+  gap: 12px;
+
+  min-width: 165px;
+
+  padding: 14px 16px;
+
+  border: 1px solid var(--adm-border);
+
+  border-radius: 12px;
+
+  background: #ffffff;
+
+  box-shadow: var(--adm-shadow-small);
+}
+
+.adm-shipping-total-card__icon {
+  display: grid;
+
+  width: 42px;
+  height: 42px;
+
+  flex: 0 0 42px;
+
+  place-items: center;
+
+  border-radius: 10px;
+
+  color: var(--adm-primary);
+
+  background: var(--adm-primary-soft);
+
+  font-size: 18px;
+}
+
+.adm-shipping-total-card > div {
+  min-width: 0;
+}
+
+.adm-shipping-total-card strong {
+  display: block;
+
+  color: var(--adm-heading);
+
+  font-size: 22px;
+  font-weight: 800;
+
+  line-height: 1;
+}
+
+.adm-shipping-total-card > div > span {
+  display: block;
+
+  margin-top: 5px;
+
+  color: var(--adm-muted);
+
+  font-size: 10.5px;
+  font-weight: 700;
+
+  white-space: nowrap;
+}
+
+/* =========================================================
+   PANEL
+   ========================================================= */
+
+.adm-shipping-panel {
+  width: 100%;
+  min-width: 0;
+
+  margin-bottom: 18px;
+
+  overflow: hidden;
+
+  border: 1px solid var(--adm-border);
+
+  border-radius: 13px;
+
+  background: #ffffff;
+
+  box-shadow: var(--adm-shadow-small);
+}
+
+.adm-shipping-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+
+  gap: 16px;
+
+  padding: 18px 20px;
+
+  border-bottom: 1px solid var(--adm-border-soft);
+
+  background: #ffffff;
+}
+
+.adm-shipping-panel__heading {
+  display: flex;
+  align-items: flex-start;
+
+  gap: 11px;
+
+  min-width: 0;
+}
+
+.adm-shipping-panel__heading > div {
+  min-width: 0;
+}
+
+.adm-shipping-panel__heading h2 {
+  margin: 1px 0 0;
+
+  color: var(--adm-heading);
+
+  font-size: 17px;
+  font-weight: 800;
+
+  line-height: 1.4;
+}
+
+.adm-shipping-panel__heading p {
+  margin: 4px 0 0;
+
+  color: var(--adm-muted);
+
+  font-size: 11px;
+
+  line-height: 1.55;
+}
+
+.adm-shipping-panel__icon {
+  display: grid;
+
+  width: 38px;
+  height: 38px;
+
+  flex: 0 0 38px;
+
+  place-items: center;
+
+  border-radius: 10px;
+
+  color: var(--adm-primary);
+
+  background: var(--adm-primary-soft);
+
   font-size: 16px;
 }
 
-.shipping-title-icon-blue {
-  background: var(--secondary);
+.adm-shipping-panel__icon--blue {
+  color: var(--adm-blue);
+
+  background: var(--adm-blue-soft);
 }
 
-/* ======================================================
+.adm-shipping-panel__icon--purple {
+  color: #7c3aed;
+
+  background: rgba(124, 58, 237, 0.09);
+}
+
+.adm-shipping-panel__body {
+  min-width: 0;
+
+  padding: 20px;
+}
+
+/* =========================================================
    FORM
-====================================================== */
+   ========================================================= */
 
-.shipping-form {
-  padding: 22px;
+.adm-shipping-form {
+  padding: 20px;
 }
 
-.shipping-form-grid {
+.adm-shipping-form__grid {
   display: grid;
+
   grid-template-columns:
-    minmax(170px, 1.1fr)
-    minmax(190px, 1.4fr)
-    minmax(150px, 1fr)
-    minmax(170px, 1.1fr)
-    minmax(150px, 0.9fr);
-  gap: 17px;
+    minmax(165px, 1fr)
+    minmax(185px, 1.2fr)
+    minmax(150px, 0.9fr)
+    minmax(170px, 1fr)
+    minmax(145px, 0.8fr);
+
+  gap: 14px;
 }
 
-.shipping-field label {
+.adm-shipping-field {
+  min-width: 0;
+}
+
+.adm-shipping-field__label {
   display: block;
+
   margin-bottom: 7px;
-  color: var(--dark);
-  font-size: 13px;
-  font-weight: 700;
-}
 
-.shipping-field label span {
-  margin-left: 3px;
-  color: var(--primary);
-}
+  color: var(--adm-heading);
 
-.shipping-field small {
-  display: block;
-  margin-top: 6px;
-  color: var(--muted);
   font-size: 11px;
+  font-weight: 800;
 }
 
-.shipping-input-wrap {
+.adm-shipping-field__label span {
+  margin-left: 3px;
+
+  color: var(--adm-primary);
+}
+
+.adm-shipping-field__help {
+  display: block;
+
+  margin-top: 6px;
+
+  color: var(--adm-muted);
+
+  font-size: 9.5px;
+
+  line-height: 1.4;
+}
+
+/* =========================================================
+   INPUT
+   ========================================================= */
+
+.adm-shipping-input-wrap {
+  position: relative;
+
   display: flex;
-  min-height: 42px;
   align-items: center;
-  overflow: hidden;
-  border: 1px solid var(--border);
+
+  min-width: 0;
+  min-height: 42px;
+
+  border: 1px solid var(--adm-border);
+
   border-radius: 9px;
-  background: var(--card);
+
+  background: #ffffff;
+
   transition:
     border-color 0.2s ease,
     box-shadow 0.2s ease;
 }
 
-.shipping-input-wrap:focus-within {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(239, 35, 60, 0.09);
+.adm-shipping-input-wrap:hover {
+  border-color: #cbd5e1;
 }
 
-.shipping-input-wrap > i {
-  padding-left: 13px;
-  color: var(--muted);
-  font-size: 14px;
+.adm-shipping-input-wrap:focus-within {
+  border-color: rgba(37, 99, 235, 0.55);
+
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.07);
 }
 
-.shipping-input-wrap input,
-.shipping-input-wrap select {
+.adm-shipping-input-wrap__icon {
+  position: absolute;
+
+  top: 50%;
+  left: 12px;
+
+  z-index: 1;
+
+  color: var(--adm-muted);
+
+  font-size: 13px;
+
+  transform: translateY(-50%);
+
+  pointer-events: none;
+}
+
+.adm-shipping-input,
+.adm-shipping-select {
   width: 100%;
   height: 40px;
+
+  min-width: 0;
+
+  padding: 0 12px 0 36px;
+
   border: 0;
-  outline: 0;
+
+  color: var(--adm-text);
+
   background: transparent;
-  color: var(--text);
-  font-size: 13px;
-  padding: 0 12px;
+
+  font-size: 11.5px;
+  font-weight: 600;
+
+  outline: none;
 }
 
-.shipping-input-wrap input::placeholder {
-  color: var(--muted);
-  opacity: 0.7;
-}
-
-.shipping-input-wrap select {
+.adm-shipping-select {
   cursor: pointer;
 }
 
-.shipping-money-input b {
-  padding-right: 12px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
+.adm-shipping-input::placeholder {
+  color: var(--adm-subtle);
 }
 
-.shipping-form-actions {
+.adm-shipping-input:disabled,
+.adm-shipping-select:disabled {
+  color: var(--adm-muted);
+
+  cursor: not-allowed;
+
+  opacity: 0.65;
+}
+
+.adm-shipping-input--money {
+  padding-right: 34px;
+}
+
+.adm-shipping-input-wrap__suffix {
+  position: absolute;
+
+  right: 11px;
+
+  color: var(--adm-muted);
+
+  font-size: 10.5px;
+  font-weight: 800;
+
+  pointer-events: none;
+}
+
+/* =========================================================
+   FORM ACTIONS
+   ========================================================= */
+
+.adm-shipping-form__actions {
   display: flex;
-  gap: 10px;
-  margin-top: 20px;
+  align-items: center;
+
+  gap: 9px;
+
+  margin-top: 18px;
 }
 
-/* ======================================================
-   BUTTON
-====================================================== */
+/* =========================================================
+   BUTTONS
+   ========================================================= */
 
-.shipping-btn {
+.adm-shipping-button {
   display: inline-flex;
-  min-height: 39px;
   align-items: center;
   justify-content: center;
+
   gap: 7px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  padding: 8px 16px;
-  font-size: 12px;
-  font-weight: 700;
+
+  min-height: 42px;
+
+  padding: 0 14px;
+
+  border-radius: 9px;
+
+  font-size: 11.5px;
+  font-weight: 800;
+
+  white-space: nowrap;
+
   cursor: pointer;
+
   transition:
-    background 0.2s ease,
+    color 0.2s ease,
     border-color 0.2s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.adm-shipping-button:disabled {
+  opacity: 0.55;
+
+  cursor: not-allowed;
+}
+
+.adm-shipping-button:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.adm-shipping-button--primary {
+  border: 1px solid var(--adm-primary);
+
+  color: #ffffff;
+
+  background: linear-gradient(
+    135deg,
+    var(--adm-primary),
+    var(--adm-primary-dark)
+  );
+
+  box-shadow: 0 5px 14px rgba(239, 35, 60, 0.14);
+}
+
+.adm-shipping-button--primary:hover:not(:disabled) {
+  box-shadow: 0 8px 19px rgba(239, 35, 60, 0.2);
+
+  transform: translateY(-1px);
+}
+
+.adm-shipping-button--secondary {
+  border: 1px solid var(--adm-border);
+
+  color: var(--adm-text);
+
+  background: #ffffff;
+}
+
+.adm-shipping-button--secondary:hover:not(:disabled) {
+  border-color: #cbd5e1;
+
+  color: var(--adm-heading);
+
+  background: var(--adm-surface);
+}
+
+/* =========================================================
+   FILTER
+   ========================================================= */
+
+.adm-shipping-filter {
+  display: grid;
+
+  grid-template-columns:
+    minmax(0, 1.7fr)
+    minmax(180px, 0.7fr);
+
+  gap: 14px;
+}
+
+.adm-shipping-search {
+  display: flex;
+  align-items: center;
+
+  gap: 8px;
+
+  min-width: 0;
+}
+
+.adm-shipping-search__input-wrap {
+  position: relative;
+
+  display: flex;
+  align-items: center;
+
+  min-width: 0;
+
+  flex: 1;
+
+  height: 42px;
+
+  border: 1px solid var(--adm-border);
+
+  border-radius: 9px;
+
+  background: #ffffff;
+
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.adm-shipping-search__input-wrap:focus-within {
+  border-color: rgba(37, 99, 235, 0.55);
+
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.07);
+}
+
+.adm-shipping-search__input-wrap > i {
+  position: absolute;
+
+  left: 12px;
+
+  color: var(--adm-muted);
+
+  font-size: 13px;
+}
+
+.adm-shipping-search__input-wrap input {
+  width: 100%;
+  height: 40px;
+
+  min-width: 0;
+
+  padding: 0 12px 0 36px;
+
+  border: 0;
+
+  color: var(--adm-text);
+
+  background: transparent;
+
+  font-size: 11.5px;
+
+  outline: none;
+}
+
+.adm-shipping-search__input-wrap input::placeholder {
+  color: var(--adm-subtle);
+}
+
+/* =========================================================
+   STATUS FILTER
+   ========================================================= */
+
+.adm-shipping-filter__status {
+  position: relative;
+
+  display: flex;
+  align-items: center;
+
+  height: 42px;
+
+  border: 1px solid var(--adm-border);
+
+  border-radius: 9px;
+
+  background: #ffffff;
+}
+
+.adm-shipping-filter__status:focus-within {
+  border-color: rgba(37, 99, 235, 0.55);
+
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.07);
+}
+
+.adm-shipping-filter__status > i {
+  position: absolute;
+
+  left: 12px;
+
+  color: var(--adm-muted);
+
+  font-size: 13px;
+}
+
+.adm-shipping-filter__status select {
+  width: 100%;
+  height: 40px;
+
+  padding: 0 12px 0 36px;
+
+  border: 0;
+
+  color: var(--adm-text);
+
+  background: transparent;
+
+  font-size: 11.5px;
+  font-weight: 600;
+
+  outline: none;
+
+  cursor: pointer;
+}
+
+/* =========================================================
+   RESULT COUNT
+   ========================================================= */
+
+.adm-shipping-result-count {
+  display: inline-flex;
+  align-items: center;
+
+  gap: 6px;
+
+  flex: 0 0 auto;
+
+  min-height: 34px;
+
+  padding: 0 10px;
+
+  border: 1px solid var(--adm-border);
+
+  border-radius: 999px;
+
+  color: var(--adm-primary);
+
+  background: var(--adm-primary-soft);
+
+  font-size: 10px;
+  font-weight: 800;
+}
+
+/* =========================================================
+   TABLE WRAP
+   ========================================================= */
+
+.adm-shipping-table-wrap {
+  width: 100%;
+  max-width: 100%;
+
+  overflow-x: auto;
+
+  scrollbar-width: thin;
+
+  scrollbar-color: #cbd5e1 #f8fafc;
+}
+
+.adm-shipping-table-wrap::-webkit-scrollbar {
+  height: 7px;
+}
+
+.adm-shipping-table-wrap::-webkit-scrollbar-track {
+  background: #f8fafc;
+}
+
+.adm-shipping-table-wrap::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+
+  background: #cbd5e1;
+}
+
+/* =========================================================
+   TABLE
+   ========================================================= */
+
+.adm-shipping-table {
+  width: 100%;
+
+  min-width: 980px;
+
+  border-collapse: collapse;
+
+  table-layout: fixed;
+}
+
+.adm-shipping-table thead {
+  background: var(--adm-surface);
+}
+
+.adm-shipping-table th,
+.adm-shipping-table td {
+  padding: 13px 14px;
+
+  border-bottom: 1px solid var(--adm-border-soft);
+
+  vertical-align: middle;
+
+  overflow: hidden;
+}
+
+.adm-shipping-table th {
+  color: var(--adm-muted);
+
+  font-size: 9.8px;
+  font-weight: 800;
+
+  letter-spacing: 0.04em;
+
+  text-align: left;
+
+  text-transform: uppercase;
+
+  white-space: nowrap;
+}
+
+.adm-shipping-table td {
+  color: var(--adm-text);
+
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.adm-shipping-table tbody tr {
+  transition: background 0.2s ease;
+}
+
+.adm-shipping-table tbody tr:hover {
+  background: #fbfcfe;
+}
+
+.adm-shipping-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* =========================================================
+   TABLE WIDTHS
+   ========================================================= */
+
+.adm-shipping-table th:nth-child(1),
+.adm-shipping-table td:nth-child(1) {
+  width: 55px;
+}
+
+.adm-shipping-table th:nth-child(2),
+.adm-shipping-table td:nth-child(2) {
+  width: 130px;
+}
+
+.adm-shipping-table th:nth-child(3),
+.adm-shipping-table td:nth-child(3) {
+  width: 190px;
+}
+
+.adm-shipping-table th:nth-child(4),
+.adm-shipping-table td:nth-child(4) {
+  width: 150px;
+}
+
+.adm-shipping-table th:nth-child(5),
+.adm-shipping-table td:nth-child(5) {
+  width: 170px;
+}
+
+.adm-shipping-table th:nth-child(6),
+.adm-shipping-table td:nth-child(6) {
+  width: 135px;
+}
+
+.adm-shipping-table th:nth-child(7),
+.adm-shipping-table td:nth-child(7) {
+  width: 170px;
+}
+
+/* =========================================================
+   TABLE VALUES
+   ========================================================= */
+
+.adm-shipping-index {
+  color: var(--adm-muted);
+
+  font-weight: 700;
+}
+
+.adm-shipping-code {
+  display: inline-flex;
+  align-items: center;
+
+  max-width: 100%;
+
+  padding: 5px 8px;
+
+  overflow: hidden;
+
+  border: 1px solid var(--adm-border);
+
+  border-radius: 7px;
+
+  color: var(--adm-heading);
+
+  background: var(--adm-surface);
+
+  font-size: 9.8px;
+  font-weight: 800;
+
+  letter-spacing: 0.02em;
+
+  text-overflow: ellipsis;
+
+  white-space: nowrap;
+}
+
+.adm-shipping-province {
+  display: flex;
+  align-items: center;
+
+  gap: 8px;
+
+  min-width: 0;
+}
+
+.adm-shipping-province__icon {
+  display: grid;
+
+  width: 30px;
+  height: 30px;
+
+  flex: 0 0 30px;
+
+  place-items: center;
+
+  border-radius: 8px;
+
+  color: var(--adm-primary);
+
+  background: var(--adm-primary-soft);
+
+  font-size: 12px;
+}
+
+.adm-shipping-province strong {
+  min-width: 0;
+
+  overflow: hidden;
+
+  color: var(--adm-heading);
+
+  font-weight: 750;
+
+  text-overflow: ellipsis;
+
+  white-space: nowrap;
+}
+
+.adm-shipping-fee {
+  color: var(--adm-primary);
+
+  font-size: 11.5px;
+  font-weight: 800;
+
+  white-space: nowrap;
+}
+
+/* =========================================================
+   FREE SHIPPING
+   ========================================================= */
+
+.adm-shipping-free {
+  display: inline-flex;
+  align-items: center;
+
+  gap: 5px;
+
+  max-width: 100%;
+
+  font-size: 10px;
+  font-weight: 700;
+
+  white-space: nowrap;
+}
+
+.adm-shipping-free--none {
+  color: var(--adm-muted);
+}
+
+.adm-shipping-free--minimum {
+  color: var(--adm-text);
+}
+
+.adm-shipping-free--always {
+  padding: 5px 8px;
+
+  border: 1px solid rgba(22, 163, 74, 0.16);
+
+  border-radius: 999px;
+
+  color: #15803d;
+
+  background: rgba(22, 163, 74, 0.09);
+
+  font-size: 9.5px;
+  font-weight: 800;
+}
+
+/* =========================================================
+   STATUS
+   ========================================================= */
+
+.adm-shipping-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 6px;
+
+  min-width: 92px;
+  min-height: 32px;
+
+  padding: 0 9px;
+
+  border: 1px solid transparent;
+
+  border-radius: 999px;
+
+  font-size: 9.6px;
+  font-weight: 800;
+
+  cursor: pointer;
+
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
     color 0.2s ease,
     transform 0.2s ease;
 }
 
-.shipping-btn:disabled {
-  cursor: not-allowed;
+.adm-shipping-status:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.adm-shipping-status:disabled {
   opacity: 0.6;
+
+  cursor: not-allowed;
 }
 
-.shipping-btn:not(:disabled):active {
-  transform: translateY(1px);
+.adm-shipping-status--active {
+  border-color: rgba(22, 163, 74, 0.18);
+
+  color: #15803d;
+
+  background: rgba(22, 163, 74, 0.09);
 }
 
-.shipping-btn-primary {
-  border-color: var(--primary);
-  background: var(--primary);
-  color: var(--card);
+.adm-shipping-status--disabled {
+  border-color: #dbe2ea;
+
+  color: var(--adm-muted);
+
+  background: #f1f5f9;
 }
 
-.shipping-btn-primary:hover:not(:disabled) {
-  border-color: var(--primary-dark);
-  background: var(--primary-dark);
-}
-
-.shipping-btn-light {
-  border-color: var(--border);
-  background: var(--card);
-  color: var(--text);
-}
-
-.shipping-btn-light:hover:not(:disabled) {
-  border-color: var(--muted);
-  background: var(--light);
-}
-
-/* ======================================================
-   FILTER
-====================================================== */
-
-.shipping-filter-card {
-  padding: 20px 22px;
-}
-
-.shipping-filter-title {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  margin-bottom: 16px;
-}
-
-.shipping-filter-title > i {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  place-items: center;
-  border-radius: 9px;
-  background: var(--light);
-  color: var(--primary);
-  font-size: 15px;
-}
-
-.shipping-filter-grid {
-  display: grid;
-  grid-template-columns: 1.8fr 0.8fr;
-  gap: 14px;
-}
-
-.shipping-search {
-  display: flex;
-  gap: 9px;
-}
-
-.shipping-search-input {
-  display: flex;
-  min-height: 40px;
-  flex: 1;
-  align-items: center;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--card);
-}
-
-.shipping-search-input:focus-within {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(239, 35, 60, 0.08);
-}
-
-.shipping-search-input i {
-  padding-left: 13px;
-  color: var(--muted);
-}
-
-.shipping-search-input input {
-  width: 100%;
-  height: 38px;
-  border: 0;
-  outline: 0;
-  padding: 0 12px;
-  background: transparent;
-  color: var(--text);
-  font-size: 13px;
-}
-
-.shipping-status-filter {
-  display: flex;
-  min-height: 40px;
-  align-items: center;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--card);
-}
-
-.shipping-status-filter i {
-  padding-left: 13px;
-  color: var(--muted);
-}
-
-.shipping-status-filter select {
-  width: 100%;
-  height: 38px;
-  cursor: pointer;
-  border: 0;
-  outline: 0;
-  padding: 0 12px;
-  background: transparent;
-  color: var(--text);
-  font-size: 13px;
-}
-
-/* ======================================================
-   TABLE
-====================================================== */
-
-.shipping-result-count {
-  padding: 6px 11px;
-  border-radius: 20px;
-  background: var(--light);
-  color: var(--primary);
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.shipping-table-wrap {
-  width: 100%;
-  overflow-x: auto;
-}
-
-.shipping-table {
-  width: 100%;
-  min-width: 900px;
-  border-collapse: collapse;
-}
-
-.shipping-table thead th {
-  padding: 13px 16px;
-  border-bottom: 1px solid var(--border);
-  background: var(--light);
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  white-space: nowrap;
-}
-
-.shipping-table tbody td {
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--border);
-  color: var(--text);
-  font-size: 12px;
-  vertical-align: middle;
-}
-
-.shipping-table tbody tr:last-child td {
-  border-bottom: 0;
-}
-
-.shipping-table tbody tr:hover {
-  background: var(--light);
-}
-
-.shipping-text-right {
-  text-align: right;
-}
-
-.shipping-index {
-  color: var(--muted) !important;
-  font-weight: 600;
-}
-
-.shipping-code {
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 5px 8px;
-  background: var(--light);
-  color: var(--dark);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-}
-
-.shipping-province {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.shipping-location-icon {
-  display: grid;
-  width: 29px;
-  height: 29px;
-  flex: 0 0 29px;
-  place-items: center;
-  border-radius: 7px;
-  background: var(--light);
-  color: var(--primary);
-}
-
-.shipping-province strong {
-  color: var(--dark);
-  font-weight: 700;
-}
-
-.shipping-fee {
-  color: var(--primary);
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.shipping-no-free {
-  color: var(--muted);
-}
-
-.shipping-free-min {
-  color: var(--text);
-  font-weight: 700;
-}
-
-.shipping-free-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border-radius: 20px;
-  padding: 5px 9px;
-  background: var(--yellow);
-  color: var(--card);
-  font-size: 10px;
-  font-weight: 800;
-}
-
-/* ======================================================
-   STATUS
-====================================================== */
-
-.shipping-status {
-  display: inline-flex;
-  min-width: 92px;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  border: 1px solid transparent;
-  border-radius: 20px;
-  padding: 6px 10px;
-  font-size: 10px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.shipping-status-active {
-  border-color: var(--secondary);
-  background: var(--secondary);
-  color: var(--card);
-}
-
-.shipping-status-disabled {
-  border-color: var(--border);
-  background: var(--light);
-  color: var(--muted);
-}
-
-.shipping-status-dot {
+.adm-shipping-status__dot {
   width: 6px;
   height: 6px;
+
+  flex: 0 0 6px;
+
   border-radius: 50%;
+
   background: currentColor;
 }
 
-/* ======================================================
-   ACTION
-====================================================== */
+/* =========================================================
+   ROW ACTIONS
+   ========================================================= */
 
-.shipping-actions {
+.adm-shipping-row-actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: flex-start;
+
   gap: 7px;
 }
 
-.shipping-action-btn {
+.adm-shipping-action-button {
   display: inline-flex;
-  min-height: 32px;
   align-items: center;
   justify-content: center;
+
   gap: 5px;
-  border-radius: 7px;
-  padding: 5px 10px;
-  background: var(--card);
-  font-size: 11px;
-  font-weight: 700;
+
+  min-height: 32px;
+
+  padding: 0 10px;
+
+  border-radius: 8px;
+
+  font-size: 9.8px;
+  font-weight: 800;
+
   cursor: pointer;
-  transition: 0.2s ease;
+
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease;
 }
 
-.shipping-edit-btn {
-  border: 1px solid var(--secondary);
-  color: var(--secondary);
+.adm-shipping-action-button:not(:disabled):hover {
+  transform: translateY(-1px);
 }
 
-.shipping-edit-btn:hover {
-  background: var(--secondary);
-  color: var(--card);
+.adm-shipping-action-button:disabled {
+  opacity: 0.55;
+
+  cursor: not-allowed;
 }
 
-.shipping-delete-btn {
-  border: 1px solid var(--primary);
-  color: var(--primary);
+.adm-shipping-action-button--edit {
+  border: 1px solid rgba(37, 99, 235, 0.17);
+
+  color: var(--adm-blue);
+
+  background: var(--adm-blue-soft);
 }
 
-.shipping-delete-btn:hover:not(:disabled) {
-  border-color: var(--primary-dark);
-  background: var(--primary);
-  color: var(--card);
+.adm-shipping-action-button--edit:hover {
+  border-color: rgba(37, 99, 235, 0.28);
+
+  background: rgba(37, 99, 235, 0.13);
 }
 
-/* ======================================================
-   EMPTY / LOADING
-====================================================== */
+.adm-shipping-action-button--delete {
+  border: 1px solid rgba(239, 35, 60, 0.17);
 
-.shipping-table-state {
-  padding: 50px 20px !important;
+  color: var(--adm-primary);
+
+  background: var(--adm-primary-soft);
+}
+
+.adm-shipping-action-button--delete:hover:not(:disabled) {
+  border-color: rgba(239, 35, 60, 0.3);
+
+  background: rgba(239, 35, 60, 0.13);
+}
+
+/* =========================================================
+   LOADING / EMPTY
+   ========================================================= */
+
+.adm-shipping-table__state {
+  height: 210px;
+
+  padding: 30px !important;
+
   text-align: center;
 }
 
-.shipping-empty,
-.shipping-loading {
+.adm-shipping-loading,
+.adm-shipping-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
 }
 
-.shipping-empty-icon {
+.adm-shipping-loading strong,
+.adm-shipping-empty strong {
+  margin-top: 11px;
+
+  color: var(--adm-heading);
+
+  font-size: 12.5px;
+  font-weight: 800;
+}
+
+.adm-shipping-loading p,
+.adm-shipping-empty p {
+  margin: 5px 0 0;
+
+  color: var(--adm-muted);
+
+  font-size: 10px;
+
+  line-height: 1.5;
+}
+
+.adm-shipping-empty__icon {
   display: grid;
-  width: 54px;
-  height: 54px;
-  margin-bottom: 13px;
+
+  width: 52px;
+  height: 52px;
+
   place-items: center;
-  border-radius: 50%;
-  background: var(--light);
-  color: var(--primary);
-  font-size: 23px;
+
+  border-radius: 14px;
+
+  color: var(--adm-primary);
+
+  background: var(--adm-primary-soft);
+
+  font-size: 21px;
 }
 
-.shipping-empty strong,
-.shipping-loading strong {
-  margin-bottom: 5px;
-  color: var(--dark);
-  font-size: 14px;
-}
+/* =========================================================
+   CUSTOM SPINNER
+   Không dùng spinner-border Bootstrap
+   ========================================================= */
 
-.shipping-empty p,
-.shipping-loading p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 12px;
-}
+.adm-shipping-spinner {
+  display: inline-block;
 
-.shipping-loading .spinner-border {
   width: 28px;
   height: 28px;
-  margin-bottom: 13px;
-  border-width: 3px;
-  color: var(--primary);
+
+  border: 3px solid rgba(239, 35, 60, 0.16);
+
+  border-top-color: var(--adm-primary);
+
+  border-radius: 50%;
+
+  animation: adm-shipping-spin 0.75s linear infinite;
 }
 
-/* ======================================================
-   PAGINATION
-====================================================== */
+.adm-shipping-spinner--small {
+  width: 16px;
+  height: 16px;
 
-.shipping-pagination {
+  border-width: 2px;
+
+  border-color: rgba(255, 255, 255, 0.35);
+
+  border-top-color: #ffffff;
+}
+
+.adm-shipping-spinner--tiny {
+  width: 14px;
+  height: 14px;
+
+  border-width: 2px;
+
+  border-color: rgba(100, 116, 139, 0.22);
+
+  border-top-color: currentColor;
+}
+
+/* =========================================================
+   PAGINATION
+   ========================================================= */
+
+.adm-shipping-pagination {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
-  padding: 15px 20px;
-  border-top: 1px solid var(--border);
-  color: var(--muted);
-  font-size: 11px;
+
+  gap: 16px;
+
+  padding: 14px 18px;
+
+  border-top: 1px solid var(--adm-border-soft);
+
+  background: var(--adm-surface);
 }
 
-.shipping-pagination strong {
-  color: var(--dark);
+.adm-shipping-pagination__info {
+  color: var(--adm-muted);
+
+  font-size: 10.5px;
+  font-weight: 650;
 }
 
-.shipping-pagination span {
-  margin-left: 4px;
+.adm-shipping-pagination__info strong {
+  color: var(--adm-heading);
+
+  font-weight: 800;
 }
 
-.shipping-pagination-buttons {
+.adm-shipping-pagination__info span {
+  margin-left: 8px;
+
+  padding-left: 8px;
+
+  border-left: 1px solid var(--adm-border);
+
+  color: var(--adm-muted);
+}
+
+.adm-shipping-pagination__controls {
   display: flex;
+  align-items: center;
+
   gap: 5px;
+
+  flex-wrap: wrap;
 }
 
-.shipping-pagination-buttons button {
+.adm-shipping-pagination__button {
   display: grid;
-  width: 32px;
-  height: 32px;
+
+  width: 34px;
+  height: 34px;
+
   place-items: center;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: var(--card);
-  color: var(--text);
-  font-size: 11px;
-  font-weight: 700;
+
+  padding: 0;
+
+  border: 1px solid var(--adm-border);
+
+  border-radius: 8px;
+
+  color: var(--adm-text);
+
+  background: #ffffff;
+
+  font-size: 10.5px;
+  font-weight: 800;
+
   cursor: pointer;
+
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease;
 }
 
-.shipping-pagination-buttons button:hover:not(:disabled) {
-  border-color: var(--primary);
-  color: var(--primary);
+.adm-shipping-pagination__button:hover:not(:disabled) {
+  border-color: rgba(239, 35, 60, 0.25);
+
+  color: var(--adm-primary);
+
+  background: var(--adm-primary-soft);
+
+  transform: translateY(-1px);
 }
 
-.shipping-pagination-buttons button.active {
-  border-color: var(--primary);
-  background: var(--primary);
-  color: var(--card);
-}
+.adm-shipping-pagination__button:disabled {
+  color: var(--adm-subtle);
 
-.shipping-pagination-buttons button:disabled {
+  background: #f8fafc;
+
+  opacity: 0.5;
+
   cursor: not-allowed;
-  opacity: 0.45;
 }
 
-/* ======================================================
-   RESPONSIVE
-====================================================== */
+.adm-shipping-pagination__button--current {
+  border-color: var(--adm-primary);
 
-@media (max-width: 1200px) {
-  .shipping-form-grid {
-    grid-template-columns:
-      repeat(2, minmax(0, 1fr));
+  color: #ffffff;
+
+  background: var(--adm-primary);
+
+  box-shadow: 0 5px 13px rgba(239, 35, 60, 0.17);
+}
+
+.adm-shipping-pagination__button--current:hover:not(:disabled) {
+  color: #ffffff;
+
+  background: var(--adm-primary-dark);
+}
+
+/* =========================================================
+   ANIMATION
+   ========================================================= */
+
+@keyframes adm-shipping-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
   }
 }
 
-@media (max-width: 900px) {
-  .shipping-filter-grid {
-    grid-template-columns: 1fr;
+/* =========================================================
+   <= 1200PX
+   ========================================================= */
+
+@media (max-width: 1199.98px) {
+  .adm-shipping-form__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .shipping-page-header {
+  .adm-shipping-filter {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* =========================================================
+   <= 900PX
+   ========================================================= */
+
+@media (max-width: 899.98px) {
+  .adm-shipping-header {
     align-items: stretch;
   }
 
-  .shipping-total-card {
-    min-width: 110px;
+  .adm-shipping-total-card {
+    min-width: 150px;
   }
 }
 
-@media (max-width: 768px) {
-  .shipping-admin-page {
-    padding: 18px;
+/* =========================================================
+   <= 768PX
+   ========================================================= */
+
+@media (max-width: 767.98px) {
+  .adm-shipping-header {
+    flex-direction: column;
+
+    gap: 15px;
   }
 
-  .shipping-page-header {
+  .adm-shipping-total-card {
+    width: 100%;
+  }
+
+  .adm-shipping-panel__header {
     flex-direction: column;
   }
 
-  .shipping-total-card {
-    width: 100%;
-    text-align: left;
+  .adm-shipping-panel__body,
+  .adm-shipping-form {
+    padding: 16px;
   }
 
-  .shipping-card-header {
+  .adm-shipping-form__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .adm-shipping-form__actions {
+    flex-direction: column;
+  }
+
+  .adm-shipping-form__actions .adm-shipping-button {
+    width: 100%;
+  }
+
+  .adm-shipping-search {
+    flex-direction: column;
+
+    align-items: stretch;
+  }
+
+  .adm-shipping-search .adm-shipping-button {
+    width: 100%;
+  }
+
+  .adm-shipping-pagination {
+    flex-direction: column;
+
     align-items: flex-start;
-    flex-direction: column;
   }
 
-  .shipping-form-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .shipping-search {
-    flex-direction: column;
-  }
-
-  .shipping-search .shipping-btn {
+  .adm-shipping-pagination__controls {
     width: 100%;
   }
+}
 
-  .shipping-form-actions {
-    flex-direction: column;
-  }
+/* =========================================================
+   <= 576PX
+   ========================================================= */
 
-  .shipping-form-actions .shipping-btn {
-    width: 100%;
-  }
-
-  .shipping-pagination {
+@media (max-width: 575.98px) {
+  .adm-shipping-header__title {
     align-items: flex-start;
-    flex-direction: column;
+
+    font-size: 22px;
+  }
+
+  .adm-shipping-header__title-icon {
+    width: 35px;
+    height: 35px;
+
+    flex-basis: 35px;
+  }
+
+  .adm-shipping-panel__header {
+    padding: 15px 14px;
+  }
+
+  .adm-shipping-panel__body,
+  .adm-shipping-form {
+    padding: 14px;
+  }
+
+  .adm-shipping-panel__heading h2 {
+    font-size: 15px;
+  }
+
+  .adm-shipping-pagination__controls {
+    justify-content: center;
   }
 }
