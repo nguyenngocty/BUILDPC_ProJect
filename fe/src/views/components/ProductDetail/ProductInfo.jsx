@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   formatPrice,
@@ -8,21 +8,83 @@ import {
 
 function ProductInfo({
   product,
+
+  baseProduct,
+
+  options = [],
+
+  selectedValues = {},
+
+  selectedVariant,
+
+  hasVariants = false,
+
   rating,
+
   actionLoading,
+
   actionMessage,
+
+  onSelectOption,
+
+  isOptionValueAvailable,
+
   onAddToCart,
 }) {
   const [qty, setQty] = useState(1);
 
+  // ============================================================
+  // RESET QUANTITY
+  //
+  // Khi đổi Variant:
+  // quantity về 1.
+  // ============================================================
+
   useEffect(() => {
     setQty(1);
-  }, [product.id]);
+  }, [product?.id, selectedVariant?.id]);
 
-  const maxQuantity = Math.max(Number(product.quantity || 0), 0);
+  // ============================================================
+  // STOCK
+  // ============================================================
+
+  const maxQuantity = Math.max(Number(product?.quantity || 0), 0);
+
+  // ============================================================
+  // SALE
+  // ============================================================
+
+  const hasSale =
+    Boolean(product?.is_sale) &&
+    Number(product?.sale_price) > 0 &&
+    Number(product?.sale_price) < Number(product?.price);
+
+  // ============================================================
+  // OPTIONS
+  // ============================================================
+
+  const variantOptions = useMemo(() => {
+    if (!hasVariants || !Array.isArray(options)) {
+      return [];
+    }
+
+    return options.filter(
+      (option) => Array.isArray(option?.values) && option.values.length > 0,
+    );
+  }, [options, hasVariants]);
+
+  // ============================================================
+  // QUANTITY
+  // ============================================================
 
   const increase = () => {
-    setQty((current) => Math.min(current + 1, Math.max(maxQuantity, 1)));
+    setQty((current) =>
+      Math.min(
+        current + 1,
+
+        Math.max(maxQuantity, 1),
+      ),
+    );
   };
 
   const decrease = () => {
@@ -36,41 +98,99 @@ function ProductInfo({
       return;
     }
 
-    setQty(Math.max(Math.min(Math.floor(value), Math.max(maxQuantity, 1)), 1));
+    setQty(
+      Math.max(
+        Math.min(
+          Math.floor(value),
+
+          Math.max(maxQuantity, 1),
+        ),
+
+        1,
+      ),
+    );
   };
 
-  const hasSale = product.is_sale && Number(product.sale_price) > 0;
+  // ============================================================
+  // RENDER
+  // ============================================================
 
   return (
-    <section className="product-detail-panel">
-      <div className="product-info-topline">
-        <span className="product-brand-tag">
-          {product.category_name || "Sản phẩm"}
+    <section className="pd-info-panel">
+      {/* ======================================================
+          TOP
+      ====================================================== */}
+
+      <div className="pd-info-topline">
+        <span className="pd-category-pill">
+          {baseProduct?.category_name || product?.category_name || "Sản phẩm"}
         </span>
 
         <span
-          className={`product-stock-badge ${getStockClass(
-            product.stock_status,
-          )}`}
+          className={`pd-stock-pill ${getStockClass(product?.stock_status)}`}
         >
-          {getStockLabel(product.stock_status)}
+          <span className="pd-stock-pill__dot"></span>
+
+          {getStockLabel(product?.stock_status)}
         </span>
       </div>
 
-      <h1 className="product-name">{product.name}</h1>
+      {/* ======================================================
+          TITLE
+      ====================================================== */}
 
-      <div className="product-code-row">
-        <span>
-          SKU: <strong>{product.sku}</strong>
-        </span>
+      <div className="pd-title-block">
+        <h1 className="pd-product-title">{baseProduct?.name}</h1>
 
-        <span>
-          Đã bán: <strong>{Number(product.sold || 0)}</strong>
-        </span>
+        {selectedVariant && hasVariants && (
+          <div className="pd-current-variant">
+            <span className="pd-current-variant__icon">
+              <i className="bi bi-box-seam"></i>
+            </span>
+
+            <div>
+              <small>Phiên bản đang chọn</small>
+
+              <strong>{selectedVariant.variant_name}</strong>
+            </div>
+
+            {Number(selectedVariant.is_default) === 1 && (
+              <span className="pd-default-variant-badge">Mặc định</span>
+            )}
+          </div>
+        )}
       </div>
 
-      <div className="product-review">
-        <div className="product-stars">
+      {/* ======================================================
+          META
+      ====================================================== */}
+
+      <div className="pd-meta-row">
+        <div className="pd-meta-item">
+          <i className="bi bi-upc-scan"></i>
+
+          <span>SKU</span>
+
+          <strong>{product?.sku || "—"}</strong>
+        </div>
+
+        <div className="pd-meta-divider"></div>
+
+        <div className="pd-meta-item">
+          <i className="bi bi-bag-check"></i>
+
+          <span>Đã bán</span>
+
+          <strong>{Number(baseProduct?.sold || product?.sold || 0)}</strong>
+        </div>
+      </div>
+
+      {/* ======================================================
+          REVIEW
+      ====================================================== */}
+
+      <div className="pd-rating-row">
+        <div className="pd-rating-stars">
           {Array.from({
             length: 5,
           }).map((_, index) => {
@@ -88,62 +208,224 @@ function ProductInfo({
         <strong>{Number(rating?.average || 0).toFixed(1)}</strong>
 
         <span>
-          ({Number(rating?.total || product.rating?.count || 0)} đánh giá)
+          ({Number(rating?.total || baseProduct?.rating?.count || 0)} đánh giá)
         </span>
       </div>
 
-      <div className="price-section">
-        <div className="current-price">{formatPrice(product.final_price)}</div>
+      {/* ======================================================
+          PRICE
+      ====================================================== */}
+
+      <div className="pd-price-card">
+        <div className="pd-price-card__main">
+          <span className="pd-price-label">Giá hiện tại</span>
+
+          <div className="pd-price-line">
+            <strong>{formatPrice(product?.final_price)}</strong>
+
+            {hasSale && <del>{formatPrice(product?.price)}</del>}
+          </div>
+        </div>
+
+        {hasSale && Number(product?.discount_percent) > 0 && (
+          <div className="pd-discount-badge">
+            <i className="bi bi-lightning-charge-fill"></i>-
+            {Number(product.discount_percent)}%
+          </div>
+        )}
 
         {hasSale && (
-          <div className="old-price">{formatPrice(product.price)}</div>
+          <div className="pd-saving-line">
+            Bạn tiết kiệm{" "}
+            <strong>
+              {formatPrice(
+                Number(product?.price || 0) - Number(product?.final_price || 0),
+              )}
+            </strong>
+          </div>
         )}
       </div>
 
-      {hasSale && product.discount_percent > 0 && (
-        <div className="saving-box">
-          Tiết kiệm{" "}
-          {formatPrice(Number(product.price) - Number(product.final_price))} (
-          {product.discount_percent}
-          %)
+      {/* ======================================================
+          VARIANT SELECTOR
+      ====================================================== */}
+
+      {variantOptions.length > 0 && (
+        <div className="pd-variant-box">
+          <div className="pd-variant-box__heading">
+            <div className="pd-variant-heading-icon">
+              <i className="bi bi-sliders2"></i>
+            </div>
+
+            <div>
+              <strong>Chọn phiên bản</strong>
+
+              <span>Giá và tồn kho sẽ thay đổi theo lựa chọn</span>
+            </div>
+          </div>
+
+          <div className="pd-variant-options">
+            {variantOptions.map((option) => {
+              const code = String(option?.code || "");
+
+              const selectedValue = selectedValues[code];
+
+              return (
+                <div className="pd-variant-group" key={option.id || code}>
+                  <div className="pd-variant-group__label">
+                    <span>{option.name}</span>
+
+                    {selectedValue && <strong>{selectedValue}</strong>}
+                  </div>
+
+                  <div className="pd-variant-values">
+                    {(option.values || []).map((value) => {
+                      const active =
+                        String(selectedValue || "").toLowerCase() ===
+                        String(value.value || "").toLowerCase();
+
+                      const available =
+                        typeof isOptionValueAvailable === "function"
+                          ? isOptionValueAvailable(code, value.value)
+                          : true;
+
+                      return (
+                        <button
+                          key={value.id || value.value}
+                          type="button"
+                          className={`pd-variant-value ${
+                            active ? "pd-variant-value--active" : ""
+                          } ${!available ? "pd-variant-value--disabled" : ""}`}
+                          disabled={!available}
+                          onClick={() => onSelectOption(code, value.value)}
+                        >
+                          {option.display_type === "color" &&
+                            value.color_code && (
+                              <span
+                                className="pd-variant-color-dot"
+                                style={{
+                                  backgroundColor: value.color_code,
+                                }}
+                              ></span>
+                            )}
+
+                          <span>{value.label || value.value}</span>
+
+                          {active && <i className="bi bi-check-lg"></i>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {selectedVariant ? (
+            <div className="pd-selected-variant-summary">
+              <div className="pd-selected-variant-summary__icon">
+                <i className="bi bi-check2-circle"></i>
+              </div>
+
+              <div className="pd-selected-variant-summary__content">
+                <span>Phiên bản phù hợp</span>
+
+                <strong>{selectedVariant.variant_name}</strong>
+              </div>
+
+              <div className="pd-selected-variant-summary__stock">
+                <small>Tồn kho</small>
+
+                <strong>{Number(selectedVariant.quantity || 0)}</strong>
+              </div>
+            </div>
+          ) : (
+            <div className="pd-variant-warning">
+              <i className="bi bi-exclamation-triangle"></i>
+
+              <span>Tổ hợp này hiện không có phiên bản phù hợp.</span>
+            </div>
+          )}
         </div>
       )}
 
-      {product.short_description && (
-        <p className="product-short-description">{product.short_description}</p>
+      {/* ======================================================
+          DESCRIPTION
+      ====================================================== */}
+
+      {baseProduct?.short_description && (
+        <p className="pd-short-description">{baseProduct.short_description}</p>
       )}
 
-      <div className="benefit-list">
-        <div className="benefit-card">
-          <i className="bi bi-patch-check-fill"></i>
+      {/* ======================================================
+          BENEFITS
+      ====================================================== */}
 
-          <span>Sản phẩm chính hãng</span>
+      <div className="pd-benefit-grid">
+        <div className="pd-benefit-item">
+          <span>
+            <i className="bi bi-patch-check-fill"></i>
+          </span>
+
+          <div>
+            <strong>Chính hãng</strong>
+
+            <small>Cam kết nguồn gốc</small>
+          </div>
         </div>
 
-        <div className="benefit-card">
-          <i className="bi bi-truck"></i>
+        <div className="pd-benefit-item">
+          <span>
+            <i className="bi bi-truck"></i>
+          </span>
 
-          <span>Giao hàng toàn quốc</span>
+          <div>
+            <strong>Giao toàn quốc</strong>
+
+            <small>Đóng gói an toàn</small>
+          </div>
         </div>
 
-        <div className="benefit-card">
-          <i className="bi bi-headset"></i>
+        <div className="pd-benefit-item">
+          <span>
+            <i className="bi bi-headset"></i>
+          </span>
 
-          <span>Hỗ trợ kỹ thuật sau bán hàng</span>
+          <div>
+            <strong>Hỗ trợ kỹ thuật</strong>
+
+            <small>Đồng hành sau mua</small>
+          </div>
         </div>
       </div>
 
-      {product.in_stock && (
-        <>
-          <div className="product-quantity-label">
-            <span>Số lượng</span>
+      {/* ======================================================
+          QUANTITY
+      ====================================================== */}
 
-            <small>Tồn kho: {maxQuantity}</small>
+      {product?.in_stock && maxQuantity > 0 && (
+        <div className="pd-buy-area">
+          <div className="pd-buy-area__top">
+            <div>
+              <strong>Số lượng</strong>
+
+              <span>Chọn số lượng muốn mua</span>
+            </div>
+
+            <div className="pd-stock-counter">
+              <i className="bi bi-box2"></i>
+              Còn <strong>{maxQuantity}</strong> sản phẩm
+            </div>
           </div>
 
-          <div className="quantity-wrapper">
-            <button type="button" onClick={decrease} disabled={qty <= 1}>
-              −
+          <div className="pd-quantity-control">
+            <button
+              type="button"
+              aria-label="Giảm số lượng"
+              disabled={qty <= 1}
+              onClick={decrease}
+            >
+              <i className="bi bi-dash-lg"></i>
             </button>
 
             <input
@@ -156,47 +438,75 @@ function ProductInfo({
 
             <button
               type="button"
-              onClick={increase}
+              aria-label="Tăng số lượng"
               disabled={qty >= maxQuantity}
+              onClick={increase}
             >
-              +
+              <i className="bi bi-plus-lg"></i>
             </button>
           </div>
-        </>
+        </div>
       )}
 
-      <div className="action-buttons">
+      {/* ======================================================
+          ACTION
+      ====================================================== */}
+
+      <div className="pd-action-grid">
         <button
-          className="cart-button"
+          className="pd-add-cart-btn"
           type="button"
-          disabled={!product.in_stock || actionLoading}
+          disabled={
+            !product?.in_stock ||
+            maxQuantity <= 0 ||
+            actionLoading ||
+            (hasVariants && !selectedVariant)
+          }
           onClick={() => onAddToCart(qty)}
         >
-          <i className="bi bi-cart3"></i>
-
-          {actionLoading
-            ? "Đang xử lý..."
-            : product.in_stock
-              ? "Thêm vào giỏ"
-              : "Hết hàng"}
+          {actionLoading ? (
+            <>
+              <span className="pd-action-spinner"></span>
+              Đang xử lý
+            </>
+          ) : (
+            <>
+              <i className="bi bi-cart-plus"></i>
+              Thêm vào giỏ
+            </>
+          )}
         </button>
 
         <button
-          className="buy-button"
+          className="pd-buy-now-btn"
           type="button"
-          disabled={!product.in_stock || actionLoading}
+          disabled={
+            !product?.in_stock ||
+            maxQuantity <= 0 ||
+            actionLoading ||
+            (hasVariants && !selectedVariant)
+          }
           onClick={() =>
             onAddToCart(qty, {
               goCheckout: true,
             })
           }
         >
+          <i className="bi bi-lightning-charge-fill"></i>
           Mua ngay
         </button>
       </div>
 
+      {/* ======================================================
+          MESSAGE
+      ====================================================== */}
+
       {actionMessage && (
-        <div className="product-action-message">{actionMessage}</div>
+        <div className="pd-action-message">
+          <i className="bi bi-info-circle"></i>
+
+          <span>{actionMessage}</span>
+        </div>
       )}
     </section>
   );

@@ -4,68 +4,184 @@ import {
   getStockLabel,
 } from "../../../utils/productClient";
 
-function ProductStickyBox({ product, actionLoading, onAddToCart, onBuyNow }) {
-  const hasSale = product.is_sale && Number(product.sale_price) > 0;
+function ProductStickyBox({
+  product,
+
+  selectedVariant,
+
+  hasVariants,
+
+  actionLoading,
+
+  onAddToCart,
+
+  onBuyNow,
+}) {
+  if (!product) {
+    return null;
+  }
+
+  const hasSale =
+    Boolean(product.is_sale) &&
+    Number(product.sale_price) > 0 &&
+    Number(product.sale_price) < Number(product.price);
+
+  const available =
+    Boolean(product.in_stock) &&
+    Number(product.quantity || 0) > 0 &&
+    (!hasVariants || Boolean(selectedVariant));
 
   return (
-    <aside className="sticky-product">
-      <div className="sticky-card">
-        <div className={`sticky-label ${getStockClass(product.stock_status)}`}>
-          {getStockLabel(product.stock_status)}
+    <aside className="pd-sticky-product">
+      <div className="pd-sticky-card">
+        {/* ====================================================
+            HEADER
+        ==================================================== */}
+
+        <div className="pd-sticky-card__top">
+          <span
+            className={`pd-sticky-stock ${getStockClass(product.stock_status)}`}
+          >
+            <span></span>
+
+            {getStockLabel(product.stock_status)}
+          </span>
+
+          <div className="pd-sticky-security">
+            <i className="bi bi-shield-check"></i>
+          </div>
         </div>
 
-        <h3 className="sticky-name">{product.name}</h3>
+        {/* ====================================================
+            NAME
+        ==================================================== */}
 
-        <div className="sticky-price-group">
-          <div className="sticky-current-price">
-            {formatPrice(product.final_price)}
+        <h3 className="pd-sticky-name">{product.name}</h3>
+
+        {/* ====================================================
+            VARIANT
+        ==================================================== */}
+
+        {hasVariants && selectedVariant && (
+          <div className="pd-sticky-variant">
+            <span className="pd-sticky-variant__icon">
+              <i className="bi bi-box-seam"></i>
+            </span>
+
+            <div>
+              <small>Phiên bản</small>
+
+              <strong>{selectedVariant.variant_name}</strong>
+            </div>
           </div>
+        )}
+
+        {/* ====================================================
+            PRICE
+        ==================================================== */}
+
+        <div className="pd-sticky-price">
+          <small>Giá bán</small>
+
+          <strong>{formatPrice(product.final_price)}</strong>
 
           {hasSale && (
-            <div className="sticky-old-price">{formatPrice(product.price)}</div>
+            <div className="pd-sticky-price__old">
+              <del>{formatPrice(product.price)}</del>
+
+              {Number(product.discount_percent || 0) > 0 && (
+                <span>-{product.discount_percent}%</span>
+              )}
+            </div>
           )}
         </div>
 
-        <div className="sticky-feature-list">
-          <div className="sticky-feature">
-            <i className="bi bi-patch-check-fill"></i>
+        {/* ====================================================
+            INFORMATION
+        ==================================================== */}
 
-            <span>Chính hãng</span>
+        <div className="pd-sticky-info">
+          <div>
+            <span>
+              <i className="bi bi-upc-scan"></i>
+            </span>
+
+            <div>
+              <small>SKU</small>
+
+              <strong>{product.sku || "—"}</strong>
+            </div>
           </div>
 
-          <div className="sticky-feature">
-            <i className="bi bi-box-seam"></i>
+          <div>
+            <span>
+              <i className="bi bi-box2"></i>
+            </span>
 
-            <span>Tồn kho: {Number(product.quantity || 0)}</span>
+            <div>
+              <small>Tồn kho</small>
+
+              <strong>{Number(product.quantity || 0)} sản phẩm</strong>
+            </div>
           </div>
 
-          <div className="sticky-feature">
-            <i className="bi bi-truck"></i>
+          <div>
+            <span>
+              <i className="bi bi-truck"></i>
+            </span>
 
-            <span>Giao hàng toàn quốc</span>
+            <div>
+              <small>Vận chuyển</small>
+
+              <strong>Toàn quốc</strong>
+            </div>
           </div>
         </div>
 
-        <button
-          className="sticky-buy-btn"
-          type="button"
-          disabled={!product.in_stock || actionLoading}
-          onClick={onBuyNow}
-        >
-          <i className="bi bi-lightning-charge-fill"></i>
+        {/* ====================================================
+            ACTION
+        ==================================================== */}
 
-          {product.in_stock ? "Mua ngay" : "Hết hàng"}
-        </button>
+        <div className="pd-sticky-actions">
+          <button
+            className="pd-sticky-buy-btn"
+            type="button"
+            disabled={!available || actionLoading}
+            onClick={onBuyNow}
+          >
+            {actionLoading ? (
+              <span className="pd-action-spinner"></span>
+            ) : (
+              <i className="bi bi-lightning-charge-fill"></i>
+            )}
 
-        <button
-          className="sticky-cart-btn"
-          type="button"
-          disabled={!product.in_stock || actionLoading}
-          onClick={onAddToCart}
-        >
-          <i className="bi bi-cart-plus"></i>
-          Thêm vào giỏ
-        </button>
+            {available
+              ? "Mua ngay"
+              : hasVariants && !selectedVariant
+                ? "Chọn phiên bản"
+                : "Hết hàng"}
+          </button>
+
+          <button
+            className="pd-sticky-cart-btn"
+            type="button"
+            disabled={!available || actionLoading}
+            onClick={onAddToCart}
+          >
+            <i className="bi bi-cart-plus"></i>
+            Thêm vào giỏ
+          </button>
+        </div>
+
+        {/* ====================================================
+            FOOTER
+        ==================================================== */}
+
+        <div className="pd-sticky-footer">
+          <i className="bi bi-lock-fill"></i>
+
+          <span>Thanh toán an toàn & bảo mật</span>
+        </div>
       </div>
     </aside>
   );
