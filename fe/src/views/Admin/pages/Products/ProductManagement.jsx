@@ -10,6 +10,9 @@ import { defaultProduct } from "../../../../constants/productDefault";
 
 import { createProductFormData } from "../../../../utils/productFormData";
 
+// variant stock modal
+import VariantManager from "./components/VariantManager";
+
 import "./ProductManagement.css";
 
 const UPLOAD_URL = process.env.REACT_APP_UPLOAD_URL || "http://localhost:5000";
@@ -1756,7 +1759,9 @@ function ProductManagement() {
                   </tr>
                 ) : (
                   products.map((product) => {
-                    const stock = getStockMeta(product.remaining);
+                    const stock = getStockMeta(
+                      product.quantity ?? product.remaining ?? 0,
+                    );
 
                     return (
                       <tr key={product.id}>
@@ -2559,7 +2564,7 @@ function ProductManagement() {
                         <div key={`${specification.spec_key}-${index}`}>
                           <span>{specification.spec_key}</span>
 
-                          <strong>{specification.value}</strong>
+                          <strong>{specification.spec_value}</strong>
                         </div>
                       ),
                     )}
@@ -2569,6 +2574,31 @@ function ProductManagement() {
                 )}
               </section>
             </div>
+
+            <VariantManager
+              product={selectedProduct}
+              onProductUpdated={(updatedProduct) => {
+                if (!updatedProduct) {
+                  return;
+                }
+
+                setSelectedProduct(updatedProduct);
+
+                setProducts((previous) =>
+                  previous.map((item) =>
+                    Number(item.id) === Number(updatedProduct.id)
+                      ? {
+                          ...item,
+
+                          ...updatedProduct,
+
+                          remaining: updatedProduct.quantity ?? item.remaining,
+                        }
+                      : item,
+                  ),
+                );
+              }}
+            />
 
             <div className="adm-product-modal__footer">
               <button
