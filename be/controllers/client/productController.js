@@ -114,9 +114,8 @@ exports.getTopSellingProducts = async (req, res, next) => {
 // GET /api/client/products/:id/comments
 // ======================================================
 exports.getProductComments = async (req, res, next) => {
-  
   try {
-    const productId = req.params.id; 
+    const productId = req.params.id;
     const sql = `
       SELECT 
         c.id, c.content, c.rating, c.created_at,
@@ -136,20 +135,26 @@ exports.getProductComments = async (req, res, next) => {
 // POST: Khách hàng gửi đánh giá mới
 // =========================================================
 exports.createProductComment = async (req, res, next) => {
- 
   try {
     const { product_id, rating, content } = req.body;
 
     // Validate
-    if (!product_id || !rating || !content || content.trim() === '') {
-      return res.status(400).json({ success: false, message: "Vui lòng điền đầy đủ thông tin." });
+    if (!product_id || !rating || !content || content.trim() === "") {
+      return res
+        .status(400)
+        .json({ success: false, message: "Vui lòng điền đầy đủ thông tin." });
     }
     if (rating < 1 || rating > 5) {
-      return res.status(400).json({ success: false, message: "Điểm đánh giá phải từ 1 đến 5 sao." });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Điểm đánh giá phải từ 1 đến 5 sao.",
+        });
     }
 
     // Lấy user_id (nếu chưa có auth thì mặc định 1 để test)
-    const user_id = req.user ? req.user.id : 1;
+    const user_id = req.user.id;
 
     const sql = `
       INSERT INTO comments (user_id, product_id, content, rating, is_approved, created_at, updated_at)
@@ -159,7 +164,8 @@ exports.createProductComment = async (req, res, next) => {
 
     res.status(201).json({
       success: true,
-      message: "Cảm ơn bạn đã gửi đánh giá. Đánh giá sẽ được duyệt trước khi hiển thị."
+      message:
+        "Cảm ơn bạn đã gửi đánh giá. Đánh giá sẽ được duyệt trước khi hiển thị.",
     });
   } catch (err) {
     console.error("Lỗi tạo bình luận:", err);

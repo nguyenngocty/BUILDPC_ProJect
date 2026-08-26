@@ -1,53 +1,78 @@
-const express = require(
-  "express"
-);
+const express = require("express");
 
-const orderController = require(
-  "../../controllers/client/orderController"
-);
+const orderController = require("../../controllers/client/orderController");
 
-const {
-  requireAuth,
-} = require(
-  "../../middlewares/authMiddleware"
-);
+const { requireAuth } = require("../../middlewares/authMiddleware");
 
-const router =
-  express.Router();
+const router = express.Router();
 
-router.post(
-  "/",
-  orderController.createOrder
-);
+// ============================================================
+// CLIENT ORDERS
+//
+// Toàn bộ nghiệp vụ đơn hàng đều thuộc tài khoản người dùng.
+// Vì vậy tất cả route bên dưới đều bắt buộc đăng nhập.
+//
+// Sau khi requireAuth chạy:
+//
+// req.user = user;
+// req.auth = {
+//   userId,
+//   tokenPayload
+// };
+//
+// Controller không cần tin user_id do Client gửi lên.
+// ============================================================
 
-router.get(
-  "/",
-  requireAuth,
-  orderController.getOrders
-);
+router.use(requireAuth);
 
-router.patch(
-  "/:id/cancel",
-  requireAuth,
-  orderController.cancelOrder
-);
+// ============================================================
+// CREATE ORDER
+//
+// POST /api/client/orders
+// ============================================================
 
-router.get(
-  "/:id/reorder-checkout",
-  requireAuth,
-  orderController.getReorderCheckout
-);
+router.post("/", orderController.createOrder);
 
-router.post(
-  "/:id/reorder-checkout",
-  requireAuth,
-  orderController.createReorderCheckout
-);
+// ============================================================
+// GET USER ORDERS
+//
+// GET /api/client/orders
+// ============================================================
 
-router.get(
-  "/:id",
-  requireAuth,
-  orderController.getOrderById
-);
+router.get("/", orderController.getOrders);
+
+// ============================================================
+// CANCEL ORDER
+//
+// PATCH /api/client/orders/:id/cancel
+// ============================================================
+
+router.patch("/:id/cancel", orderController.cancelOrder);
+
+// ============================================================
+// REORDER CHECKOUT PREVIEW
+//
+// GET /api/client/orders/:id/reorder-checkout
+// ============================================================
+
+router.get("/:id/reorder-checkout", orderController.getReorderCheckout);
+
+// ============================================================
+// CREATE REORDER
+//
+// POST /api/client/orders/:id/reorder-checkout
+// ============================================================
+
+router.post("/:id/reorder-checkout", orderController.createReorderCheckout);
+
+// ============================================================
+// ORDER DETAIL
+//
+// GET /api/client/orders/:id
+//
+// Route động nên để cuối.
+// ============================================================
+
+router.get("/:id", orderController.getOrderById);
 
 module.exports = router;

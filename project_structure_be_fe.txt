@@ -1,0 +1,700 @@
+==========================================================================================
+BUILDPC DATN - PROJECT STRUCTURE
+==========================================================================================
+
+Project root:
+D:\BUILDzip\File_moi\BUILDPC_ProJect
+
+==========================================================================================
+BACKEND STRUCTURE
+==========================================================================================
+
+be/
+├── config/
+│   └── database.js
+├── controllers/
+│   ├── admin/
+│   │   ├── authController.js
+│   │   ├── bannerController.js
+│   │   ├── categoryController.js
+│   │   ├── commentController.js
+│   │   ├── couponController.js
+│   │   ├── dashboardController.js
+│   │   ├── orderController.js
+│   │   ├── pcBuildController.js
+│   │   ├── pcPartController.js
+│   │   ├── pcPartTypeController.js
+│   │   ├── postController.js
+│   │   ├── productController.js
+│   │   ├── shippingRateController.js
+│   │   └── userController.js
+│   ├── client/
+│   │   ├── aiChatController.js
+│   │   ├── authController.js
+│   │   ├── bannerController.js
+│   │   ├── buildController.js
+│   │   ├── cartController.js
+│   │   ├── categoryController.js
+│   │   ├── commentController.js
+│   │   ├── contactController.js
+│   │   ├── couponController.js
+│   │   ├── googleAuthController.js
+│   │   ├── orderController.js
+│   │   ├── paymentController.js
+│   │   ├── pcPartController.js
+│   │   ├── pcPartTypeController.js
+│   │   ├── postController.js
+│   │   ├── productController.js
+│   │   └── shippingController.js
+│   └── healthController.js
+├── middlewares/
+│   ├── adminMiddleware.js
+│   ├── authMiddleware.js
+│   ├── errorMiddleware.js
+│   ├── notFoundMiddleware.js
+│   ├── requireAuth.js
+│   ├── uploadAvatar.js
+│   ├── uploadCategory.js
+│   ├── uploadPost.js
+│   └── uploadProduct.js
+├── models/
+│   ├── AdminOrder.js
+│   ├── Banner.js
+│   ├── Build.js
+│   ├── Cart.js
+│   ├── Category.js
+│   ├── Comment.js
+│   ├── Coupon.js
+│   ├── Dashboard.js
+│   ├── GoogleAuth.js
+│   ├── Order.js
+│   ├── PasswordResetToken.js
+│   ├── PcBuild.js
+│   ├── PcPart.js
+│   ├── PcPartType.js
+│   ├── Post.js
+│   ├── Product.js
+│   ├── ProductVariant.js
+│   ├── ShippingRate.js
+│   └── User.js
+├── routes/
+│   ├── admin/
+│   │   ├── authRoutes.js
+│   │   ├── bannerRoutes.js
+│   │   ├── categoryRoutes.js
+│   │   ├── commentRoutes.js
+│   │   ├── couponRoutes.js
+│   │   ├── dashboardRoutes.js
+│   │   ├── index.js
+│   │   ├── orderRoutes.js
+│   │   ├── pcBuildRoutes.js
+│   │   ├── pcPartRoutes.js
+│   │   ├── pcPartTypeRoutes.js
+│   │   ├── postRoutes.js
+│   │   ├── productRoutes.js
+│   │   ├── shippingRateRoutes.js
+│   │   └── userRoutes.js
+│   ├── client/
+│   │   ├── aiChatRoutes.js
+│   │   ├── authRoutes.js
+│   │   ├── bannerRoutes.js
+│   │   ├── buildRoutes.js
+│   │   ├── cartRoutes.js
+│   │   ├── categoryRoutes.js
+│   │   ├── commentRoutes.js
+│   │   ├── contactRoutes.js
+│   │   ├── couponRoutes.js
+│   │   ├── index.js
+│   │   ├── orderRoutes.js
+│   │   ├── paymentRoutes.js
+│   │   ├── postRoutes.js
+│   │   ├── productRoutes.js
+│   │   └── shippingRoutes.js
+│   ├── healthRoutes.js
+│   └── index.js
+├── scripts/
+│   ├── backfillProductSlugs.js
+│   └── testMomoCallback.js
+├── services/
+│   ├── geminiService.js
+│   ├── googleAuthService.js
+│   └── openaiService.js
+├── utils/
+│   ├── authUser.js
+│   ├── fileHelper.js
+│   ├── jwt.js
+│   ├── location.js
+│   ├── mailer.js
+│   ├── momo.js
+│   ├── notImplemented.js
+│   └── passwordReset.js
+├── validations/
+│   ├── categoryValidation.js
+│   ├── commentValidation.js
+│   └── productValidation.js
+├── .env
+├── .env.example
+├── .gitignore
+├── app.js
+├── csgncounhosting_csdl_datn.sql
+├── package.json
+├── README.md
+└── server.js
+
+Backend folders: 13
+Backend files: 117
+
+
+==========================================================================================
+FRONTEND STRUCTURE
+==========================================================================================
+
+fe/
+├── public/
+│   ├── images/
+│   │   └── no-image.png
+│   ├── favicon.ico
+│   ├── index.html
+│   ├── logo192.png
+│   ├── logo512.png
+│   ├── manifest.json
+│   └── robots.txt
+├── src/
+│   ├── assets/
+│   │   ├── icons/
+│   │   └── images/
+│   ├── constants/
+│   │   └── productDefault.js
+│   ├── context/
+│   │   ├── AuthContext.jsx
+│   │   └── CartContext.jsx
+│   ├── controllers/
+│   │   ├── Admin/
+│   │   │   └── productController.js
+│   │   ├── aboutController.js
+│   │   ├── accountController.js
+│   │   ├── authController.js
+│   │   ├── blogController.js
+│   │   ├── cartController.js
+│   │   ├── googleAuthController.js
+│   │   ├── homeController.js
+│   │   ├── orderController.js
+│   │   ├── productController.js
+│   │   ├── productdetailController.js
+│   │   └── userController.js
+│   ├── hooks/
+│   │   ├── useAuth.js
+│   │   ├── useCart.js
+│   │   ├── useCategories.js
+│   │   ├── useClientProductDetail.js
+│   │   ├── useClientProducts.js
+│   │   └── useProducts.js
+│   ├── models/
+│   │   ├── Admin/
+│   │   │   └── ProductModel.js
+│   │   ├── AboutModel.js
+│   │   ├── BlogModel.js
+│   │   ├── BuildModel.js
+│   │   ├── CartModel.js
+│   │   ├── CategoryModel.js
+│   │   ├── OrderModel.js
+│   │   ├── ProductDetailModel.js
+│   │   ├── ProductModel.js
+│   │   └── UserModel.js
+│   ├── routes/
+│   │   ├── AdminRoutes.jsx
+│   │   ├── AppRoutes.jsx
+│   │   ├── ProtectedAccountRoute.jsx
+│   │   └── ProtectedAdminRoute.jsx
+│   ├── services/
+│   │   ├── admin/
+│   │   │   └── dashboardService.js
+│   │   ├── aiChatService.js
+│   │   ├── api.js
+│   │   ├── authService.js
+│   │   ├── axiosClient.js
+│   │   ├── bannerService.js
+│   │   ├── brandService.js
+│   │   ├── buildPcService.js
+│   │   ├── cartService.js
+│   │   ├── categoryService.js
+│   │   ├── commentService.js
+│   │   ├── contactService.js
+│   │   ├── couponService.js
+│   │   ├── googleAuthService.js
+│   │   ├── locationService.js
+│   │   ├── orderService.js
+│   │   ├── pcPartService.js
+│   │   ├── pcPartTypeService.js
+│   │   ├── postService.js
+│   │   ├── productService.js
+│   │   ├── shippingService.js
+│   │   └── userService.js
+│   ├── utils/
+│   │   ├── formatPrice.js
+│   │   ├── productClient.js
+│   │   ├── productFormData.js
+│   │   └── validateForm.js
+│   ├── views/
+│   │   ├── Admin/
+│   │   │   ├── components/
+│   │   │   │   ├── AdminHeader.jsx
+│   │   │   │   ├── AdminSidebar.jsx
+│   │   │   │   ├── AdminTopbar.jsx
+│   │   │   │   ├── LogoutModal.jsx
+│   │   │   │   ├── PageTitle.jsx
+│   │   │   │   └── StatCard.jsx
+│   │   │   ├── layouts/
+│   │   │   │   └── AdminLayout.jsx
+│   │   │   ├── pages/
+│   │   │   │   ├── Banners/
+│   │   │   │   │   ├── BannerManagement.css
+│   │   │   │   │   └── BannerManagement.jsx
+│   │   │   │   ├── Builds/
+│   │   │   │   │   ├── PCBuilderAdmin.css
+│   │   │   │   │   └── PCBuilderAdmin.jsx
+│   │   │   │   ├── Categories/
+│   │   │   │   │   ├── CategoryManagement.css
+│   │   │   │   │   └── CategoryManagement.jsx
+│   │   │   │   ├── Comments/
+│   │   │   │   │   ├── Comments.css
+│   │   │   │   │   └── Comments.jsx
+│   │   │   │   ├── Coupons/
+│   │   │   │   │   ├── CouponManagement.css
+│   │   │   │   │   └── CouponManagement.jsx
+│   │   │   │   ├── Dashboard/
+│   │   │   │   │   └── AdminDashboard.jsx
+│   │   │   │   ├── Orders/
+│   │   │   │   │   ├── OrderManagement.css
+│   │   │   │   │   └── OrderManagement.jsx
+│   │   │   │   ├── PcParts/
+│   │   │   │   │   ├── PcPartManagement.css
+│   │   │   │   │   └── PcPartManagement.jsx
+│   │   │   │   ├── Post/
+│   │   │   │   │   ├── PostForm.css
+│   │   │   │   │   ├── PostForm.jsx
+│   │   │   │   │   ├── PostManagement.css
+│   │   │   │   │   └── PostManagement.jsx
+│   │   │   │   ├── Products/
+│   │   │   │   │   ├── components/
+│   │   │   │   │   │   ├── VariantFormModal.jsx
+│   │   │   │   │   │   ├── VariantImageManager.jsx
+│   │   │   │   │   │   ├── VariantManager.jsx
+│   │   │   │   │   │   └── VariantStockModal.jsx
+│   │   │   │   │   ├── ProductManagement.css
+│   │   │   │   │   └── ProductManagement.jsx
+│   │   │   │   ├── Profile/
+│   │   │   │   │   ├── AdminChangePassword.jsx
+│   │   │   │   │   └── AdminProfile.jsx
+│   │   │   │   ├── Shipping/
+│   │   │   │   │   ├── ShippingManagement.css
+│   │   │   │   │   └── ShippingManagement.jsx
+│   │   │   │   └── Users/
+│   │   │   │       ├── UserManagement.css
+│   │   │   │       └── UserManagement.jsx
+│   │   │   └── styles/
+│   │   │       └── Admin.css
+│   │   ├── components/
+│   │   │   ├── About/
+│   │   │   │   ├── AboutCompany.jsx
+│   │   │   │   ├── AboutHero.jsx
+│   │   │   │   ├── AboutMission.jsx
+│   │   │   │   ├── AboutProcess.jsx
+│   │   │   │   ├── AboutWhyChoose.jsx
+│   │   │   │   ├── CTA.jsx
+│   │   │   │   ├── Partners.jsx
+│   │   │   │   └── Stats.jsx
+│   │   │   ├── Account/
+│   │   │   │   ├── AccountSidebar.jsx
+│   │   │   │   ├── CancelOrderModal.jsx
+│   │   │   │   ├── ChangePasswordForm.jsx
+│   │   │   │   ├── ForgotPasswordModal.css
+│   │   │   │   ├── ForgotPasswordModal.jsx
+│   │   │   │   ├── OrderPagination.jsx
+│   │   │   │   ├── OrderStatusBadge.jsx
+│   │   │   │   ├── ProfileForm.css
+│   │   │   │   └── ProfileForm.jsx
+│   │   │   ├── AIChat/
+│   │   │   │   ├── AIChat.css
+│   │   │   │   └── AIChatBox.jsx
+│   │   │   ├── Blog/
+│   │   │   │   ├── BlogCard.jsx
+│   │   │   │   ├── BlogHero.jsx
+│   │   │   │   ├── BlogSearch.jsx
+│   │   │   │   ├── CategorySidebar.jsx
+│   │   │   │   ├── FeaturedPosts.jsx
+│   │   │   │   ├── Pagination.jsx
+│   │   │   │   ├── PopularPosts.jsx
+│   │   │   │   └── PopularTags.jsx
+│   │   │   ├── Home/
+│   │   │   │   ├── BlogSection.jsx
+│   │   │   │   ├── BuildPCSection.jsx
+│   │   │   │   ├── CategorySection.jsx
+│   │   │   │   ├── HeroBanner.jsx
+│   │   │   │   ├── ProductSection.jsx
+│   │   │   │   ├── SearchBar.jsx
+│   │   │   │   ├── SectionTitle.jsx
+│   │   │   │   ├── SuggestedBuildSection.jsx
+│   │   │   │   └── TrustSection.jsx
+│   │   │   ├── ProductDetail/
+│   │   │   │   ├── ProductFeatures.jsx
+│   │   │   │   ├── ProductGallery.jsx
+│   │   │   │   ├── ProductInfo.jsx
+│   │   │   │   ├── ProductRelated.jsx
+│   │   │   │   ├── ProductSpecs.jsx
+│   │   │   │   ├── ProductStickyBox.jsx
+│   │   │   │   ├── ProductTabs.jsx
+│   │   │   │   └── Skeleton.jsx
+│   │   │   ├── Products/
+│   │   │   │   ├── ProductCard.jsx
+│   │   │   │   ├── ProductEmpty.jsx
+│   │   │   │   ├── ProductPagination.jsx
+│   │   │   │   ├── ProductSidebar.jsx
+│   │   │   │   ├── ProductSkeleton.jsx
+│   │   │   │   ├── ProductToolbar.jsx
+│   │   │   │   └── QuickViewModal.jsx
+│   │   │   ├── AppToaster.jsx
+│   │   │   ├── ClientLogoutModal.css
+│   │   │   ├── ClientLogoutModal.jsx
+│   │   │   ├── Footer.jsx
+│   │   │   ├── GoogleSignInButton.css
+│   │   │   ├── GoogleSignInButton.jsx
+│   │   │   └── Header.jsx
+│   │   └── pages/
+│   │       ├── About/
+│   │       │   ├── About.css
+│   │       │   └── About.jsx
+│   │       ├── Account/
+│   │       │   ├── Account.css
+│   │       │   ├── AccountChangePassword.jsx
+│   │       │   ├── AccountLayout.jsx
+│   │       │   ├── AccountOrderDetail.jsx
+│   │       │   ├── AccountOrders.css
+│   │       │   ├── AccountOrders.jsx
+│   │       │   └── AccountProfile.jsx
+│   │       ├── Auth/
+│   │       │   ├── css/
+│   │       │   │   ├── login_register.css
+│   │       │   │   ├── reset_password.css
+│   │       │   │   └── style.css
+│   │       │   ├── Auth.jsx
+│   │       │   └── ResetPassword.jsx
+│   │       ├── Blog/
+│   │       │   ├── Blog.css
+│   │       │   ├── Blog.jsx
+│   │       │   ├── BlogDetail.css
+│   │       │   └── BlogDetail.jsx
+│   │       ├── BuildPC/
+│   │       │   ├── components/
+│   │       │   │   ├── BuildPartRow.jsx
+│   │       │   │   └── PartSelectorModal.jsx
+│   │       │   ├── BuildPC.css
+│   │       │   └── BuildPC.jsx
+│   │       ├── Cart/
+│   │       │   ├── Cart.css
+│   │       │   └── Cart.jsx
+│   │       ├── Checkout/
+│   │       │   ├── Checkout.css
+│   │       │   ├── Checkout.jsx
+│   │       │   └── ReorderCheckout.jsx
+│   │       ├── Contact/
+│   │       │   ├── Contact.css
+│   │       │   └── Contact.jsx
+│   │       ├── Home/
+│   │       │   ├── Home.css
+│   │       │   └── Home.jsx
+│   │       ├── Login/
+│   │       ├── OrderSuccess/
+│   │       │   ├── OrderSuccess.css
+│   │       │   └── OrderSuccess.jsx
+│   │       ├── Product/
+│   │       │   ├── Product.css
+│   │       │   └── Product.jsx
+│   │       ├── ProductDetail/
+│   │       │   ├── ProductDetail.css
+│   │       │   └── ProductDetail.jsx
+│   │       └── Register/
+│   ├── App.css
+│   ├── App.js
+│   ├── App.test.js
+│   ├── index.css
+│   ├── index.js
+│   ├── logo.svg
+│   ├── reportWebVitals.js
+│   └── setupTests.js
+├── .env
+├── .gitignore
+├── package.json
+└── README.md
+
+Frontend folders: 62
+Frontend files: 214
+
+
+==========================================================================================
+FRONTEND SRC STRUCTURE (ƯU TIÊN CHO CHATGPT)
+==========================================================================================
+
+src/
+├── assets/
+│   ├── icons/
+│   └── images/
+├── constants/
+│   └── productDefault.js
+├── context/
+│   ├── AuthContext.jsx
+│   └── CartContext.jsx
+├── controllers/
+│   ├── Admin/
+│   │   └── productController.js
+│   ├── aboutController.js
+│   ├── accountController.js
+│   ├── authController.js
+│   ├── blogController.js
+│   ├── cartController.js
+│   ├── googleAuthController.js
+│   ├── homeController.js
+│   ├── orderController.js
+│   ├── productController.js
+│   ├── productdetailController.js
+│   └── userController.js
+├── hooks/
+│   ├── useAuth.js
+│   ├── useCart.js
+│   ├── useCategories.js
+│   ├── useClientProductDetail.js
+│   ├── useClientProducts.js
+│   └── useProducts.js
+├── models/
+│   ├── Admin/
+│   │   └── ProductModel.js
+│   ├── AboutModel.js
+│   ├── BlogModel.js
+│   ├── BuildModel.js
+│   ├── CartModel.js
+│   ├── CategoryModel.js
+│   ├── OrderModel.js
+│   ├── ProductDetailModel.js
+│   ├── ProductModel.js
+│   └── UserModel.js
+├── routes/
+│   ├── AdminRoutes.jsx
+│   ├── AppRoutes.jsx
+│   ├── ProtectedAccountRoute.jsx
+│   └── ProtectedAdminRoute.jsx
+├── services/
+│   ├── admin/
+│   │   └── dashboardService.js
+│   ├── aiChatService.js
+│   ├── api.js
+│   ├── authService.js
+│   ├── axiosClient.js
+│   ├── bannerService.js
+│   ├── brandService.js
+│   ├── buildPcService.js
+│   ├── cartService.js
+│   ├── categoryService.js
+│   ├── commentService.js
+│   ├── contactService.js
+│   ├── couponService.js
+│   ├── googleAuthService.js
+│   ├── locationService.js
+│   ├── orderService.js
+│   ├── pcPartService.js
+│   ├── pcPartTypeService.js
+│   ├── postService.js
+│   ├── productService.js
+│   ├── shippingService.js
+│   └── userService.js
+├── utils/
+│   ├── formatPrice.js
+│   ├── productClient.js
+│   ├── productFormData.js
+│   └── validateForm.js
+├── views/
+│   ├── Admin/
+│   │   ├── components/
+│   │   │   ├── AdminHeader.jsx
+│   │   │   ├── AdminSidebar.jsx
+│   │   │   ├── AdminTopbar.jsx
+│   │   │   ├── LogoutModal.jsx
+│   │   │   ├── PageTitle.jsx
+│   │   │   └── StatCard.jsx
+│   │   ├── layouts/
+│   │   │   └── AdminLayout.jsx
+│   │   ├── pages/
+│   │   │   ├── Banners/
+│   │   │   │   ├── BannerManagement.css
+│   │   │   │   └── BannerManagement.jsx
+│   │   │   ├── Builds/
+│   │   │   │   ├── PCBuilderAdmin.css
+│   │   │   │   └── PCBuilderAdmin.jsx
+│   │   │   ├── Categories/
+│   │   │   │   ├── CategoryManagement.css
+│   │   │   │   └── CategoryManagement.jsx
+│   │   │   ├── Comments/
+│   │   │   │   ├── Comments.css
+│   │   │   │   └── Comments.jsx
+│   │   │   ├── Coupons/
+│   │   │   │   ├── CouponManagement.css
+│   │   │   │   └── CouponManagement.jsx
+│   │   │   ├── Dashboard/
+│   │   │   │   └── AdminDashboard.jsx
+│   │   │   ├── Orders/
+│   │   │   │   ├── OrderManagement.css
+│   │   │   │   └── OrderManagement.jsx
+│   │   │   ├── PcParts/
+│   │   │   │   ├── PcPartManagement.css
+│   │   │   │   └── PcPartManagement.jsx
+│   │   │   ├── Post/
+│   │   │   │   ├── PostForm.css
+│   │   │   │   ├── PostForm.jsx
+│   │   │   │   ├── PostManagement.css
+│   │   │   │   └── PostManagement.jsx
+│   │   │   ├── Products/
+│   │   │   │   ├── components/
+│   │   │   │   │   ├── VariantFormModal.jsx
+│   │   │   │   │   ├── VariantImageManager.jsx
+│   │   │   │   │   ├── VariantManager.jsx
+│   │   │   │   │   └── VariantStockModal.jsx
+│   │   │   │   ├── ProductManagement.css
+│   │   │   │   └── ProductManagement.jsx
+│   │   │   ├── Profile/
+│   │   │   │   ├── AdminChangePassword.jsx
+│   │   │   │   └── AdminProfile.jsx
+│   │   │   ├── Shipping/
+│   │   │   │   ├── ShippingManagement.css
+│   │   │   │   └── ShippingManagement.jsx
+│   │   │   └── Users/
+│   │   │       ├── UserManagement.css
+│   │   │       └── UserManagement.jsx
+│   │   └── styles/
+│   │       └── Admin.css
+│   ├── components/
+│   │   ├── About/
+│   │   │   ├── AboutCompany.jsx
+│   │   │   ├── AboutHero.jsx
+│   │   │   ├── AboutMission.jsx
+│   │   │   ├── AboutProcess.jsx
+│   │   │   ├── AboutWhyChoose.jsx
+│   │   │   ├── CTA.jsx
+│   │   │   ├── Partners.jsx
+│   │   │   └── Stats.jsx
+│   │   ├── Account/
+│   │   │   ├── AccountSidebar.jsx
+│   │   │   ├── CancelOrderModal.jsx
+│   │   │   ├── ChangePasswordForm.jsx
+│   │   │   ├── ForgotPasswordModal.css
+│   │   │   ├── ForgotPasswordModal.jsx
+│   │   │   ├── OrderPagination.jsx
+│   │   │   ├── OrderStatusBadge.jsx
+│   │   │   ├── ProfileForm.css
+│   │   │   └── ProfileForm.jsx
+│   │   ├── AIChat/
+│   │   │   ├── AIChat.css
+│   │   │   └── AIChatBox.jsx
+│   │   ├── Blog/
+│   │   │   ├── BlogCard.jsx
+│   │   │   ├── BlogHero.jsx
+│   │   │   ├── BlogSearch.jsx
+│   │   │   ├── CategorySidebar.jsx
+│   │   │   ├── FeaturedPosts.jsx
+│   │   │   ├── Pagination.jsx
+│   │   │   ├── PopularPosts.jsx
+│   │   │   └── PopularTags.jsx
+│   │   ├── Home/
+│   │   │   ├── BlogSection.jsx
+│   │   │   ├── BuildPCSection.jsx
+│   │   │   ├── CategorySection.jsx
+│   │   │   ├── HeroBanner.jsx
+│   │   │   ├── ProductSection.jsx
+│   │   │   ├── SearchBar.jsx
+│   │   │   ├── SectionTitle.jsx
+│   │   │   ├── SuggestedBuildSection.jsx
+│   │   │   └── TrustSection.jsx
+│   │   ├── ProductDetail/
+│   │   │   ├── ProductFeatures.jsx
+│   │   │   ├── ProductGallery.jsx
+│   │   │   ├── ProductInfo.jsx
+│   │   │   ├── ProductRelated.jsx
+│   │   │   ├── ProductSpecs.jsx
+│   │   │   ├── ProductStickyBox.jsx
+│   │   │   ├── ProductTabs.jsx
+│   │   │   └── Skeleton.jsx
+│   │   ├── Products/
+│   │   │   ├── ProductCard.jsx
+│   │   │   ├── ProductEmpty.jsx
+│   │   │   ├── ProductPagination.jsx
+│   │   │   ├── ProductSidebar.jsx
+│   │   │   ├── ProductSkeleton.jsx
+│   │   │   ├── ProductToolbar.jsx
+│   │   │   └── QuickViewModal.jsx
+│   │   ├── AppToaster.jsx
+│   │   ├── ClientLogoutModal.css
+│   │   ├── ClientLogoutModal.jsx
+│   │   ├── Footer.jsx
+│   │   ├── GoogleSignInButton.css
+│   │   ├── GoogleSignInButton.jsx
+│   │   └── Header.jsx
+│   └── pages/
+│       ├── About/
+│       │   ├── About.css
+│       │   └── About.jsx
+│       ├── Account/
+│       │   ├── Account.css
+│       │   ├── AccountChangePassword.jsx
+│       │   ├── AccountLayout.jsx
+│       │   ├── AccountOrderDetail.jsx
+│       │   ├── AccountOrders.css
+│       │   ├── AccountOrders.jsx
+│       │   └── AccountProfile.jsx
+│       ├── Auth/
+│       │   ├── css/
+│       │   │   ├── login_register.css
+│       │   │   ├── reset_password.css
+│       │   │   └── style.css
+│       │   ├── Auth.jsx
+│       │   └── ResetPassword.jsx
+│       ├── Blog/
+│       │   ├── Blog.css
+│       │   ├── Blog.jsx
+│       │   ├── BlogDetail.css
+│       │   └── BlogDetail.jsx
+│       ├── BuildPC/
+│       │   ├── components/
+│       │   │   ├── BuildPartRow.jsx
+│       │   │   └── PartSelectorModal.jsx
+│       │   ├── BuildPC.css
+│       │   └── BuildPC.jsx
+│       ├── Cart/
+│       │   ├── Cart.css
+│       │   └── Cart.jsx
+│       ├── Checkout/
+│       │   ├── Checkout.css
+│       │   ├── Checkout.jsx
+│       │   └── ReorderCheckout.jsx
+│       ├── Contact/
+│       │   ├── Contact.css
+│       │   └── Contact.jsx
+│       ├── Home/
+│       │   ├── Home.css
+│       │   └── Home.jsx
+│       ├── Login/
+│       ├── OrderSuccess/
+│       │   ├── OrderSuccess.css
+│       │   └── OrderSuccess.jsx
+│       ├── Product/
+│       │   ├── Product.css
+│       │   └── Product.jsx
+│       ├── ProductDetail/
+│       │   ├── ProductDetail.css
+│       │   └── ProductDetail.jsx
+│       └── Register/
+├── App.css
+├── App.js
+├── App.test.js
+├── index.css
+├── index.js
+├── logo.svg
+├── reportWebVitals.js
+└── setupTests.js

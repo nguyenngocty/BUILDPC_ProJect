@@ -3079,6 +3079,72 @@ class Product {
 
     const product = Product.normalizeClientProduct(products[0]);
 
+    // ==========================================================
+    // CLIENT VARIANTS
+    // ==========================================================
+
+    const variantData = await ProductVariant.getClientProductVariantData(
+      product.id,
+    );
+
+    const defaultVariant = variantData.default_variant;
+
+    /*
+     * Product table đang lưu aggregate/default để tương thích
+     * dữ liệu cũ.
+     *
+     * Nhưng Client Product Detail phải ưu tiên variant mặc định
+     * thực tế.
+     */
+    if (defaultVariant) {
+      product.default_variant_id = Number(defaultVariant.id);
+
+      product.sku = defaultVariant.sku;
+
+      product.price = Number(defaultVariant.price || 0);
+
+      product.sale_price =
+        defaultVariant.sale_price !== null
+          ? Number(defaultVariant.sale_price)
+          : null;
+
+      product.final_price = Number(
+        defaultVariant.final_price || defaultVariant.price || 0,
+      );
+
+      product.discount_percent = Number(defaultVariant.discount_percent || 0);
+
+      product.is_sale = Boolean(defaultVariant.is_sale);
+
+      product.in_stock = Number(defaultVariant.quantity || 0) > 0;
+
+      product.stock_status = defaultVariant.stock_status;
+
+      /*
+       * Đây là tồn kho của variant đang được chọn mặc định.
+       *
+       * total_available_quantity bên dưới mới là tổng tồn
+       * của các variant được phép bán.
+       */
+      product.quantity = Number(defaultVariant.quantity || 0);
+
+      /*
+       * Nếu variant có thumbnail riêng thì dùng.
+       * Nếu không có giữ thumbnail Product.
+       */
+      if (defaultVariant.thumbnail) {
+        product.thumbnail = defaultVariant.thumbnail;
+      }
+    } else {
+      product.default_variant_id = null;
+    }
+
+    product.has_variants = variantData.has_variants;
+
+    product.total_available_quantity = variantData.available_quantity;
+
+    product.available_variant_count = variantData.available_variant_count;
+
     const [gallery] = await pool.execute(
       `
           SELECT
@@ -3400,6 +3466,24 @@ class Product {
 
         id: Number(item.id),
       })),
+
+      // ========================================================
+      // VARIANT DATA
+      // ========================================================
+
+      options: variantData.options,
+
+      variants: variantData.variants,
+
+      defaultVariant: variantData.default_variant,
+
+      hasVariants: variantData.has_variants,
+
+      variantSummary: {
+        total: Number(variantData.available_variant_count || 0),
+
+        quantity: Number(variantData.available_quantity || 0),
+      },
 
       rating: {
         average: product.rating.average,

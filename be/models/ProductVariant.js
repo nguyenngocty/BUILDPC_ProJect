@@ -3055,6 +3055,468 @@ class ProductVariant {
 
     return createdVariant;
   }
+
+  // ============================================================
+  // CLIENT - NORMALIZE VARIANT
+  // ============================================================
+
+  static normalizeClientVariant(variant) {
+    if (!variant) {
+      return null;
+    }
+
+    const price = Number(variant.price || 0);
+
+    const salePrice =
+      variant.sale_price !== null && variant.sale_price !== undefined
+        ? Number(variant.sale_price)
+        : null;
+
+    const finalPrice =
+      salePrice !== null && salePrice > 0 && price > 0 && salePrice < price
+        ? salePrice
+        : price;
+
+    const quantity = Math.max(Number(variant.quantity || 0), 0);
+
+    return {
+      ...variant,
+
+      id: Number(variant.id),
+
+      product_id: Number(variant.product_id),
+
+      price,
+
+      sale_price: salePrice,
+
+      final_price: finalPrice,
+
+      quantity,
+
+      status: Number(variant.status),
+
+      is_default: Number(variant.is_default),
+
+      sort_order: Number(variant.sort_order || 0),
+
+      is_sale:
+        salePrice !== null && salePrice > 0 && price > 0 && salePrice < price,
+
+      discount_percent:
+        salePrice !== null && salePrice > 0 && price > 0 && salePrice < price
+          ? Math.round(((price - salePrice) / price) * 100)
+          : 0,
+
+      in_stock: quantity > 0,
+
+      stock_status:
+        quantity <= 0
+          ? "out_of_stock"
+          : quantity <= 5
+            ? "low_stock"
+            : "in_stock",
+    };
+  }
+
+  // ============================================================
+  // CLIENT - GET VISIBLE VARIANTS
+  //
+  // Chỉ trả variant:
+  // - chưa bị xóa
+  // - status = 1
+  //
+  // Không dùng getVariantsByProductId() của Admin vì Admin cần
+  // nhìn thấy cả những variant đang ẩn.
+  // ============================================================
+
+  static async getClientVariantsByProductId(productId, connection = pool) {
+    const [variants] = await connection.execute(
+      `
+        SELECT
+          pv.id,
+          pv.product_id,
+          pv.sku,
+          pv.variant_name,
+
+          pv.price,
+          pv.sale_price,
+          pv.quantity,
+
+          pv.thumbnail,
+
+          pv.status,
+          pv.is_default,
+          pv.sort_order,
+
+          pv.created_at,
+          pv.updated_at
+
+        FROM product_variants pv
+
+        WHERE
+          pv.product_id = ?
+          AND pv.deleted_at IS NULL
+          AND pv.status = 1
+
+        ORDER BY
+          pv.is_default DESC,
+          pv.sort_order ASC,
+          pv.id ASC
+      `,
+      [productId],
+    );
+
+    for (const variant of variants) {
+      const [values] = await connection.execute(
+        `
+          SELECT
+            pvv.id,
+            pvv.option_id,
+            pvv.option_value_id,
+
+            po.name AS option_name,
+            po.code AS option_code,
+            po.display_type,
+            po.sort_order AS option_sort_order,
+
+            pov.value,
+            pov.label,
+            pov.color_code,
+            pov.sort_order AS value_sort_order
+
+          FROM product_variant_values pvv
+
+          INNER JOIN product_options po
+            ON po.id = pvv.option_id
+
+          INNER JOIN product_option_values pov
+            ON pov.id = pvv.option_value_id
+
+          WHERE
+            pvv.variant_id = ?
+
+            AND po.deleted_at IS NULL
+            AND po.status = 1
+
+            AND pov.deleted_at IS NULL
+            AND pov.status = 1
+
+          ORDER BY
+            po.sort_order ASC,
+            po.id ASC,
+            pov.sort_order ASC,
+            pov.id ASC
+        `,
+        [variant.id],
+      );
+
+      const [images] = await connection.execute(
+        `
+          SELECT
+            id,
+            image_url,
+            sort_order,
+            is_primary
+
+          FROM product_variant_images
+
+          WHERE
+            variant_id = ?
+            AND deleted_at IS NULL
+
+          ORDER BY
+            is_primary DESC,
+            sort_order ASC,
+            id ASC
+        `,
+        [variant.id],
+      );
+
+      const normalized = ProductVariant.normalizeClientVariant(variant);
+
+      Object.assign(variant, normalized);
+
+      variant.values = values.map((item) => ({
+        ...item,
+
+        id: Number(item.id),
+
+        option_id: Number(item.option_id),
+
+        option_value_id: Number(item.option_value_id),
+
+        option_sort_order: Number(item.option_sort_order || 0),
+
+        value_sort_order: Number(item.value_sort_order || 0),
+      }));
+
+      variant.images = images.map((item) => ({
+        ...item,
+
+        id: Number(item.id),
+
+        sort_order: Number(item.sort_order || 0),
+
+        is_primary: Number(item.is_primary),
+      }));
+    }
+
+    return variants;
+  }
+
+  // ============================================================
+  // CLIENT - GET OPTIONS
+  //
+  // Chỉ hiển thị option/value thực sự tồn tại trên ít nhất
+  // một variant đang được bán.
+  //
+  // Ví dụ:
+  //
+  // capacity:
+  // - 16GB
+  // - 32GB
+  // - 64GB
+  //
+  // Nếu 16GB chỉ còn nằm trên variant status = 0 thì Client
+  // không hiển thị 16GB nữa.
+  // ============================================================
+
+  static async getClientOptionsByProductId(productId, connection = pool) {
+    const [rows] = await connection.execute(
+      `
+        SELECT DISTINCT
+          po.id AS option_id,
+          po.name AS option_name,
+          po.code AS option_code,
+          po.display_type,
+          po.sort_order AS option_sort_order,
+
+          pov.id AS option_value_id,
+          pov.value,
+          pov.label,
+          pov.color_code,
+          pov.sort_order AS value_sort_order
+
+        FROM product_variants pv
+
+        INNER JOIN product_variant_values pvv
+          ON pvv.variant_id = pv.id
+
+        INNER JOIN product_options po
+          ON po.id = pvv.option_id
+
+        INNER JOIN product_option_values pov
+          ON pov.id = pvv.option_value_id
+
+        WHERE
+          pv.product_id = ?
+          AND pv.deleted_at IS NULL
+          AND pv.status = 1
+
+          AND po.deleted_at IS NULL
+          AND po.status = 1
+
+          AND pov.deleted_at IS NULL
+          AND pov.status = 1
+
+        ORDER BY
+          po.sort_order ASC,
+          po.id ASC,
+          pov.sort_order ASC,
+          pov.id ASC
+      `,
+      [productId],
+    );
+
+    const optionMap = new Map();
+
+    for (const row of rows) {
+      const optionId = Number(row.option_id);
+
+      if (!optionMap.has(optionId)) {
+        optionMap.set(optionId, {
+          id: optionId,
+
+          name: row.option_name,
+
+          code: row.option_code,
+
+          display_type: row.display_type,
+
+          sort_order: Number(row.option_sort_order || 0),
+
+          values: [],
+        });
+      }
+
+      const option = optionMap.get(optionId);
+
+      const valueId = Number(row.option_value_id);
+
+      if (!option.values.some((item) => item.id === valueId)) {
+        option.values.push({
+          id: valueId,
+
+          value: row.value,
+
+          label: row.label,
+
+          color_code: row.color_code,
+
+          sort_order: Number(row.value_sort_order || 0),
+        });
+      }
+    }
+
+    return Array.from(optionMap.values());
+  }
+
+  // ============================================================
+  // CLIENT - DEFAULT VARIANT
+  //
+  // Default phải:
+  // - chưa xóa
+  // - đang hiển thị
+  //
+  // Nếu dữ liệu cũ bị lỗi không có default visible:
+  // lấy visible variant đầu tiên.
+  // ============================================================
+
+  static async getClientDefaultVariant(productId, connection = pool) {
+    const variants = await ProductVariant.getClientVariantsByProductId(
+      productId,
+      connection,
+    );
+
+    if (variants.length === 0) {
+      return null;
+    }
+
+    return (
+      variants.find((variant) => Number(variant.is_default) === 1) ||
+      variants[0]
+    );
+  }
+
+  // ============================================================
+  // CLIENT - VARIANT DATA
+  // ============================================================
+
+  static async getClientProductVariantData(productId, connection = pool) {
+    const [options, variants] = await Promise.all([
+      ProductVariant.getClientOptionsByProductId(productId, connection),
+
+      ProductVariant.getClientVariantsByProductId(productId, connection),
+    ]);
+
+    const defaultVariant =
+      variants.find((variant) => Number(variant.is_default) === 1) ||
+      variants[0] ||
+      null;
+
+    const availableQuantity = variants.reduce(
+      (total, variant) => total + Math.max(Number(variant.quantity || 0), 0),
+      0,
+    );
+
+    return {
+      options,
+
+      variants,
+
+      default_variant: defaultVariant,
+
+      has_variants: variants.length > 1 || options.length > 0,
+
+      available_quantity: availableQuantity,
+
+      available_variant_count: variants.length,
+    };
+  }
+
+  // ============================================================
+  // CLIENT - FIND VARIANT BY SELECTED VALUES
+  //
+  // Phục vụ Cart / API kiểm tra variant sau này.
+  //
+  // Ví dụ:
+  //
+  // {
+  //   capacity: "64GB",
+  //   bus: "5200MHz"
+  // }
+  //
+  // => variant 81
+  // ============================================================
+
+  static async findClientVariantByValues(
+    productId,
+    selectedValues = {},
+    connection = pool,
+  ) {
+    const variants = await ProductVariant.getClientVariantsByProductId(
+      productId,
+      connection,
+    );
+
+    if (variants.length === 0) {
+      return null;
+    }
+
+    const normalizedSelected = {};
+
+    for (const [key, value] of Object.entries(selectedValues || {})) {
+      const code = ProductVariant.normalizeCode(key);
+
+      if (!code) {
+        continue;
+      }
+
+      normalizedSelected[code] = String(value || "")
+        .trim()
+        .toLowerCase();
+    }
+
+    const selectedCodes = Object.keys(normalizedSelected);
+
+    if (selectedCodes.length === 0) {
+      return (
+        variants.find((variant) => Number(variant.is_default) === 1) ||
+        variants[0] ||
+        null
+      );
+    }
+
+    for (const variant of variants) {
+      const variantValues = {};
+
+      for (const item of variant.values || []) {
+        const optionCode = ProductVariant.normalizeCode(item.option_code);
+
+        if (!optionCode) {
+          continue;
+        }
+
+        variantValues[optionCode] = String(item.value || "")
+          .trim()
+          .toLowerCase();
+      }
+
+      const matches = selectedCodes.every(
+        (code) => variantValues[code] === normalizedSelected[code],
+      );
+
+      if (
+        matches &&
+        Object.keys(variantValues).length === selectedCodes.length
+      ) {
+        return variant;
+      }
+    }
+
+    return null;
+  }
 }
 
 module.exports = ProductVariant;

@@ -1,52 +1,70 @@
-const Cart = require(
-  "../../models/Cart"
-);
+const Cart = require("../../models/Cart");
 
-const getAuthenticatedUserId = (
-  req
-) => {
-  const userId =
-    Number.parseInt(
-      req.user?.id,
-      10
-    );
+// ============================================================
+// AUTH HELPER
+// ============================================================
 
-  return (
-    Number.isInteger(userId) &&
-    userId > 0
-  )
-    ? userId
-    : null;
+const getAuthenticatedUserId = (req) => {
+  const userId = Number.parseInt(req.user?.id, 10);
+
+  return Number.isInteger(userId) && userId > 0 ? userId : null;
 };
 
-exports.getCart = async (
-  req,
-  res,
-  next
-) => {
+// ============================================================
+// NORMALIZE
+// ============================================================
+
+const normalizePositiveInt = (value, defaultValue = null) => {
+  if (value === undefined || value === null || value === "") {
+    return defaultValue;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    return defaultValue;
+  }
+
+  return parsed;
+};
+
+const normalizeNullableInt = (value) => {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    return null;
+  }
+
+  return parsed;
+};
+
+// ============================================================
+// GET /api/client/cart
+// ============================================================
+
+exports.getCart = async (req, res, next) => {
   try {
-    const userId =
-      getAuthenticatedUserId(
-        req
-      );
+    const userId = getAuthenticatedUserId(req);
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message:
-          "Bạn cần đăng nhập để sử dụng giỏ hàng.",
+
+        message: "Bạn cần đăng nhập để sử dụng giỏ hàng.",
       });
     }
 
-    const cart =
-      await Cart.getCart(
-        userId
-      );
+    const cart = await Cart.getCart(userId);
 
-    return res.json({
+    return res.status(200).json({
       success: true,
-      message:
-        "Lấy giỏ hàng thành công",
+
+      message: "Lấy giỏ hàng thành công.",
+
       data: cart,
     });
   } catch (error) {
@@ -54,198 +72,318 @@ exports.getCart = async (
   }
 };
 
-exports.addToCart = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const userId =
-      getAuthenticatedUserId(
-        req
-      );
+// ============================================================
+// POST /api/client/cart/add
+//
+// BODY:
+//
+// Sản phẩm có biến thể:
+//
+// {
+//   "product_id": 66,
+//   "variant_id": 81,
+//   "quantity": 1
+// }
+//
+// Sản phẩm không có biến thể:
+//
+// {
+//   "product_id": 12,
+//   "quantity": 1
+// }
+// ============================================================
 
-    const {
-      product_id,
-      quantity,
-    } = req.body;
+exports.addToCart = async (req, res, next) => {
+  try {
+    const userId = getAuthenticatedUserId(req);
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message:
-          "Bạn cần đăng nhập để sử dụng giỏ hàng.",
+
+        message: "Bạn cần đăng nhập để sử dụng giỏ hàng.",
       });
     }
 
-    if (!product_id) {
+    // ========================================================
+    // PRODUCT ID
+    // ========================================================
+
+    const productId = normalizePositiveInt(req.body.product_id);
+
+    if (!productId) {
       return res.status(400).json({
         success: false,
-        message:
-          "Thiếu product_id",
+
+        message: "product_id không hợp lệ.",
       });
     }
 
-    const cart =
-      await Cart.addItem({
-        user_id: userId,
-        product_id,
-        quantity,
+    // ========================================================
+    // VARIANT ID
+    //
+    // Cho phép null vì một số Product legacy
+    // có thể chưa dùng biến thể.
+    //
+    // Cart Model sẽ tự quyết định:
+    //
+    // - Product có variant thật:
+    //   bắt buộc variant_id.
+    //
+    // - Product không có variant:
+    //   variant_id = null.
+    // ========================================================
+
+    const variantId = normalizeNullableInt(req.body.variant_id);
+
+    // ========================================================
+    // QUANTITY
+    // ========================================================
+
+    let quantity = normalizePositiveInt(req.body.quantity, 1);
+
+    if (!quantity) {
+      quantity = 1;
+    }
+
+    // Giới hạn để tránh request bất thường.
+    if (quantity > 9999) {
+      return res.status(400).json({
+        success: false,
+
+        message: "Số lượng sản phẩm không hợp lệ.",
       });
+    }
+
+    // ========================================================
+    // ADD
+    // ========================================================
+
+    const cart = await Cart.addItem({
+      user_id: userId,
+
+      product_id: productId,
+
+      variant_id: variantId,
+
+      quantity,
+    });
 
     return res.status(201).json({
       success: true,
-      message:
-        "Thêm sản phẩm vào giỏ hàng thành công",
+
+      message: variantId
+        ? "Thêm biến thể sản phẩm vào giỏ hàng thành công."
+        : "Thêm sản phẩm vào giỏ hàng thành công.",
+
       data: cart,
     });
   } catch (error) {
+    console.error("[CartController.addToCart]", error);
+
     return res.status(400).json({
       success: false,
-      message:
-        error.message ||
-        "Lỗi thêm sản phẩm vào giỏ hàng",
+
+      message: error.message || "Không thể thêm sản phẩm vào giỏ hàng.",
     });
   }
 };
 
-exports.updateCartItem = async (
-  req,
-  res,
-  next
-) => {
+// ============================================================
+// PUT /api/client/cart/items/:itemId
+//
+// BODY:
+//
+// {
+//   "quantity": 3
+// }
+//
+// Không cần gửi lại product_id / variant_id.
+//
+// Vì cart_item đã lưu:
+// product_id + variant_id.
+// ============================================================
+
+exports.updateCartItem = async (req, res, next) => {
   try {
-    const userId =
-      getAuthenticatedUserId(
-        req
-      );
-
-    const {
-      quantity,
-    } = req.body;
-
-    const {
-      itemId,
-    } = req.params;
+    const userId = getAuthenticatedUserId(req);
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message:
-          "Bạn cần đăng nhập để sử dụng giỏ hàng.",
+
+        message: "Bạn cần đăng nhập để sử dụng giỏ hàng.",
       });
     }
 
+    // ========================================================
+    // ITEM ID
+    // ========================================================
+
+    const itemId = normalizePositiveInt(req.params.itemId);
+
+    if (!itemId) {
+      return res.status(400).json({
+        success: false,
+
+        message: "ID sản phẩm trong giỏ hàng không hợp lệ.",
+      });
+    }
+
+    // ========================================================
+    // QUANTITY
+    // ========================================================
+
     if (
-      quantity === undefined ||
-      quantity === null
+      req.body.quantity === undefined ||
+      req.body.quantity === null ||
+      req.body.quantity === ""
     ) {
       return res.status(400).json({
         success: false,
-        message:
-          "Thiếu quantity",
+
+        message: "Thiếu quantity.",
       });
     }
 
-    const cart =
-      await Cart.updateItemQuantity({
-        user_id: userId,
-        item_id: itemId,
-        quantity,
-      });
+    const quantity = Number.parseInt(req.body.quantity, 10);
 
-    return res.json({
+    if (!Number.isInteger(quantity)) {
+      return res.status(400).json({
+        success: false,
+
+        message: "Số lượng không hợp lệ.",
+      });
+    }
+
+    /*
+     * quantity <= 0:
+     *
+     * Cart.updateItemQuantity()
+     * sẽ chuyển sang removeItem().
+     *
+     * Ta giữ behavior này để FE có thể:
+     *
+     * quantity = 0
+     *
+     * => xóa item.
+     */
+
+    if (quantity > 9999) {
+      return res.status(400).json({
+        success: false,
+
+        message: "Số lượng sản phẩm không hợp lệ.",
+      });
+    }
+
+    const cart = await Cart.updateItemQuantity({
+      user_id: userId,
+
+      item_id: itemId,
+
+      quantity,
+    });
+
+    return res.status(200).json({
       success: true,
+
       message:
-        "Cập nhật giỏ hàng thành công",
+        quantity <= 0
+          ? "Đã xóa sản phẩm khỏi giỏ hàng."
+          : "Cập nhật giỏ hàng thành công.",
+
       data: cart,
     });
   } catch (error) {
+    console.error("[CartController.updateCartItem]", error);
+
     return res.status(400).json({
       success: false,
-      message:
-        error.message ||
-        "Lỗi cập nhật giỏ hàng",
+
+      message: error.message || "Không thể cập nhật giỏ hàng.",
     });
   }
 };
 
-exports.removeCartItem = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const userId =
-      getAuthenticatedUserId(
-        req
-      );
+// ============================================================
+// DELETE /api/client/cart/items/:itemId
+// ============================================================
 
-    const {
-      itemId,
-    } = req.params;
+exports.removeCartItem = async (req, res, next) => {
+  try {
+    const userId = getAuthenticatedUserId(req);
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message:
-          "Bạn cần đăng nhập để sử dụng giỏ hàng.",
+
+        message: "Bạn cần đăng nhập để sử dụng giỏ hàng.",
       });
     }
 
-    const cart =
-      await Cart.removeItem({
-        user_id: userId,
-        item_id: itemId,
-      });
+    const itemId = normalizePositiveInt(req.params.itemId);
 
-    return res.json({
+    if (!itemId) {
+      return res.status(400).json({
+        success: false,
+
+        message: "ID sản phẩm trong giỏ hàng không hợp lệ.",
+      });
+    }
+
+    const cart = await Cart.removeItem({
+      user_id: userId,
+
+      item_id: itemId,
+    });
+
+    return res.status(200).json({
       success: true,
-      message:
-        "Xóa sản phẩm khỏi giỏ hàng thành công",
+
+      message: "Xóa sản phẩm khỏi giỏ hàng thành công.",
+
       data: cart,
     });
   } catch (error) {
+    console.error("[CartController.removeCartItem]", error);
+
     return res.status(400).json({
       success: false,
-      message:
-        error.message ||
-        "Lỗi xóa sản phẩm khỏi giỏ hàng",
+
+      message: error.message || "Không thể xóa sản phẩm khỏi giỏ hàng.",
     });
   }
 };
 
-exports.clearCart = async (
-  req,
-  res,
-  next
-) => {
+// ============================================================
+// DELETE /api/client/cart/clear
+// ============================================================
+
+exports.clearCart = async (req, res, next) => {
   try {
-    const userId =
-      getAuthenticatedUserId(
-        req
-      );
+    const userId = getAuthenticatedUserId(req);
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message:
-          "Bạn cần đăng nhập để sử dụng giỏ hàng.",
+
+        message: "Bạn cần đăng nhập để sử dụng giỏ hàng.",
       });
     }
 
-    const cart =
-      await Cart.clearCart(
-        userId
-      );
+    const cart = await Cart.clearCart(userId);
 
-    return res.json({
+    return res.status(200).json({
       success: true,
-      message:
-        "Xóa toàn bộ giỏ hàng thành công",
+
+      message: "Xóa toàn bộ giỏ hàng thành công.",
+
       data: cart,
     });
   } catch (error) {
+    console.error("[CartController.clearCart]", error);
+
     return next(error);
   }
 };

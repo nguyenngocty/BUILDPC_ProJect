@@ -1,4 +1,5 @@
 const database = require("../config/database");
+const ProductVariant = require("./ProductVariant");
 
 const db =
   database.pool ||
@@ -7,23 +8,33 @@ const db =
   database.conn ||
   database;
 
-const query = async (sql, params = []) => {
-  if (typeof db.query === "function") {
-    const result = await db.query(sql, params);
+const pool = database.pool || db;
+
+// ============================================================
+// DATABASE HELPERS
+// ============================================================
+
+const runQuery = async (executor, sql, params = []) => {
+  if (executor && typeof executor.query === "function") {
+    const result = await executor.query(sql, params);
+
     return Array.isArray(result) ? result[0] : result;
   }
 
-  if (typeof db.execute === "function") {
-    const result = await db.execute(sql, params);
+  if (executor && typeof executor.execute === "function") {
+    const result = await executor.execute(sql, params);
+
     return Array.isArray(result) ? result[0] : result;
   }
 
   throw new Error("Database connection không có hàm query hoặc execute");
 };
 
-const getTransactionConnection = async () => {
-  const pool = database.pool || db;
+const query = async (sql, params = []) => {
+  return runQuery(db, sql, params);
+};
 
+const getTransactionConnection = async () => {
   if (!pool || typeof pool.getConnection !== "function") {
     throw new Error("Database pool không hỗ trợ transaction");
   }
@@ -31,53 +42,575 @@ const getTransactionConnection = async () => {
   return pool.getConnection();
 };
 
-const connectionQuery = async (connection, sql, params = []) => {
-  const result = await connection.query(sql, params);
-
-  return Array.isArray(result) ? result[0] : result;
-};
+// ============================================================
+// NORMALIZE
+// ============================================================
 
 const normalizeInt = (value, defaultValue = 0) => {
   const parsed = Number.parseInt(value, 10);
+
   return Number.isNaN(parsed) ? defaultValue : parsed;
+};
+
+const normalizeNullableInt = (value) => {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const normalizeMoney = (value) => {
+  const number = Number(value || 0);
+
+  return Number.isFinite(number) ? number : 0;
+};
+
+const getFinalPrice = ({ price, sale_price }) => {
+  const regularPrice = normalizeMoney(price);
+
+  const salePrice =
+    sale_price !== null && sale_price !== undefined
+      ? normalizeMoney(sale_price)
+      : null;
+
+  if (salePrice !== null && salePrice > 0 && salePrice < regularPrice) {
+    return salePrice;
+  }
+
+  return regularPrice;
 };
 
 const generateOrderCode = () => {
   const time = Date.now();
+
   const random = Math.floor(Math.random() * 9000) + 1000;
 
   return `ORD${time}${random}`;
 };
 
-const restoreOrderStock = async (connection, orderId) => {
-  /*
-   * Lock order để ngăn:
-   *
-   * - Admin cancel
-   * - Client cancel
-   * - MoMo return
-   * - MoMo IPN
-   *
-   * cùng hoàn kho một đơn nhiều lần.
-   */
+// ============================================================
+// JSON
+// ============================================================
 
-  const orderRows = await connectionQuery(
+const parseJson = (value, fallback = []) => {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+
+  if (typeof value === "object") {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+};
+
+const stringifyJson = (value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+};
+
+// ============================================================
+// BUILD VARIANT OPTIONS SNAPSHOT
+// ============================================================
+
+const getVariantOptionsSnapshot = async (executor, variantId) => {
+  if (!variantId) {
+    return [];
+  }
+
+  const rows = await runQuery(
+    executor,
+    `
+          SELECT
+            pvv.option_id,
+            pvv.option_value_id,
+
+            po.name
+              AS option_name,
+
+            po.code
+              AS option_code,
+
+            po.display_type,
+
+            pov.value,
+            pov.label,
+            pov.color_code
+
+          FROM product_variant_values pvv
+
+          INNER JOIN product_options po
+            ON po.id =
+               pvv.option_id
+
+          INNER JOIN product_option_values pov
+            ON pov.id =
+               pvv.option_value_id
+
+          WHERE
+            pvv.variant_id = ?
+
+          ORDER BY
+            po.sort_order ASC,
+            po.id ASC
+        `,
+    [variantId],
+  );
+
+  return rows.map((item) => ({
+    option_id: Number(item.option_id),
+
+    option_value_id: Number(item.option_value_id),
+
+    option_name: item.option_name,
+
+    option_code: item.option_code,
+
+    display_type: item.display_type,
+
+    value: item.value,
+
+    label: item.label,
+
+    color_code: item.color_code,
+  }));
+};
+
+// ============================================================
+// CART ITEM NORMALIZER
+// ============================================================
+
+const normalizeCartCheckoutItem = async (connection, cartItem) => {
+  const productId = normalizeInt(cartItem.product_id);
+
+  const variantId = normalizeNullableInt(cartItem.variant_id);
+
+  const requestedQuantity = Math.max(normalizeInt(cartItem.quantity, 0), 0);
+
+  if (productId < 1 || requestedQuantity < 1) {
+    throw new Error("Sản phẩm trong giỏ hàng không hợp lệ.");
+  }
+
+  // ========================================================
+  // LOCK PRODUCT
+  // ========================================================
+
+  const productRows = await runQuery(
     connection,
     `
-        SELECT
-          id,
-          status,
-          stock_restored_at
+          SELECT
+            id,
+            name,
+            slug,
+            sku,
 
-        FROM orders
+            thumbnail,
 
-        WHERE id = ?
-          AND deleted_at IS NULL
+            price,
+            sale_price,
 
-        LIMIT 1
+            quantity,
+            status
 
-        FOR UPDATE
-      `,
+          FROM products
+
+          WHERE
+            id = ?
+            AND deleted_at IS NULL
+
+          LIMIT 1
+
+          FOR UPDATE
+        `,
+    [productId],
+  );
+
+  const product = productRows[0];
+
+  if (!product) {
+    throw new Error(`Sản phẩm ID ${productId} không còn tồn tại.`);
+  }
+
+  if (Number(product.status) !== 1) {
+    throw new Error(`Sản phẩm "${product.name}" hiện không khả dụng.`);
+  }
+
+  // ========================================================
+  // PRODUCT ACTIVE VARIANT COUNT
+  // ========================================================
+
+  const variantCountRows = await runQuery(
+    connection,
+    `
+          SELECT
+            COUNT(*) AS total
+
+          FROM product_variants
+
+          WHERE
+            product_id = ?
+            AND deleted_at IS NULL
+        `,
+    [productId],
+  );
+
+  const activeVariantCount = Number(variantCountRows[0]?.total || 0);
+
+  // ========================================================
+  // VARIANT PRODUCT
+  // ========================================================
+
+  if (variantId) {
+    const variantRows = await runQuery(
+      connection,
+      `
+            SELECT
+              id,
+              product_id,
+
+              sku,
+              variant_name,
+
+              price,
+              sale_price,
+
+              quantity,
+
+              thumbnail,
+
+              status,
+              is_default
+
+            FROM product_variants
+
+            WHERE
+              id = ?
+              AND product_id = ?
+              AND deleted_at IS NULL
+
+            LIMIT 1
+
+            FOR UPDATE
+          `,
+      [variantId, productId],
+    );
+
+    const variant = variantRows[0];
+
+    if (!variant) {
+      throw new Error(
+        `Biến thể đã chọn của "${product.name}" không còn tồn tại.`,
+      );
+    }
+
+    if (Number(variant.status) !== 1) {
+      throw new Error(
+        `Biến thể "${variant.variant_name}" hiện không khả dụng.`,
+      );
+    }
+
+    const stock = Math.max(Number(variant.quantity || 0), 0);
+
+    if (requestedQuantity > stock) {
+      throw new Error(
+        `Biến thể "${variant.variant_name}" chỉ còn ${stock} sản phẩm.`,
+      );
+    }
+
+    const price = getFinalPrice({
+      price: variant.price,
+
+      sale_price: variant.sale_price,
+    });
+
+    const options = await getVariantOptionsSnapshot(connection, variantId);
+
+    return {
+      product_id: Number(product.id),
+
+      variant_id: Number(variant.id),
+
+      product_name: product.name,
+
+      variant_name: variant.variant_name || null,
+
+      sku: variant.sku || product.sku || null,
+
+      product_image: variant.thumbnail || product.thumbnail || null,
+
+      variant_options: options,
+
+      quantity: requestedQuantity,
+
+      price,
+
+      total_price: price * requestedQuantity,
+
+      stock_scope: "variant",
+
+      available_stock: stock,
+    };
+  }
+
+  // ========================================================
+  // PRODUCT CÓ VARIANT NHƯNG CART LẠI KHÔNG CÓ VARIANT ID
+  // ========================================================
+
+  if (activeVariantCount > 1) {
+    throw new Error(`Vui lòng chọn biến thể của sản phẩm "${product.name}".`);
+  }
+
+  // ========================================================
+  // TRƯỜNG HỢP PRODUCT CÓ 1 DEFAULT VARIANT LEGACY
+  //
+  // Nếu Cart cũ chưa có variant_id,
+  // ta cho phép map sang variant duy nhất.
+  // ========================================================
+
+  if (activeVariantCount === 1) {
+    const onlyVariantRows = await runQuery(
+      connection,
+      `
+            SELECT
+              id,
+              product_id,
+              sku,
+              variant_name,
+              price,
+              sale_price,
+              quantity,
+              thumbnail,
+              status,
+              is_default
+
+            FROM product_variants
+
+            WHERE
+              product_id = ?
+              AND deleted_at IS NULL
+
+            ORDER BY
+              is_default DESC,
+              sort_order ASC,
+              id ASC
+
+            LIMIT 1
+
+            FOR UPDATE
+          `,
+      [productId],
+    );
+
+    const variant = onlyVariantRows[0];
+
+    if (variant && Number(variant.status) === 1) {
+      const stock = Math.max(Number(variant.quantity || 0), 0);
+
+      if (requestedQuantity > stock) {
+        throw new Error(
+          `Sản phẩm "${product.name}" chỉ còn ${stock} sản phẩm.`,
+        );
+      }
+
+      const price = getFinalPrice({
+        price: variant.price,
+
+        sale_price: variant.sale_price,
+      });
+
+      const options = await getVariantOptionsSnapshot(connection, variant.id);
+
+      return {
+        product_id: Number(product.id),
+
+        variant_id: Number(variant.id),
+
+        product_name: product.name,
+
+        variant_name: variant.variant_name || null,
+
+        sku: variant.sku || product.sku || null,
+
+        product_image: variant.thumbnail || product.thumbnail || null,
+
+        variant_options: options,
+
+        quantity: requestedQuantity,
+
+        price,
+
+        total_price: price * requestedQuantity,
+
+        stock_scope: "variant",
+
+        available_stock: stock,
+      };
+    }
+  }
+
+  // ========================================================
+  // PRODUCT LEGACY KHÔNG CÓ VARIANT
+  // ========================================================
+
+  const stock = Math.max(Number(product.quantity || 0), 0);
+
+  if (requestedQuantity > stock) {
+    throw new Error(`Sản phẩm "${product.name}" chỉ còn ${stock} sản phẩm.`);
+  }
+
+  const price = getFinalPrice({
+    price: product.price,
+
+    sale_price: product.sale_price,
+  });
+
+  return {
+    product_id: Number(product.id),
+
+    variant_id: null,
+
+    product_name: product.name,
+
+    variant_name: null,
+
+    sku: product.sku || null,
+
+    product_image: product.thumbnail || null,
+
+    variant_options: [],
+
+    quantity: requestedQuantity,
+
+    price,
+
+    total_price: price * requestedQuantity,
+
+    stock_scope: "product",
+
+    available_stock: stock,
+  };
+};
+
+// ============================================================
+// DECREASE STOCK
+// ============================================================
+
+const decreaseCheckoutStock = async (connection, item) => {
+  // ========================================================
+  // VARIANT
+  // ========================================================
+
+  if (item.variant_id) {
+    const result = await runQuery(
+      connection,
+      `
+            UPDATE product_variants
+
+            SET
+              quantity =
+                quantity - ?,
+
+              updated_at =
+                NOW()
+
+            WHERE
+              id = ?
+              AND product_id = ?
+              AND deleted_at IS NULL
+              AND status = 1
+              AND quantity >= ?
+          `,
+      [item.quantity, item.variant_id, item.product_id, item.quantity],
+    );
+
+    if (Number(result.affectedRows || 0) !== 1) {
+      throw new Error(
+        `Biến thể "${item.variant_name || item.product_name}" vừa thay đổi tồn kho. Vui lòng tải lại giỏ hàng.`,
+      );
+    }
+
+    /*
+     * products.quantity
+     * = tổng stock variant.
+     */
+    await ProductVariant.syncProductAggregate(connection, item.product_id);
+
+    return;
+  }
+
+  // ========================================================
+  // LEGACY PRODUCT
+  // ========================================================
+
+  const result = await runQuery(
+    connection,
+    `
+          UPDATE products
+
+          SET
+            quantity =
+              quantity - ?,
+
+            updated_at =
+              NOW()
+
+          WHERE
+            id = ?
+            AND deleted_at IS NULL
+            AND status = 1
+            AND quantity >= ?
+        `,
+    [item.quantity, item.product_id, item.quantity],
+  );
+
+  if (Number(result.affectedRows || 0) !== 1) {
+    throw new Error(
+      `Sản phẩm "${item.product_name}" vừa thay đổi tồn kho. Vui lòng tải lại giỏ hàng.`,
+    );
+  }
+};
+
+// ============================================================
+// RESTORE STOCK OF ONE ORDER
+// ============================================================
+
+const restoreOrderStock = async (connection, orderId) => {
+  // ========================================================
+  // LOCK ORDER
+  // ========================================================
+
+  const orderRows = await runQuery(
+    connection,
+    `
+          SELECT
+            id,
+            status,
+            stock_restored_at
+
+          FROM orders
+
+          WHERE
+            id = ?
+            AND deleted_at IS NULL
+
+          LIMIT 1
+
+          FOR UPDATE
+        `,
     [orderId],
   );
 
@@ -87,7 +620,9 @@ const restoreOrderStock = async (connection, orderId) => {
     throw new Error("Không tìm thấy đơn hàng");
   }
 
-  // Kho đã được hoàn trước đó.
+  /*
+   * Chống hoàn kho hai lần.
+   */
   if (order.stock_restored_at) {
     return {
       restored: false,
@@ -95,27 +630,41 @@ const restoreOrderStock = async (connection, orderId) => {
     };
   }
 
-  const items = await connectionQuery(
+  // ========================================================
+  // LOCK ORDER ITEMS
+  // ========================================================
+
+  const items = await runQuery(
     connection,
     `
-        SELECT
-          product_id,
-          quantity
+          SELECT
+            id,
+            product_id,
+            variant_id,
+            product_name,
+            variant_name,
+            sku,
+            quantity
 
-        FROM order_items
+          FROM order_items
 
-        WHERE order_id = ?
-          AND deleted_at IS NULL
+          WHERE
+            order_id = ?
+            AND deleted_at IS NULL
 
-        ORDER BY id ASC
+          ORDER BY id ASC
 
-        FOR UPDATE
-      `,
+          FOR UPDATE
+        `,
     [orderId],
   );
 
+  const productsToSync = new Set();
+
   for (const item of items) {
     const productId = normalizeInt(item.product_id);
+
+    const variantId = normalizeNullableInt(item.variant_id);
 
     const quantity = Math.max(normalizeInt(item.quantity, 0), 0);
 
@@ -123,44 +672,94 @@ const restoreOrderStock = async (connection, orderId) => {
       continue;
     }
 
-    await connectionQuery(
+    // ======================================================
+    // RESTORE VARIANT STOCK
+    // ======================================================
+
+    if (variantId) {
+      const result = await runQuery(
+        connection,
+        `
+              UPDATE product_variants
+
+              SET
+                quantity =
+                  quantity + ?,
+
+                updated_at =
+                  NOW()
+
+              WHERE
+                id = ?
+                AND product_id = ?
+            `,
+        [quantity, variantId, productId],
+      );
+
+      /*
+       * Variant có thể đã bị force delete.
+       * Không được cộng nhầm vào products.
+       */
+      if (Number(result.affectedRows || 0) === 1) {
+        productsToSync.add(productId);
+      }
+
+      continue;
+    }
+
+    // ======================================================
+    // RESTORE LEGACY PRODUCT STOCK
+    // ======================================================
+
+    await runQuery(
       connection,
       `
-        UPDATE products
+          UPDATE products
 
-        SET
-          quantity =
-            quantity + ?,
+          SET
+            quantity =
+              quantity + ?,
 
-          updated_at =
-            NOW()
+            updated_at =
+              NOW()
 
-        WHERE id = ?
-          AND deleted_at IS NULL
-      `,
+          WHERE
+            id = ?
+            AND deleted_at IS NULL
+        `,
       [quantity, productId],
     );
   }
 
-  /*
-   * Đây chính là cờ chống hoàn kho 2 lần.
-   */
-  await connectionQuery(
+  // ========================================================
+  // SYNC PRODUCT AGGREGATE
+  // ========================================================
+
+  for (const productId of productsToSync) {
+    await ProductVariant.syncProductAggregate(connection, productId);
+  }
+
+  // ========================================================
+  // MARK RESTORED
+  // ========================================================
+
+  await runQuery(
     connection,
     `
-      UPDATE orders
+        UPDATE orders
 
-      SET
-        stock_restored_at =
-          NOW(),
+        SET
+          stock_restored_at =
+            NOW(),
 
-        updated_at =
-          NOW()
+          updated_at =
+            NOW()
 
-      WHERE id = ?
-        AND stock_restored_at IS NULL
-        AND deleted_at IS NULL
-    `,
+        WHERE
+          id = ?
+          AND stock_restored_at IS NULL
+          AND deleted_at IS NULL
+      `,
     [orderId],
   );
 
@@ -170,6 +769,10 @@ const restoreOrderStock = async (connection, orderId) => {
   };
 };
 
+// ============================================================
+// USER ORDER FILTER
+// ============================================================
+
 const buildUserOrderConditions = ({ userId, status, search }) => {
   const conditions = ["o.user_id = ?", "o.deleted_at IS NULL"];
 
@@ -177,36 +780,88 @@ const buildUserOrderConditions = ({ userId, status, search }) => {
 
   if (status) {
     conditions.push("o.status = ?");
+
     params.push(status);
   }
 
   if (search) {
     const keyword = `%${search}%`;
 
-    conditions.push(`(
-      o.order_code LIKE ?
-      OR o.shipping_name LIKE ?
-      OR o.shipping_phone LIKE ?
-      OR COALESCE(o.shipping_email, '') LIKE ?
-    )`);
+    conditions.push(
+      `
+          (
+            o.order_code LIKE ?
+            OR o.shipping_name LIKE ?
+            OR o.shipping_phone LIKE ?
+            OR COALESCE(
+              o.shipping_email,
+              ''
+            ) LIKE ?
+          )
+        `,
+    );
 
     params.push(keyword, keyword, keyword, keyword);
   }
 
   return {
     whereSql: conditions.join("\n AND "),
+
     params,
   };
 };
 
+// ============================================================
+// NORMALIZE ORDER ITEM
+// ============================================================
+
+const normalizeOrderItem = (item) => {
+  return {
+    ...item,
+
+    id: Number(item.id),
+
+    order_id: Number(item.order_id),
+
+    product_id: Number(item.product_id),
+
+    variant_id:
+      item.variant_id !== null && item.variant_id !== undefined
+        ? Number(item.variant_id)
+        : null,
+
+    price: Number(item.price || 0),
+
+    quantity: Number(item.quantity || 0),
+
+    total_price: Number(item.total_price || 0),
+
+    variant_options: parseJson(item.variant_options, []),
+  };
+};
+
+// ============================================================
+// ORDER MODEL
+// ============================================================
+
 const Order = {
+  // ==========================================================
+  // CART + ITEMS
+  // ==========================================================
+
   async getCartWithItems(userId) {
     const cartRows = await query(
-      `SELECT *
-       FROM carts
-       WHERE user_id = ?
-         AND deleted_at IS NULL
-       LIMIT 1`,
+      `
+          SELECT *
+
+          FROM carts
+
+          WHERE
+            user_id = ?
+            AND deleted_at IS NULL
+
+          LIMIT 1
+        `,
       [userId],
     );
 
@@ -220,41 +875,73 @@ const Order = {
     }
 
     const items = await query(
-      `SELECT
-          ci.id AS cart_item_id,
-          ci.cart_id,
-          ci.product_id,
-          ci.quantity,
-          ci.price AS cart_price,
-          ci.total_price AS cart_total_price,
+      `
+          SELECT
+            ci.id
+              AS cart_item_id,
 
-          p.name AS product_name,
-          p.thumbnail AS product_image,
-          p.price AS product_price,
-          p.sale_price AS product_sale_price,
-          p.quantity AS product_stock,
-          p.status AS product_status,
+            ci.cart_id,
 
-          CASE
-            WHEN ci.price IS NOT NULL
-              AND ci.price > 0
-              THEN ci.price
-            WHEN p.sale_price IS NOT NULL
-              AND p.sale_price > 0
-              THEN p.sale_price
-            ELSE p.price
-          END AS final_price
+            ci.product_id,
+            ci.variant_id,
 
-       FROM cart_items ci
+            ci.quantity,
 
-       INNER JOIN products p
-         ON p.id = ci.product_id
+            ci.price
+              AS cart_price,
 
-       WHERE ci.cart_id = ?
-         AND ci.deleted_at IS NULL
-         AND p.deleted_at IS NULL
+            ci.total_price
+              AS cart_total_price,
 
-       ORDER BY ci.id ASC`,
+            p.name
+              AS product_name,
+
+            p.slug
+              AS product_slug,
+
+            p.thumbnail
+              AS product_image,
+
+            p.status
+              AS product_status,
+
+            pv.variant_name,
+            pv.sku
+              AS variant_sku,
+
+            pv.thumbnail
+              AS variant_thumbnail,
+
+            pv.price
+              AS variant_price,
+
+            pv.sale_price
+              AS variant_sale_price,
+
+            pv.quantity
+              AS variant_stock,
+
+            pv.status
+              AS variant_status
+
+          FROM cart_items ci
+
+          INNER JOIN products p
+            ON p.id =
+               ci.product_id
+
+          LEFT JOIN product_variants pv
+            ON pv.id =
+               ci.variant_id
+
+          WHERE
+            ci.cart_id = ?
+            AND ci.deleted_at IS NULL
+            AND p.deleted_at IS NULL
+
+          ORDER BY
+            ci.id ASC
+        `,
       [cart.id],
     );
 
@@ -263,6 +950,10 @@ const Order = {
       items,
     };
   },
+
+  // ==========================================================
+  // CREATE ORDER FROM CART
+  // ==========================================================
 
   async createFromCart(data) {
     const userId = normalizeInt(data.user_id);
@@ -278,26 +969,27 @@ const Order = {
     try {
       await connection.beginTransaction();
 
-      // ===================================================
+      // ======================================================
       // LOCK CART
-      // ===================================================
+      // ======================================================
 
-      const cartRows = await connectionQuery(
+      const cartRows = await runQuery(
         connection,
         `
-          SELECT
-            id,
-            user_id
+            SELECT
+              id,
+              user_id
 
-          FROM carts
+            FROM carts
 
-          WHERE user_id = ?
-            AND deleted_at IS NULL
+            WHERE
+              user_id = ?
+              AND deleted_at IS NULL
 
-          LIMIT 1
+            LIMIT 1
 
-          FOR UPDATE
-        `,
+            FOR UPDATE
+          `,
         [userId],
       );
 
@@ -307,55 +999,33 @@ const Order = {
         throw new Error("Giỏ hàng đang trống");
       }
 
-      // ===================================================
+      // ======================================================
       // CART ITEMS
-      // ===================================================
+      // ======================================================
 
-      const cartItems = await connectionQuery(
+      const cartItems = await runQuery(
         connection,
         `
-          SELECT
-            ci.id
-              AS cart_item_id,
+            SELECT
+              id,
+              cart_id,
+              product_id,
+              variant_id,
+              quantity,
+              price,
+              total_price
 
-            ci.product_id,
-            ci.quantity,
+            FROM cart_items
 
-            p.name
-              AS product_name,
+            WHERE
+              cart_id = ?
+              AND deleted_at IS NULL
 
-            p.thumbnail
-              AS product_image,
+            ORDER BY
+              id ASC
 
-            p.price
-              AS product_price,
-
-            p.sale_price
-              AS product_sale_price,
-
-            p.quantity
-              AS product_stock,
-
-            p.status
-              AS product_status
-
-          FROM cart_items ci
-
-          INNER JOIN products p
-            ON p.id =
-               ci.product_id
-
-          WHERE
-            ci.cart_id = ?
-
-            AND ci.deleted_at
-                IS NULL
-
-            AND p.deleted_at
-                IS NULL
-
-          ORDER BY ci.id ASC
-        `,
+            FOR UPDATE
+          `,
         [cart.id],
       );
 
@@ -363,101 +1033,29 @@ const Order = {
         throw new Error("Giỏ hàng đang trống");
       }
 
+      // ======================================================
+      // BUILD CHECKOUT ITEMS
+      //
+      // Re-read Product + Variant.
+      //
+      // Không tin price hiện tại trong cart_items vì admin
+      // có thể vừa đổi giá.
+      // ======================================================
+
       const checkoutItems = [];
 
-      // ===================================================
-      // LOCK TỪNG PRODUCT
-      // ===================================================
-
       for (const cartItem of cartItems) {
-        const productRows = await connectionQuery(
+        const checkoutItem = await normalizeCartCheckoutItem(
           connection,
-          `
-            SELECT
-              id,
-              name,
-              thumbnail,
-
-              price,
-              sale_price,
-
-              quantity,
-              status
-
-            FROM products
-
-            WHERE
-              id = ?
-
-              AND deleted_at
-                  IS NULL
-
-            LIMIT 1
-
-            FOR UPDATE
-          `,
-          [cartItem.product_id],
+          cartItem,
         );
 
-        const product = productRows[0];
-
-        if (!product) {
-          throw new Error(
-            `Sản phẩm ID ${cartItem.product_id} không còn tồn tại`,
-          );
-        }
-
-        if (Number(product.status) !== 1) {
-          throw new Error(`Sản phẩm "${product.name}" hiện không khả dụng`);
-        }
-
-        const requestedQuantity = Math.max(
-          normalizeInt(cartItem.quantity, 0),
-          0,
-        );
-
-        const stock = Math.max(normalizeInt(product.quantity, 0), 0);
-
-        if (requestedQuantity < 1) {
-          throw new Error(`Số lượng "${product.name}" không hợp lệ`);
-        }
-
-        if (requestedQuantity > stock) {
-          throw new Error(
-            `Sản phẩm "${product.name}" chỉ còn ${stock} sản phẩm`,
-          );
-        }
-
-        const regularPrice = Number(product.price || 0);
-
-        const salePrice = Number(product.sale_price || 0);
-
-        /*
-         * Sale chỉ hợp lệ khi:
-         *
-         * 0 < sale_price < price
-         */
-        const finalPrice =
-          salePrice > 0 && salePrice < regularPrice ? salePrice : regularPrice;
-
-        checkoutItems.push({
-          product_id: product.id,
-
-          product_name: product.name,
-
-          product_image: product.thumbnail || null,
-
-          quantity: requestedQuantity,
-
-          price: finalPrice,
-
-          total_price: finalPrice * requestedQuantity,
-        });
+        checkoutItems.push(checkoutItem);
       }
 
-      // ===================================================
+      // ======================================================
       // TOTAL
-      // ===================================================
+      // ======================================================
 
       const itemsTotal = checkoutItems.reduce(
         (sum, item) => sum + Number(item.total_price || 0),
@@ -475,61 +1073,65 @@ const Order = {
 
       const orderCode = generateOrderCode();
 
-      // ===================================================
+      // ======================================================
       // CREATE ORDER
-      // ===================================================
+      // ======================================================
 
-      const orderResult = await connectionQuery(
+      const orderResult = await runQuery(
         connection,
         `
-          INSERT INTO orders
-          (
-            user_id,
-            order_code,
+            INSERT INTO orders
+            (
+              user_id,
+              order_code,
 
-            total_amount,
+              total_amount,
 
-            shipping_name,
-            shipping_phone,
-            shipping_email,
-            shipping_address,
+              shipping_name,
+              shipping_phone,
+              shipping_email,
+              shipping_address,
 
-            note,
+              note,
 
-            status,
+              status,
 
-            stock_restored_at,
+              stock_restored_at,
 
-            created_at,
-            updated_at
-          )
+              created_at,
+              updated_at
+            )
 
-          VALUES
-          (
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
+            VALUES
+            (
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
 
-            'PENDING',
+              'PENDING',
 
-            NULL,
+              NULL,
 
-            NOW(),
-            NOW()
-          )
-        `,
+              NOW(),
+              NOW()
+            )
+          `,
         [
           userId,
+
           orderCode,
+
           totalAmount,
 
           data.shipping_name,
+
           data.shipping_phone,
+
           data.shipping_email || null,
 
           data.shipping_address,
@@ -544,63 +1146,117 @@ const Order = {
         throw new Error("Không tạo được đơn hàng");
       }
 
-      // ===================================================
-      // ORDER ITEMS + TRỪ KHO
-      // ===================================================
+      // ======================================================
+      // ORDER ITEMS + STOCK
+      // ======================================================
 
       for (const item of checkoutItems) {
-        /*
-         * Update có điều kiện quantity >= ?
-         *
-         * Dù đã FOR UPDATE, điều kiện này
-         * vẫn là tầng bảo vệ cuối.
-         */
+        // ----------------------------------------------------
+        // Trừ stock đúng Product / Variant
+        // ----------------------------------------------------
 
-        const stockResult = await connectionQuery(
+        await decreaseCheckoutStock(connection, item);
+
+        // ----------------------------------------------------
+        // Snapshot order item
+        // ----------------------------------------------------
+
+        await runQuery(
           connection,
           `
-            UPDATE products
+            INSERT INTO order_items
+            (
+              order_id,
 
-            SET
-              quantity =
-                quantity - ?,
+              product_id,
+              variant_id,
 
-              updated_at =
-                NOW()
+              product_name,
+              variant_name,
 
-            WHERE
-              id = ?
+              sku,
 
-              AND deleted_at
-                  IS NULL
+              product_image,
 
-              AND status = 1
+              variant_options,
 
-              AND quantity >= ?
+              price,
+              quantity,
+              total_price,
+
+              created_at,
+              updated_at
+            )
+
+            VALUES
+            (
+              ?,
+
+              ?,
+              ?,
+
+              ?,
+              ?,
+
+              ?,
+
+              ?,
+
+              ?,
+
+              ?,
+              ?,
+              ?,
+
+              NOW(),
+              NOW()
+            )
           `,
-          [item.quantity, item.product_id, item.quantity],
+          [
+            orderId,
+
+            item.product_id,
+
+            item.variant_id,
+
+            item.product_name,
+
+            item.variant_name,
+
+            item.sku,
+
+            item.product_image,
+
+            stringifyJson(item.variant_options),
+
+            item.price,
+
+            item.quantity,
+
+            item.total_price,
+          ],
         );
+      }
 
-        if (Number(stockResult.affectedRows || 0) !== 1) {
-          throw new Error(
-            `Sản phẩm "${item.product_name}" vừa thay đổi tồn kho. Vui lòng tải lại giỏ hàng.`,
-          );
-        }
+      // ======================================================
+      // PAYMENT
+      // ======================================================
 
-        await connectionQuery(
-          connection,
-          `
-          INSERT INTO order_items
+      await runQuery(
+        connection,
+        `
+          INSERT INTO payments
           (
             order_id,
-            product_id,
 
-            product_name,
-            product_image,
+            payment_method,
 
-            price,
-            quantity,
-            total_price,
+            amount,
+
+            transaction_code,
+            paid_at,
+
+            status,
 
             created_at,
             updated_at
@@ -611,117 +1267,63 @@ const Order = {
             ?,
             ?,
             ?,
-            ?,
-            ?,
-            ?,
-            ?,
+
+            NULL,
+            NULL,
+
+            0,
 
             NOW(),
             NOW()
           )
         `,
-          [
-            orderId,
-            item.product_id,
-
-            item.product_name,
-            item.product_image,
-
-            item.price,
-            item.quantity,
-            item.total_price,
-          ],
-        );
-      }
-
-      // ===================================================
-      // PAYMENT
-      // ===================================================
-
-      await connectionQuery(
-        connection,
-        `
-        INSERT INTO payments
-        (
-          order_id,
-
-          payment_method,
-
-          amount,
-
-          transaction_code,
-          paid_at,
-
-          status,
-
-          created_at,
-          updated_at
-        )
-
-        VALUES
-        (
-          ?,
-          ?,
-          ?,
-
-          NULL,
-          NULL,
-
-          0,
-
-          NOW(),
-          NOW()
-        )
-      `,
         [orderId, data.payment_method || "cod", totalAmount],
       );
 
-      // ===================================================
+      // ======================================================
       // CLEAR CART
-      // ===================================================
+      // ======================================================
 
-      await connectionQuery(
+      await runQuery(
         connection,
         `
-        UPDATE cart_items
+          UPDATE cart_items
 
-        SET
-          deleted_at =
-            NOW(),
+          SET
+            deleted_at =
+              NOW(),
 
-          updated_at =
-            NOW()
+            updated_at =
+              NOW()
 
-        WHERE
-          cart_id = ?
-
-          AND deleted_at
-              IS NULL
-      `,
+          WHERE
+            cart_id = ?
+            AND deleted_at IS NULL
+        `,
         [cart.id],
       );
 
-      await connectionQuery(
+      await runQuery(
         connection,
         `
-        UPDATE carts
+          UPDATE carts
 
-        SET
-          quantity = 0,
+          SET
+            quantity = 0,
 
-          total_price = 0,
+            total_price = 0,
 
-          updated_at =
-            NOW()
+            updated_at =
+              NOW()
 
-        WHERE id = ?
-      `,
+          WHERE id = ?
+        `,
         [cart.id],
       );
 
-      // ===================================================
+      // ======================================================
       // COMMIT
-      // ===================================================
+      // ======================================================
 
       await connection.commit();
     } catch (error) {
@@ -735,136 +1337,238 @@ const Order = {
     return this.getById(orderId);
   },
 
+  // ==========================================================
+  // GET ORDER BY ID
+  // ==========================================================
+
   async getById(id) {
     const orderRows = await query(
-      `SELECT
-          o.*,
+      `
+          SELECT
+            o.*,
 
-          p.payment_method,
-          p.amount AS payment_amount,
-          p.status AS payment_status,
-          p.transaction_code,
-          p.paid_at
+            p.payment_method,
 
-       FROM orders o
+            p.amount
+              AS payment_amount,
 
-       LEFT JOIN payments p
-         ON p.id = (
-           SELECT p2.id
-           FROM payments p2
-           WHERE p2.order_id = o.id
-             AND p2.deleted_at IS NULL
-           ORDER BY p2.id DESC
-           LIMIT 1
-         )
+            p.status
+              AS payment_status,
 
-       WHERE o.id = ?
-         AND o.deleted_at IS NULL
+            p.transaction_code,
 
-       LIMIT 1`,
+            p.paid_at
+
+          FROM orders o
+
+          LEFT JOIN payments p
+            ON p.id = (
+              SELECT
+                p2.id
+
+              FROM payments p2
+
+              WHERE
+                p2.order_id =
+                  o.id
+
+                AND p2.deleted_at
+                    IS NULL
+
+              ORDER BY
+                p2.id DESC
+
+              LIMIT 1
+            )
+
+          WHERE
+            o.id = ?
+            AND o.deleted_at IS NULL
+
+          LIMIT 1
+        `,
       [id],
     );
 
     const order = orderRows[0];
 
-    if (!order) return null;
+    if (!order) {
+      return null;
+    }
 
     const items = await query(
-      `SELECT
-          id,
-          order_id,
-          product_id,
-          product_name,
-          product_image,
-          price,
-          quantity,
-          total_price,
-          created_at,
-          updated_at
+      `
+          SELECT
+            id,
+            order_id,
 
-       FROM order_items
+            product_id,
+            variant_id,
 
-       WHERE order_id = ?
-         AND deleted_at IS NULL
+            product_name,
+            variant_name,
 
-       ORDER BY id ASC`,
+            sku,
+
+            product_image,
+
+            variant_options,
+
+            price,
+            quantity,
+            total_price,
+
+            created_at,
+            updated_at
+
+          FROM order_items
+
+          WHERE
+            order_id = ?
+            AND deleted_at IS NULL
+
+          ORDER BY id ASC
+        `,
       [id],
     );
 
     return {
       ...order,
-      items,
+
+      id: Number(order.id),
+
+      total_amount: Number(order.total_amount || 0),
+
+      payment_amount:
+        order.payment_amount !== null && order.payment_amount !== undefined
+          ? Number(order.payment_amount)
+          : null,
+
+      items: items.map(normalizeOrderItem),
     };
   },
 
+  // ==========================================================
+  // GET USER ORDER BY ID
+  // ==========================================================
+
   async getUserOrderById({ userId, orderId }) {
     const orderRows = await query(
-      `SELECT
-          o.*,
+      `
+          SELECT
+            o.*,
 
-          p.payment_method,
-          p.amount AS payment_amount,
-          p.status AS payment_status,
-          p.transaction_code,
-          p.paid_at
+            p.payment_method,
 
-       FROM orders o
+            p.amount
+              AS payment_amount,
 
-       LEFT JOIN payments p
-         ON p.id = (
-           SELECT p2.id
-           FROM payments p2
-           WHERE p2.order_id = o.id
-             AND p2.deleted_at IS NULL
-           ORDER BY p2.id DESC
-           LIMIT 1
-         )
+            p.status
+              AS payment_status,
 
-       WHERE o.id = ?
-         AND o.user_id = ?
-         AND o.deleted_at IS NULL
+            p.transaction_code,
 
-       LIMIT 1`,
+            p.paid_at
+
+          FROM orders o
+
+          LEFT JOIN payments p
+            ON p.id = (
+              SELECT
+                p2.id
+
+              FROM payments p2
+
+              WHERE
+                p2.order_id =
+                  o.id
+
+                AND p2.deleted_at
+                    IS NULL
+
+              ORDER BY
+                p2.id DESC
+
+              LIMIT 1
+            )
+
+          WHERE
+            o.id = ?
+            AND o.user_id = ?
+            AND o.deleted_at IS NULL
+
+          LIMIT 1
+        `,
       [orderId, userId],
     );
 
     const order = orderRows[0];
 
-    if (!order) return null;
+    if (!order) {
+      return null;
+    }
 
     const items = await query(
-      `SELECT
-          id,
-          order_id,
-          product_id,
-          product_name,
-          product_image,
-          price,
-          quantity,
-          total_price,
-          created_at,
-          updated_at
+      `
+          SELECT
+            id,
+            order_id,
 
-       FROM order_items
+            product_id,
+            variant_id,
 
-       WHERE order_id = ?
-         AND deleted_at IS NULL
+            product_name,
+            variant_name,
 
-       ORDER BY id ASC`,
+            sku,
+
+            product_image,
+
+            variant_options,
+
+            price,
+            quantity,
+            total_price,
+
+            created_at,
+            updated_at
+
+          FROM order_items
+
+          WHERE
+            order_id = ?
+            AND deleted_at IS NULL
+
+          ORDER BY
+            id ASC
+        `,
       [orderId],
     );
 
     return {
       ...order,
-      items,
+
+      id: Number(order.id),
+
+      total_amount: Number(order.total_amount || 0),
+
+      items: items.map(normalizeOrderItem),
     };
   },
 
+  // ==========================================================
+  // USER ORDERS
+  // ==========================================================
+
   async getUserOrders({
     userId,
+
     page = 1,
+
     limit = 10,
+
     status = "",
+
     search = "",
   }) {
     const safePage = Math.max(normalizeInt(page, 1), 1);
@@ -879,70 +1583,127 @@ const Order = {
       search,
     });
 
-    return query(
-      `SELECT
-          o.id,
-          o.user_id,
-          o.order_code,
-          o.total_amount,
-          o.shipping_name,
-          o.shipping_phone,
-          o.shipping_email,
-          o.shipping_address,
-          o.note,
-          o.status,
-          o.created_at,
-          o.updated_at,
+    const rows = await query(
+      `
+          SELECT
+            o.id,
+            o.user_id,
+            o.order_code,
+            o.total_amount,
 
-          p.payment_method,
-          p.amount AS payment_amount,
-          p.status AS payment_status,
-          p.transaction_code,
-          p.paid_at,
+            o.shipping_name,
+            o.shipping_phone,
+            o.shipping_email,
+            o.shipping_address,
 
-          COALESCE(item_summary.item_count, 0)
-            AS item_count,
+            o.note,
 
-          COALESCE(item_summary.total_quantity, 0)
-            AS total_quantity
+            o.status,
 
-       FROM orders o
+            o.created_at,
+            o.updated_at,
 
-       LEFT JOIN payments p
-         ON p.id = (
-           SELECT p2.id
-           FROM payments p2
-           WHERE p2.order_id = o.id
-             AND p2.deleted_at IS NULL
-           ORDER BY p2.id DESC
-           LIMIT 1
-         )
+            p.payment_method,
 
-       LEFT JOIN (
-         SELECT
-           order_id,
-           COUNT(*) AS item_count,
-           SUM(quantity) AS total_quantity
+            p.amount
+              AS payment_amount,
 
-         FROM order_items
+            p.status
+              AS payment_status,
 
-         WHERE deleted_at IS NULL
+            p.transaction_code,
 
-         GROUP BY order_id
-       ) AS item_summary
-         ON item_summary.order_id = o.id
+            p.paid_at,
 
-       WHERE ${whereSql}
+            COALESCE(
+              item_summary.item_count,
+              0
+            ) AS item_count,
 
-       ORDER BY
-         o.created_at DESC,
-         o.id DESC
+            COALESCE(
+              item_summary.total_quantity,
+              0
+            ) AS total_quantity
 
-       LIMIT ${safeLimit}
-       OFFSET ${offset}`,
+          FROM orders o
+
+          LEFT JOIN payments p
+            ON p.id = (
+              SELECT
+                p2.id
+
+              FROM payments p2
+
+              WHERE
+                p2.order_id =
+                  o.id
+
+                AND p2.deleted_at
+                    IS NULL
+
+              ORDER BY
+                p2.id DESC
+
+              LIMIT 1
+            )
+
+          LEFT JOIN (
+            SELECT
+              order_id,
+
+              COUNT(*)
+                AS item_count,
+
+              SUM(quantity)
+                AS total_quantity
+
+            FROM order_items
+
+            WHERE
+              deleted_at IS NULL
+
+            GROUP BY
+              order_id
+          ) AS item_summary
+            ON item_summary.order_id =
+               o.id
+
+          WHERE
+            ${whereSql}
+
+          ORDER BY
+            o.created_at DESC,
+            o.id DESC
+
+          LIMIT ${safeLimit}
+          OFFSET ${offset}
+        `,
       params,
     );
+
+    return rows.map((item) => ({
+      ...item,
+
+      id: Number(item.id),
+
+      user_id: Number(item.user_id),
+
+      total_amount: Number(item.total_amount || 0),
+
+      payment_amount:
+        item.payment_amount !== null && item.payment_amount !== undefined
+          ? Number(item.payment_amount)
+          : null,
+
+      item_count: Number(item.item_count || 0),
+
+      total_quantity: Number(item.total_quantity || 0),
+    }));
   },
+
+  // ==========================================================
+  // COUNT USER ORDERS
+  // ==========================================================
 
   async countUserOrders({ userId, status = "", search = "" }) {
     const { whereSql, params } = buildUserOrderConditions({
@@ -952,55 +1713,80 @@ const Order = {
     });
 
     const rows = await query(
-      `SELECT
-          COUNT(*) AS total
+      `
+          SELECT
+            COUNT(*) AS total
 
-       FROM orders o
+          FROM orders o
 
-       WHERE ${whereSql}`,
+          WHERE
+            ${whereSql}
+        `,
       params,
     );
 
     return normalizeInt(rows[0]?.total, 0);
   },
 
+  // ==========================================================
+  // GET BY ORDER CODE
+  // ==========================================================
+
   async getByOrderCode(orderCode) {
     const orderRows = await query(
-      `SELECT id
+      `
+          SELECT id
 
-       FROM orders
+          FROM orders
 
-       WHERE order_code = ?
-         AND deleted_at IS NULL
+          WHERE
+            order_code = ?
+            AND deleted_at IS NULL
 
-       LIMIT 1`,
+          LIMIT 1
+        `,
       [orderCode],
     );
 
     const order = orderRows[0];
 
-    if (!order) return null;
+    if (!order) {
+      return null;
+    }
 
     return this.getById(order.id);
   },
 
+  // ==========================================================
+  // GET BY USER
+  // ==========================================================
+
   async getByUserId(userId) {
     return query(
-      `SELECT *
+      `
+        SELECT *
 
-       FROM orders
+        FROM orders
 
-       WHERE user_id = ?
-         AND deleted_at IS NULL
+        WHERE
+          user_id = ?
+          AND deleted_at IS NULL
 
-       ORDER BY id DESC`,
+        ORDER BY id DESC
+      `,
       [userId],
     );
   },
 
+  // ==========================================================
+  // MOMO PAYMENT STATUS BY ORDER CODE
+  // ==========================================================
+
   async updatePaymentStatusByOrderCode({
     order_code,
+
     payment_status,
+
     transaction_code = null,
   }) {
     const connection = await getTransactionConnection();
@@ -1010,26 +1796,28 @@ const Order = {
     try {
       await connection.beginTransaction();
 
-      // ==================================================
+      // ======================================================
       // LOCK ORDER
-      // ==================================================
+      // ======================================================
 
-      const orderRows = await connectionQuery(
+      const orderRows = await runQuery(
         connection,
         `
-          SELECT
-            id,
-            status,
-            stock_restored_at
+            SELECT
+              id,
+              status,
+              stock_restored_at
 
-          FROM orders
+            FROM orders
 
-          WHERE order_code = ?
-            AND deleted_at IS NULL
+            WHERE
+              order_code = ?
+              AND deleted_at IS NULL
 
-          LIMIT 1
-          FOR UPDATE
-        `,
+            LIMIT 1
+
+            FOR UPDATE
+          `,
         [order_code],
       );
 
@@ -1037,36 +1825,40 @@ const Order = {
 
       if (!order) {
         await connection.rollback();
+
         return null;
       }
 
-      orderId = order.id;
+      orderId = Number(order.id);
 
       const isPaid = Number(payment_status) === 1;
 
-      // ==================================================
+      // ======================================================
       // LOCK PAYMENT
-      // ==================================================
+      // ======================================================
 
-      const paymentRows = await connectionQuery(
+      const paymentRows = await runQuery(
         connection,
         `
-          SELECT
-            id,
-            status,
-            transaction_code,
-            paid_at
+            SELECT
+              id,
+              status,
+              transaction_code,
+              paid_at
 
-          FROM payments
+            FROM payments
 
-          WHERE order_id = ?
-            AND deleted_at IS NULL
+            WHERE
+              order_id = ?
+              AND deleted_at IS NULL
 
-          ORDER BY id DESC
-          LIMIT 1
+            ORDER BY
+              id DESC
 
-          FOR UPDATE
-        `,
+            LIMIT 1
+
+            FOR UPDATE
+          `,
         [orderId],
       );
 
@@ -1076,77 +1868,69 @@ const Order = {
         throw new Error("Không tìm thấy thông tin thanh toán");
       }
 
-      // ==================================================
-      // PAYMENT SUCCESS
-      // ==================================================
+      // ======================================================
+      // SUCCESS
+      // ======================================================
 
       if (isPaid) {
-        /*
-         * Cực kỳ quan trọng:
-         * nếu order đã CANCELLED + stock đã restore,
-         * callback success đến muộn không được hồi sinh order.
-         */
-
         if (String(order.status || "").toUpperCase() === "CANCELLED") {
           throw new Error("Đơn hàng đã bị hủy, không thể xác nhận thanh toán.");
         }
 
-        await connectionQuery(
+        await runQuery(
           connection,
           `
-          UPDATE payments
+            UPDATE payments
 
-          SET
-            status = 1,
+            SET
+              status = 1,
 
-            transaction_code =
-              COALESCE(
-                ?,
-                transaction_code
-              ),
+              transaction_code =
+                COALESCE(
+                  ?,
+                  transaction_code
+                ),
 
-            paid_at =
-              COALESCE(
-                paid_at,
+              paid_at =
+                COALESCE(
+                  paid_at,
+                  NOW()
+                ),
+
+              updated_at =
                 NOW()
-              ),
 
-            updated_at =
-              NOW()
-
-          WHERE id = ?
-            AND deleted_at IS NULL
-        `,
+            WHERE
+              id = ?
+              AND deleted_at IS NULL
+          `,
           [transaction_code, payment.id],
         );
 
-        /*
-         * Chỉ PENDING mới chuyển PROCESSING.
-         *
-         * Nếu IPN success chạy lần 2,
-         * PROCESSING vẫn giữ PROCESSING.
-         */
-
-        await connectionQuery(
+        await runQuery(
           connection,
           `
-          UPDATE orders
+            UPDATE orders
 
-          SET
-            status =
-              CASE
-                WHEN status = 'PENDING'
-                THEN 'PROCESSING'
+            SET
+              status =
+                CASE
+                  WHEN status =
+                       'PENDING'
+                  THEN
+                       'PROCESSING'
 
-                ELSE status
-              END,
+                  ELSE status
+                END,
 
-            updated_at = NOW()
+              updated_at =
+                NOW()
 
-          WHERE id = ?
-            AND deleted_at IS NULL
-            AND status <> 'CANCELLED'
-        `,
+            WHERE
+              id = ?
+              AND deleted_at IS NULL
+              AND status <> 'CANCELLED'
+          `,
           [orderId],
         );
 
@@ -1155,14 +1939,9 @@ const Order = {
         return this.getById(orderId);
       }
 
-      // ==================================================
-      // PAYMENT FAILED
-      // ==================================================
-
-      /*
-       * Nếu payment trước đó đã SUCCESS,
-       * callback fail đến trễ KHÔNG được đảo ngược.
-       */
+      // ======================================================
+      // FAIL CALLBACK SAU SUCCESS
+      // ======================================================
 
       if (Number(payment.status) === 1) {
         await connection.commit();
@@ -1170,132 +1949,73 @@ const Order = {
         return this.getById(orderId);
       }
 
-      await connectionQuery(
+      // ======================================================
+      // PAYMENT FAILED
+      // ======================================================
+
+      await runQuery(
         connection,
         `
-        UPDATE payments
-
-        SET
-          status = 0,
-
-          transaction_code =
-            COALESCE(
-              ?,
-              transaction_code
-            ),
-
-          updated_at =
-            NOW()
-
-        WHERE id = ?
-          AND deleted_at IS NULL
-      `,
-        [transaction_code, payment.id],
-      );
-
-      // ==================================================
-      // RESTORE STOCK NGAY TRONG TRANSACTION
-      // ==================================================
-
-      if (!order.stock_restored_at) {
-        const items = await connectionQuery(
-          connection,
-          `
-            SELECT
-              product_id,
-              quantity
-
-            FROM order_items
-
-            WHERE order_id = ?
-              AND deleted_at IS NULL
-
-            ORDER BY id ASC
-
-            FOR UPDATE
-          `,
-          [orderId],
-        );
-
-        for (const item of items) {
-          const productId = normalizeInt(item.product_id);
-
-          const quantity = Math.max(normalizeInt(item.quantity, 0), 0);
-
-          if (productId < 1 || quantity < 1) {
-            continue;
-          }
-
-          await connectionQuery(
-            connection,
-            `
-            UPDATE products
-
-            SET
-              quantity =
-                quantity + ?,
-
-              updated_at =
-                NOW()
-
-            WHERE id = ?
-              AND deleted_at IS NULL
-          `,
-            [quantity, productId],
-          );
-        }
-
-        await connectionQuery(
-          connection,
-          `
-          UPDATE orders
+          UPDATE payments
 
           SET
-            stock_restored_at =
-              NOW(),
+            status = 0,
+
+            transaction_code =
+              COALESCE(
+                ?,
+                transaction_code
+              ),
 
             updated_at =
               NOW()
 
-          WHERE id = ?
-            AND stock_restored_at IS NULL
+          WHERE
+            id = ?
             AND deleted_at IS NULL
         `,
-          [orderId],
-        );
-      }
+        [transaction_code, payment.id],
+      );
 
-      // ==================================================
+      // ======================================================
+      // RESTORE VARIANT / PRODUCT STOCK
+      // ======================================================
+
+      await restoreOrderStock(connection, orderId);
+
+      // ======================================================
       // CANCEL ORDER
-      // ==================================================
+      // ======================================================
 
-      await connectionQuery(
+      await runQuery(
         connection,
         `
-        UPDATE orders
+          UPDATE orders
 
-        SET
-          status = 'CANCELLED',
+          SET
+            status =
+              'CANCELLED',
 
-          cancel_reason =
-            COALESCE(
-              cancel_reason,
-              'Thanh toán MoMo thất bại'
-            ),
+            cancel_reason =
+              COALESCE(
+                cancel_reason,
+                'Thanh toán MoMo thất bại'
+              ),
 
-          cancelled_at =
-            COALESCE(
-              cancelled_at,
+            cancelled_at =
+              COALESCE(
+                cancelled_at,
+                NOW()
+              ),
+
+            updated_at =
               NOW()
-            ),
 
-          updated_at =
-            NOW()
-
-        WHERE id = ?
-          AND deleted_at IS NULL
-          AND status <> 'COMPLETED'
-      `,
+          WHERE
+            id = ?
+            AND deleted_at IS NULL
+            AND status <> 'COMPLETED'
+        `,
         [orderId],
       );
 
@@ -1311,6 +2031,14 @@ const Order = {
     }
   },
 
+  // ==========================================================
+  // PAYMENT STATUS BY ORDER ID
+  // ==========================================================
+
+  // ==========================================================
+  // PAYMENT STATUS BY ORDER ID
+  // ==========================================================
+
   async updatePaymentStatusByOrderId({
     order_id,
     payment_status,
@@ -1324,14 +2052,31 @@ const Order = {
 
     const isPaid = Number(payment_status) === 1;
 
+    // ========================================================
+    // PAYMENT SUCCESS
+    // ========================================================
+
     if (isPaid) {
+      /*
+       * Không cho callback success làm sống lại
+       * một order đã CANCELLED.
+       */
+      if (String(order.status || "").toUpperCase() === "CANCELLED") {
+        throw new Error("Đơn hàng đã bị hủy, không thể xác nhận thanh toán.");
+      }
+
       await query(
         `
         UPDATE payments
 
         SET
           status = 1,
-          transaction_code = ?,
+
+          transaction_code =
+            COALESCE(
+              ?,
+              transaction_code
+            ),
 
           paid_at =
             COALESCE(
@@ -1344,9 +2089,7 @@ const Order = {
 
         WHERE
           order_id = ?
-
-          AND deleted_at
-              IS NULL
+          AND deleted_at IS NULL
       `,
         [transaction_code, order_id],
       );
@@ -1359,7 +2102,7 @@ const Order = {
           status =
             CASE
               WHEN status = 'PENDING'
-                THEN 'PROCESSING'
+              THEN 'PROCESSING'
 
               ELSE status
             END,
@@ -1367,17 +2110,47 @@ const Order = {
           updated_at =
             NOW()
 
-        WHERE id = ?
-
-          AND deleted_at
-              IS NULL
-
-          AND status <>
-              'CANCELLED'
+        WHERE
+          id = ?
+          AND deleted_at IS NULL
+          AND status <> 'CANCELLED'
       `,
         [order_id],
       );
 
+      return this.getById(order_id);
+    }
+
+    // ========================================================
+    // PAYMENT FAILED
+    // ========================================================
+
+    /*
+     * Nếu payment đã SUCCESS trước đó,
+     * callback fail tới trễ không được đảo ngược.
+     */
+    const paymentRows = await query(
+      `
+      SELECT
+        id,
+        status
+
+      FROM payments
+
+      WHERE
+        order_id = ?
+        AND deleted_at IS NULL
+
+      ORDER BY id DESC
+
+      LIMIT 1
+    `,
+      [order_id],
+    );
+
+    const payment = paymentRows[0];
+
+    if (payment && Number(payment.status) === 1) {
       return this.getById(order_id);
     }
 
@@ -1388,17 +2161,20 @@ const Order = {
       SET
         status = 0,
 
-        transaction_code = ?,
+        transaction_code =
+          COALESCE(
+            ?,
+            transaction_code
+          ),
 
         paid_at = NULL,
 
         updated_at =
           NOW()
 
-      WHERE order_id = ?
-
-        AND deleted_at
-            IS NULL
+      WHERE
+        order_id = ?
+        AND deleted_at IS NULL
     `,
       [transaction_code, order_id],
     );
@@ -1411,6 +2187,10 @@ const Order = {
       allowedStatuses: ["PENDING"],
     });
   },
+
+  // ==========================================================
+  // CANCEL BY USER
+  // ==========================================================
 
   async cancelByUser({ userId, orderId, reason }) {
     const normalizedUserId = normalizeInt(userId);
@@ -1428,11 +2208,6 @@ const Order = {
     if (!normalizedReason) {
       throw new Error("Vui lòng chọn lý do hủy đơn hàng");
     }
-
-    /*
-     * Quan trọng:
-     * kiểm tra đơn thuộc user trước.
-     */
 
     const order = await this.getUserOrderById({
       userId: normalizedUserId,
@@ -1461,6 +2236,10 @@ const Order = {
     });
   },
 
+  // ==========================================================
+  // REORDER PREVIEW
+  // ==========================================================
+
   async getReorderCheckoutPreview({ userId, orderId }) {
     const normalizedUserId = normalizeInt(userId);
 
@@ -1484,38 +2263,28 @@ const Order = {
       throw new Error("Chỉ đơn hàng đã hủy mới có thể mua lại");
     }
 
-    const groupedItems = new Map();
+    const availableItems = [];
+
+    const unavailableItems = [];
 
     for (const item of sourceOrder.items || []) {
       const productId = normalizeInt(item.product_id);
 
-      const quantity = Math.max(normalizeInt(item.quantity, 0), 0);
+      const variantId = normalizeNullableInt(item.variant_id);
 
-      if (productId < 1 || quantity < 1) {
+      const requestedQuantity = Math.max(normalizeInt(item.quantity, 0), 0);
+
+      if (productId < 1 || requestedQuantity < 1) {
         continue;
       }
 
-      const previous = groupedItems.get(productId) || {
-        product_id: productId,
+      // ======================================================
+      // PRODUCT
+      // ======================================================
 
-        product_name: item.product_name || `Sản phẩm #${productId}`,
-
-        product_image: item.product_image || null,
-
-        requested_quantity: 0,
-      };
-
-      previous.requested_quantity += quantity;
-
-      groupedItems.set(productId, previous);
-    }
-
-    const availableItems = [];
-    const unavailableItems = [];
-
-    for (const sourceItem of groupedItems.values()) {
       const productRows = await query(
-        `SELECT
+        `
+            SELECT
               id,
               name,
               thumbnail,
@@ -1524,24 +2293,30 @@ const Order = {
               quantity,
               status
 
-           FROM products
+            FROM products
 
-           WHERE id = ?
-             AND deleted_at IS NULL
+            WHERE
+              id = ?
+              AND deleted_at IS NULL
 
-           LIMIT 1`,
-        [sourceItem.product_id],
+            LIMIT 1
+          `,
+        [productId],
       );
 
       const product = productRows[0];
 
       if (!product) {
         unavailableItems.push({
-          product_id: sourceItem.product_id,
+          product_id: productId,
 
-          product_name: sourceItem.product_name,
+          variant_id: variantId,
 
-          requested_quantity: sourceItem.requested_quantity,
+          product_name: item.product_name,
+
+          variant_name: item.variant_name,
+
+          requested_quantity: requestedQuantity,
 
           available_quantity: 0,
 
@@ -1553,11 +2328,15 @@ const Order = {
 
       if (Number(product.status) !== 1) {
         unavailableItems.push({
-          product_id: product.id,
+          product_id: productId,
 
-          product_name: product.name,
+          variant_id: variantId,
 
-          requested_quantity: sourceItem.requested_quantity,
+          product_name: item.product_name,
+
+          variant_name: item.variant_name,
+
+          requested_quantity: requestedQuantity,
 
           available_quantity: 0,
 
@@ -1567,15 +2346,185 @@ const Order = {
         continue;
       }
 
+      // ======================================================
+      // REORDER VARIANT
+      // ======================================================
+
+      if (variantId) {
+        const variantRows = await query(
+          `
+              SELECT
+                id,
+                product_id,
+
+                sku,
+                variant_name,
+
+                price,
+                sale_price,
+
+                quantity,
+
+                thumbnail,
+
+                status
+
+              FROM product_variants
+
+              WHERE
+                id = ?
+                AND product_id = ?
+                AND deleted_at IS NULL
+
+              LIMIT 1
+            `,
+          [variantId, productId],
+        );
+
+        const variant = variantRows[0];
+
+        if (!variant) {
+          unavailableItems.push({
+            product_id: productId,
+
+            variant_id: variantId,
+
+            product_name: item.product_name,
+
+            variant_name: item.variant_name,
+
+            requested_quantity: requestedQuantity,
+
+            available_quantity: 0,
+
+            reason: "Biến thể đã mua trước đây không còn tồn tại",
+          });
+
+          continue;
+        }
+
+        if (Number(variant.status) !== 1) {
+          unavailableItems.push({
+            product_id: productId,
+
+            variant_id: variantId,
+
+            product_name: product.name,
+
+            variant_name: variant.variant_name,
+
+            requested_quantity: requestedQuantity,
+
+            available_quantity: 0,
+
+            reason: "Biến thể hiện không khả dụng",
+          });
+
+          continue;
+        }
+
+        const stock = Math.max(Number(variant.quantity || 0), 0);
+
+        if (stock <= 0) {
+          unavailableItems.push({
+            product_id: productId,
+
+            variant_id: variantId,
+
+            product_name: product.name,
+
+            variant_name: variant.variant_name,
+
+            requested_quantity: requestedQuantity,
+
+            available_quantity: 0,
+
+            reason: "Biến thể đã hết hàng",
+          });
+
+          continue;
+        }
+
+        const checkoutQuantity = Math.min(requestedQuantity, stock);
+
+        const price = getFinalPrice({
+          price: variant.price,
+
+          sale_price: variant.sale_price,
+        });
+
+        const variantOptions = await getVariantOptionsSnapshot(db, variantId);
+
+        availableItems.push({
+          product_id: productId,
+
+          variant_id: variantId,
+
+          product_name: product.name,
+
+          variant_name: variant.variant_name,
+
+          sku: variant.sku,
+
+          product_image:
+            variant.thumbnail ||
+            product.thumbnail ||
+            item.product_image ||
+            null,
+
+          variant_options: variantOptions,
+
+          requested_quantity: requestedQuantity,
+
+          quantity: checkoutQuantity,
+
+          product_stock: stock,
+
+          price,
+
+          final_price: price,
+
+          total_price: price * checkoutQuantity,
+
+          quantity_adjusted: checkoutQuantity < requestedQuantity,
+        });
+
+        if (checkoutQuantity < requestedQuantity) {
+          unavailableItems.push({
+            product_id: productId,
+
+            variant_id: variantId,
+
+            product_name: product.name,
+
+            variant_name: variant.variant_name,
+
+            requested_quantity: requestedQuantity,
+
+            available_quantity: checkoutQuantity,
+
+            reason: "Tồn kho biến thể hiện tại không đủ số lượng như đơn cũ",
+          });
+        }
+
+        continue;
+      }
+
+      // ======================================================
+      // LEGACY PRODUCT
+      // ======================================================
+
       const stock = Math.max(Number(product.quantity || 0), 0);
 
       if (stock <= 0) {
         unavailableItems.push({
-          product_id: product.id,
+          product_id: productId,
+
+          variant_id: null,
 
           product_name: product.name,
 
-          requested_quantity: sourceItem.requested_quantity,
+          requested_quantity: requestedQuantity,
 
           available_quantity: 0,
 
@@ -1585,22 +2534,30 @@ const Order = {
         continue;
       }
 
-      const checkoutQuantity = Math.min(sourceItem.requested_quantity, stock);
+      const checkoutQuantity = Math.min(requestedQuantity, stock);
 
-      const salePrice = Number(product.sale_price || 0);
+      const price = getFinalPrice({
+        price: product.price,
 
-      const regularPrice = Number(product.price || 0);
-
-      const price = salePrice > 0 ? salePrice : regularPrice;
+        sale_price: product.sale_price,
+      });
 
       availableItems.push({
-        product_id: product.id,
+        product_id: productId,
+
+        variant_id: null,
 
         product_name: product.name,
 
-        product_image: product.thumbnail || sourceItem.product_image || null,
+        variant_name: null,
 
-        requested_quantity: sourceItem.requested_quantity,
+        sku: item.sku || null,
+
+        product_image: product.thumbnail || item.product_image || null,
+
+        variant_options: [],
+
+        requested_quantity: requestedQuantity,
 
         quantity: checkoutQuantity,
 
@@ -1612,22 +2569,8 @@ const Order = {
 
         total_price: price * checkoutQuantity,
 
-        quantity_adjusted: checkoutQuantity < sourceItem.requested_quantity,
+        quantity_adjusted: checkoutQuantity < requestedQuantity,
       });
-
-      if (checkoutQuantity < sourceItem.requested_quantity) {
-        unavailableItems.push({
-          product_id: product.id,
-
-          product_name: product.name,
-
-          requested_quantity: sourceItem.requested_quantity,
-
-          available_quantity: checkoutQuantity,
-
-          reason: "Tồn kho hiện tại không đủ số lượng như đơn cũ",
-        });
-      }
     }
 
     const subtotal = availableItems.reduce(
@@ -1662,6 +2605,10 @@ const Order = {
     };
   },
 
+  // ==========================================================
+  // CREATE REORDER
+  // ==========================================================
+
   async createFromReorder(data) {
     const userId = normalizeInt(data.user_id);
 
@@ -1671,6 +2618,24 @@ const Order = {
       throw new Error("Thông tin mua lại không hợp lệ");
     }
 
+    /*
+     * Preview trước.
+     *
+     * Sau đó transaction sẽ lock + kiểm tra stock lần cuối.
+     */
+    const preview = await this.getReorderCheckoutPreview({
+      userId,
+      orderId: sourceOrderId,
+    });
+
+    if (
+      !preview ||
+      !Array.isArray(preview.items) ||
+      preview.items.length === 0
+    ) {
+      throw new Error("Không có sản phẩm nào còn khả dụng để mua lại");
+    }
+
     const connection = await getTransactionConnection();
 
     let newOrderId = null;
@@ -1678,22 +2643,30 @@ const Order = {
     try {
       await connection.beginTransaction();
 
-      const sourceOrderRows = await connectionQuery(
+      // ======================================================
+      // LOCK SOURCE ORDER
+      // ======================================================
+
+      const sourceOrderRows = await runQuery(
         connection,
-        `SELECT
+        `
+            SELECT
               id,
               user_id,
               order_code,
               status
 
-           FROM orders
+            FROM orders
 
-           WHERE id = ?
-             AND user_id = ?
-             AND deleted_at IS NULL
+            WHERE
+              id = ?
+              AND user_id = ?
+              AND deleted_at IS NULL
 
-           LIMIT 1
-           FOR UPDATE`,
+            LIMIT 1
+
+            FOR UPDATE
+          `,
         [sourceOrderId, userId],
       );
 
@@ -1707,120 +2680,31 @@ const Order = {
         throw new Error("Chỉ đơn hàng đã hủy mới có thể mua lại");
       }
 
-      const sourceItems = await connectionQuery(
-        connection,
-        `SELECT
-              product_id,
-              product_name,
-              product_image,
-              quantity
-
-           FROM order_items
-
-           WHERE order_id = ?
-             AND deleted_at IS NULL
-
-           ORDER BY id ASC
-           FOR UPDATE`,
-        [sourceOrderId],
-      );
-
-      if (sourceItems.length === 0) {
-        throw new Error("Đơn hàng cũ không có sản phẩm để mua lại");
-      }
-
-      const groupedItems = new Map();
-
-      for (const item of sourceItems) {
-        const productId = normalizeInt(item.product_id);
-
-        const quantity = Math.max(normalizeInt(item.quantity, 0), 0);
-
-        if (productId < 1 || quantity < 1) {
-          continue;
-        }
-
-        const previous = groupedItems.get(productId) || {
-          product_id: productId,
-
-          product_name: item.product_name || `Sản phẩm #${productId}`,
-
-          product_image: item.product_image || null,
-
-          requested_quantity: 0,
-        };
-
-        previous.requested_quantity += quantity;
-
-        groupedItems.set(productId, previous);
-      }
+      // ======================================================
+      // REVALIDATE ITEMS
+      // ======================================================
 
       const checkoutItems = [];
 
-      for (const sourceItem of groupedItems.values()) {
-        const productRows = await connectionQuery(
-          connection,
-          `SELECT
-                id,
-                name,
-                thumbnail,
-                price,
-                sale_price,
-                quantity,
-                status
+      for (const previewItem of preview.items) {
+        const normalized = await normalizeCartCheckoutItem(connection, {
+          product_id: previewItem.product_id,
 
-             FROM products
+          variant_id: previewItem.variant_id,
 
-             WHERE id = ?
-               AND deleted_at IS NULL
-
-             LIMIT 1
-             FOR UPDATE`,
-          [sourceItem.product_id],
-        );
-
-        const product = productRows[0];
-
-        if (!product || Number(product.status) !== 1) {
-          continue;
-        }
-
-        const stock = Math.max(Number(product.quantity || 0), 0);
-
-        if (stock <= 0) {
-          continue;
-        }
-
-        const checkoutQuantity = Math.min(sourceItem.requested_quantity, stock);
-
-        if (checkoutQuantity <= 0) {
-          continue;
-        }
-
-        const salePrice = Number(product.sale_price || 0);
-
-        const regularPrice = Number(product.price || 0);
-
-        const price = salePrice > 0 ? salePrice : regularPrice;
-
-        checkoutItems.push({
-          product_id: product.id,
-
-          product_name: product.name,
-
-          product_image: product.thumbnail || sourceItem.product_image || null,
-
-          quantity: checkoutQuantity,
-
-          price,
-
-          total_price: price * checkoutQuantity,
+          quantity: previewItem.quantity,
         });
+
+        checkoutItems.push(normalized);
       }
 
       if (checkoutItems.length === 0) {
         throw new Error("Không có sản phẩm nào còn khả dụng để mua lại");
       }
+
+      // ======================================================
+      // TOTAL
+      // ======================================================
 
       const itemsTotal = checkoutItems.reduce(
         (sum, item) => sum + Number(item.total_price || 0),
@@ -1838,36 +2722,69 @@ const Order = {
 
       const orderCode = generateOrderCode();
 
-      const orderResult = await connectionQuery(
+      // ======================================================
+      // CREATE NEW ORDER
+      // ======================================================
+
+      const orderResult = await runQuery(
         connection,
-        `INSERT INTO orders
+        `
+            INSERT INTO orders
             (
               user_id,
               order_code,
+
               total_amount,
+
               shipping_name,
               shipping_phone,
               shipping_email,
               shipping_address,
+
               note,
+
               status,
+
+              stock_restored_at,
+
               created_at,
               updated_at
             )
-           VALUES (
-             ?, ?, ?, ?, ?, ?, ?, ?,
-             'PENDING',
-             NOW(),
-             NOW()
-           )`,
+
+            VALUES
+            (
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
+
+              'PENDING',
+
+              NULL,
+
+              NOW(),
+              NOW()
+            )
+          `,
         [
           userId,
+
           orderCode,
+
           totalAmount,
+
           data.shipping_name,
+
           data.shipping_phone,
+
           data.shipping_email || null,
+
           data.shipping_address,
+
           data.note || null,
         ],
       );
@@ -1878,83 +2795,136 @@ const Order = {
         throw new Error("Không tạo được đơn mua lại");
       }
 
+      // ======================================================
+      // ITEMS + STOCK
+      // ======================================================
+
       for (const item of checkoutItems) {
-        const stockResult = await connectionQuery(
+        await decreaseCheckoutStock(connection, item);
+
+        await runQuery(
           connection,
-          `UPDATE products
-             SET
-               quantity =
-                 quantity - ?,
-               updated_at = NOW()
-
-             WHERE id = ?
-               AND deleted_at IS NULL
-               AND status = 1
-               AND quantity >= ?`,
-          [item.quantity, item.product_id, item.quantity],
-        );
-
-        if (Number(stockResult.affectedRows || 0) !== 1) {
-          throw new Error(
-            `Sản phẩm "${item.product_name}" vừa thay đổi tồn kho, vui lòng tải lại trang thanh toán`,
-          );
-        }
-
-        await connectionQuery(
-          connection,
-          `INSERT INTO order_items
+          `
+            INSERT INTO order_items
             (
               order_id,
+
               product_id,
+              variant_id,
+
               product_name,
+              variant_name,
+
+              sku,
+
               product_image,
+
+              variant_options,
+
               price,
               quantity,
               total_price,
+
               created_at,
               updated_at
             )
-           VALUES (
-             ?, ?, ?, ?, ?, ?, ?,
-             NOW(),
-             NOW()
-           )`,
+
+            VALUES
+            (
+              ?,
+
+              ?,
+              ?,
+
+              ?,
+              ?,
+
+              ?,
+
+              ?,
+
+              ?,
+
+              ?,
+              ?,
+              ?,
+
+              NOW(),
+              NOW()
+            )
+          `,
           [
             newOrderId,
+
             item.product_id,
+
+            item.variant_id,
+
             item.product_name,
-            item.product_image || null,
+
+            item.variant_name,
+
+            item.sku,
+
+            item.product_image,
+
+            stringifyJson(item.variant_options),
+
             item.price,
+
             item.quantity,
+
             item.total_price,
           ],
         );
       }
 
-      await connectionQuery(
+      // ======================================================
+      // PAYMENT
+      // ======================================================
+
+      await runQuery(
         connection,
-        `INSERT INTO payments
+        `
+          INSERT INTO payments
           (
             order_id,
+
             payment_method,
+
             amount,
+
             transaction_code,
             paid_at,
+
             status,
+
             created_at,
             updated_at
           )
-         VALUES (
-           ?, ?, ?, ?, ?, ?,
-           NOW(),
-           NOW()
-         )`,
-        [newOrderId, data.payment_method || "cod", totalAmount, null, null, 0],
+
+          VALUES
+          (
+            ?,
+            ?,
+            ?,
+
+            NULL,
+            NULL,
+
+            0,
+
+            NOW(),
+            NOW()
+          )
+        `,
+        [newOrderId, data.payment_method || "cod", totalAmount],
       );
 
       await connection.commit();
     } catch (error) {
       await connection.rollback();
+
       throw error;
     } finally {
       connection.release();
@@ -1963,13 +2933,20 @@ const Order = {
     return this.getById(newOrderId);
   },
 
+  // ==========================================================
+  // BANK INFO
+  // ==========================================================
+
   async getBankInfo(orderId) {
     const order = await this.getById(orderId);
 
-    if (!order) return null;
+    if (!order) {
+      return null;
+    }
 
     return {
       order,
+
       bank: {
         bank_name: process.env.BANK_NAME || "MB Bank",
 
@@ -1986,9 +2963,15 @@ const Order = {
     };
   },
 
+  // ==========================================================
+  // CANCEL + RESTORE STOCK
+  // ==========================================================
+
   async cancelAndRestoreStock({
     orderId,
+
     reason = null,
+
     allowedStatuses = ["PENDING", "PROCESSING"],
   }) {
     const normalizedOrderId = normalizeInt(orderId);
@@ -2002,22 +2985,24 @@ const Order = {
     try {
       await connection.beginTransaction();
 
-      const orderRows = await connectionQuery(
+      const orderRows = await runQuery(
         connection,
         `
-          SELECT
-            id,
-            status,
-            stock_restored_at
+            SELECT
+              id,
+              status,
+              stock_restored_at
 
-          FROM orders
+            FROM orders
 
-          WHERE id = ?
-            AND deleted_at IS NULL
+            WHERE
+              id = ?
+              AND deleted_at IS NULL
 
-          LIMIT 1
-          FOR UPDATE
-        `,
+            LIMIT 1
+
+            FOR UPDATE
+          `,
         [normalizedOrderId],
       );
 
@@ -2029,13 +3014,9 @@ const Order = {
 
       const currentStatus = String(order.status || "").toUpperCase();
 
-      // ================================================
-      // ĐÃ CANCELLED
-      //
-      // Đây là trường hợp callback/request chạy lại.
-      // Không đổi trạng thái lần nữa.
-      // Chỉ đảm bảo stock đã được restore.
-      // ================================================
+      // ======================================================
+      // ALREADY CANCELLED
+      // ======================================================
 
       if (currentStatus === "CANCELLED") {
         await restoreOrderStock(connection, normalizedOrderId);
@@ -2045,55 +3026,59 @@ const Order = {
         return this.getById(normalizedOrderId);
       }
 
-      // ================================================
-      // KHÔNG ĐƯỢC HỦY Ở TRẠNG THÁI HIỆN TẠI
-      // ================================================
+      // ======================================================
+      // STATUS VALIDATION
+      // ======================================================
 
       if (!allowedStatuses.includes(currentStatus)) {
         throw new Error(`Không thể hủy đơn hàng ở trạng thái ${currentStatus}`);
       }
 
-      // ================================================
-      // RESTORE STOCK
-      // ================================================
+      // ======================================================
+      // RESTORE PRODUCT / VARIANT STOCK
+      // ======================================================
 
       await restoreOrderStock(connection, normalizedOrderId);
 
-      // ================================================
-      // CANCEL ORDER
-      // ================================================
+      // ======================================================
+      // CANCEL
+      // ======================================================
 
-      await connectionQuery(
+      await runQuery(
         connection,
         `
-        UPDATE orders
+          UPDATE orders
 
-        SET
-          status = 'CANCELLED',
+          SET
+            status =
+              'CANCELLED',
 
-          cancel_reason =
-            COALESCE(
-              ?,
-              cancel_reason
-            ),
+            cancel_reason =
+              COALESCE(
+                ?,
+                cancel_reason
+              ),
 
-          cancelled_at =
-            COALESCE(
-              cancelled_at,
+            cancelled_at =
+              COALESCE(
+                cancelled_at,
+                NOW()
+              ),
+
+            updated_at =
               NOW()
-            ),
 
-          updated_at = NOW()
-
-        WHERE id = ?
-          AND deleted_at IS NULL
-      `,
+          WHERE
+            id = ?
+            AND deleted_at IS NULL
+        `,
         [reason, normalizedOrderId],
       );
 
       await connection.commit();
     } catch (error) {
       await connection.rollback();
+
       throw error;
     } finally {
       connection.release();
