@@ -1,35 +1,50 @@
 const { pool } = require("../config/database");
+const ProductVariant = require("./ProductVariant");
+
 class Product {
-  // GET
+  // ============================================================
+  // ADMIN - DETAIL
+  // ============================================================
+
   static async getById(id) {
-    // Thông tin sản phẩm
     const [products] = await pool.execute(
       `
         SELECT
-            p.id,
-            p.category_id,
-            c.name AS category_name,
-            p.name,
-            p.sku,
-            p.price,
-            p.sale_price,
-            p.quantity,
-            p.thumbnail,
-            p.short_description,
-            p.description,
-            p.status,
-            p.socket,
-            p.ram_type,
-            p.created_at,
-            p.updated_at
+          p.id,
+          p.category_id,
+          c.name AS category_name,
+
+          p.name,
+          p.slug,
+          p.sku,
+
+          p.price,
+          p.sale_price,
+          p.quantity,
+
+          p.thumbnail,
+          p.short_description,
+          p.description,
+
+          p.status,
+
+          p.socket,
+          p.ram_type,
+
+          p.created_at,
+          p.updated_at
+
         FROM products p
+
         LEFT JOIN categories c
-            ON c.id = p.category_id
+          ON c.id = p.category_id
+
         WHERE
-            p.id = ?
-            AND p.deleted_at IS NULL
+          p.id = ?
+          AND p.deleted_at IS NULL
+
         LIMIT 1
-        `,
+      `,
       [id],
     );
 
@@ -37,40 +52,98 @@ class Product {
       return null;
     }
 
+    const product = products[0];
+
+    // ==========================================================
     // Gallery
+    // ==========================================================
+
     const [images] = await pool.execute(
       `
         SELECT
-            id,
-            image_url,
-            sort_order
+          id,
+          image_url,
+          sort_order
+
         FROM product_images
-        WHERE product_id = ?
-        ORDER BY sort_order ASC
-        `,
+
+        WHERE
+          product_id = ?
+          AND deleted_at IS NULL
+
+        ORDER BY
+          sort_order ASC,
+          id ASC
+      `,
       [id],
     );
 
+    // ==========================================================
     // Specifications
+    // ==========================================================
+
     const [specifications] = await pool.execute(
       `
         SELECT
-            id,
-            spec_key,
-            spec_value
+          id,
+          spec_key,
+          spec_value
+
         FROM product_specifications
-        WHERE product_id = ?
+
+        WHERE
+          product_id = ?
+          AND deleted_at IS NULL
+
         ORDER BY id ASC
-        `,
+      `,
       [id],
     );
 
+    // ==========================================================
+    // Variants + Options
+    // ==========================================================
+
+    const variantData = await ProductVariant.getProductVariantData(id);
+
     return {
-      ...products[0],
-      gallery: images,
-      specifications,
+      ...product,
+
+      id: Number(product.id),
+      category_id: Number(product.category_id),
+
+      price: Number(product.price || 0),
+
+      sale_price:
+        product.sale_price !== null ? Number(product.sale_price) : null,
+
+      quantity: Number(product.quantity || 0),
+
+      status: Number(product.status),
+
+      gallery: images.map((image) => ({
+        ...image,
+        id: Number(image.id),
+        sort_order: Number(image.sort_order || 0),
+      })),
+
+      specifications: specifications.map((item) => ({
+        ...item,
+        id: Number(item.id),
+      })),
+
+      options: variantData.options,
+
+      variants: variantData.variants,
+
+      has_variants: variantData.has_variants,
     };
   }
+
+  // ============================================================
+  // ADMIN - LIST
+  // ============================================================
+
   static async getAll({
     page = 1,
     limit = 10,
@@ -80,159 +153,176 @@ class Product {
     stock = "",
     sort = "newest",
   } = {}) {
-    // Đảm bảo kiểu number
     page = Number(page) || 1;
     limit = Number(limit) || 10;
 
     if (page < 1) page = 1;
     if (limit < 1) limit = 10;
 
-    // Tính offset
+    // Không cho admin lấy quá nhiều record trong một request.
+    limit = Math.min(limit, 100);
+
     const offset = (page - 1) * limit;
 
-    let where = "WHERE p.deleted_at IS NULL";
+    let where = `
+      WHERE p.deleted_at IS NULL
+    `;
+
     const params = [];
+
+    // ==========================================================
+    // Search
+    // ==========================================================
 
     if (search) {
       where += `
         AND (
-            p.name LIKE ?
-            OR p.sku LIKE ?
+          p.name LIKE ?
+          OR p.sku LIKE ?
         )
-    `;
+      `;
 
       params.push(`%${search}%`);
       params.push(`%${search}%`);
     }
+
+    // ==========================================================
+    // Category
+    // ==========================================================
 
     if (category) {
       where += `
         AND p.category_id = ?
-    `;
+      `;
 
       params.push(category);
     }
 
+    // ==========================================================
+    // Status
+    // ==========================================================
+
     if (status !== "") {
       where += `
         AND p.status = ?
-    `;
+      `;
 
       params.push(status);
     }
+
+    // ==========================================================
+    // Stock
+    //
+    // QUAN TRỌNG:
+    // products.quantity giờ được xem là tồn kho HIỆN TẠI.
+    //
+    // Không được:
+    // quantity - SUM(order_items.quantity)
+    //
+    // vì khi checkout tồn kho đã được giảm.
+    // ==========================================================
+
     if (stock === "out") {
       where += `
-      AND (
-        p.quantity -
-        IFNULL(
-          (
-            SELECT SUM(oi.quantity)
-            FROM order_items oi
-            WHERE oi.product_id = p.id
-          ),
-          0
-        )
-      ) <= 0
-  `;
+        AND p.quantity <= 0
+      `;
     }
 
     if (stock === "low") {
       where += `
-      AND (
-        p.quantity -
-        IFNULL(
-          (
-            SELECT SUM(oi.quantity)
-            FROM order_items oi
-            WHERE oi.product_id = p.id
-          ),
-          0
-        )
-      ) BETWEEN 1 AND 5
-  `;
+        AND p.quantity BETWEEN 1 AND 5
+      `;
     }
 
     if (stock === "instock") {
       where += `
-      AND (
-        p.quantity -
-        IFNULL(
-          (
-            SELECT SUM(oi.quantity)
-            FROM order_items oi
-            WHERE oi.product_id = p.id
-          ),
-          0
-        )
-      ) > 5
-  `;
+        AND p.quantity > 5
+      `;
     }
 
-    let orderBy = "ORDER BY p.created_at DESC";
+    // ==========================================================
+    // Sort
+    // ==========================================================
+
+    let orderBy = `
+      ORDER BY p.created_at DESC, p.id DESC
+    `;
 
     switch (sort) {
       case "oldest":
-        orderBy = "ORDER BY p.created_at ASC";
+        orderBy = `
+          ORDER BY p.created_at ASC, p.id ASC
+        `;
         break;
 
       case "price_asc":
-        orderBy = "ORDER BY p.price ASC";
+        orderBy = `
+          ORDER BY p.price ASC, p.id DESC
+        `;
         break;
 
       case "price_desc":
-        orderBy = "ORDER BY p.price DESC";
+        orderBy = `
+          ORDER BY p.price DESC, p.id DESC
+        `;
         break;
 
       case "name_asc":
-        orderBy = "ORDER BY p.name ASC";
+        orderBy = `
+          ORDER BY p.name ASC, p.id DESC
+        `;
         break;
 
       case "name_desc":
-        orderBy = "ORDER BY p.name DESC";
+        orderBy = `
+          ORDER BY p.name DESC, p.id DESC
+        `;
         break;
 
       case "stock_desc":
         orderBy = `
-        ORDER BY
-        (
-            p.quantity -
-            IFNULL(
-                (
-                    SELECT SUM(oi.quantity)
-                    FROM order_items oi
-                    WHERE oi.product_id = p.id
-                ),
-                0
-            )
-        ) DESC
-    `;
+          ORDER BY p.quantity DESC, p.id DESC
+        `;
+        break;
+
+      case "stock_asc":
+        orderBy = `
+          ORDER BY p.quantity ASC, p.id DESC
+        `;
         break;
 
       default:
-        orderBy = "ORDER BY p.created_at DESC";
+        break;
     }
 
-    // ==========================
-    // Đếm tổng số sản phẩm
-    // ==========================
-    let countSql = `
-      SELECT COUNT(*) AS total
-      FROM products p
-      ${where}
-      `;
+    // ==========================================================
+    // Count
+    // ==========================================================
 
-    const [[count]] = await pool.execute(countSql, params);
+    const [[count]] = await pool.execute(
+      `
+        SELECT COUNT(*) AS total
 
-    // ==========================
-    // Lấy danh sách sản phẩm
-    // ==========================
+        FROM products p
+
+        ${where}
+      `,
+      params,
+    );
+
+    // ==========================================================
+    // Products
+    // ==========================================================
+
     const sql = `
-    SELECT
+      SELECT
         p.id,
         p.category_id,
+
         c.name AS category_name,
 
         p.name,
+        p.slug,
         p.sku,
 
         p.price,
@@ -240,304 +330,440 @@ class Product {
 
         p.quantity,
 
-        IFNULL((
-            SELECT SUM(oi.quantity)
-            FROM order_items oi
-            WHERE oi.product_id = p.id
-        ),0) AS sold,
+        COALESCE(
+          sales.sold,
+          0
+        ) AS sold,
 
-        (
-            p.quantity -
-            IFNULL((
-                SELECT SUM(oi.quantity)
-                FROM order_items oi
-                WHERE oi.product_id = p.id
-            ),0)
-        ) AS remaining,
+        p.quantity AS remaining,
 
         CASE
-            WHEN (
-                p.quantity -
-                IFNULL((
-                    SELECT SUM(oi.quantity)
-                    FROM order_items oi
-                    WHERE oi.product_id = p.id
-                ),0)
-            ) <= 0
+          WHEN p.quantity <= 0
             THEN 'out_of_stock'
 
-            ELSE 'in_stock'
+          WHEN p.quantity <= 5
+            THEN 'low_stock'
+
+          ELSE 'in_stock'
         END AS stock_status,
+
+        (
+          SELECT COUNT(*)
+          FROM product_variants pv
+          WHERE
+            pv.product_id = p.id
+            AND pv.deleted_at IS NULL
+        ) AS variant_count,
 
         p.thumbnail,
         p.short_description,
         p.description,
+
         p.status,
+
+        p.socket,
+        p.ram_type,
+
         p.created_at,
         p.updated_at
-    FROM products p
-    LEFT JOIN categories c
-      ON c.id = p.category_id
-    ${where}
-    ${orderBy}
-    LIMIT ?
-    OFFSET ?
-  `;
+
+      FROM products p
+
+      LEFT JOIN categories c
+        ON c.id = p.category_id
+
+      LEFT JOIN (
+        SELECT
+          oi.product_id,
+          SUM(oi.quantity) AS sold
+
+        FROM order_items oi
+
+        INNER JOIN orders o
+          ON o.id = oi.order_id
+
+        WHERE
+          oi.deleted_at IS NULL
+          AND o.deleted_at IS NULL
+          AND o.status = 'COMPLETED'
+
+        GROUP BY oi.product_id
+      ) sales
+        ON sales.product_id = p.id
+
+      ${where}
+
+      ${orderBy}
+
+      LIMIT ?
+      OFFSET ?
+    `;
 
     const [rows] = await pool.execute(sql, [...params, limit, offset]);
 
-    // ==========================
-    // Trả dữ liệu
-    // ==========================
     return {
-      products: rows,
+      products: rows.map((item) => ({
+        ...item,
+
+        id: Number(item.id),
+        category_id: Number(item.category_id),
+
+        price: Number(item.price || 0),
+
+        sale_price: item.sale_price !== null ? Number(item.sale_price) : null,
+
+        quantity: Number(item.quantity || 0),
+        sold: Number(item.sold || 0),
+        remaining: Number(item.remaining || 0),
+
+        variant_count: Number(item.variant_count || 0),
+
+        status: Number(item.status),
+      })),
+
       pagination: {
         page,
         limit,
-        total: count.total,
-        totalPages: Math.ceil(count.total / limit),
+        total: Number(count.total || 0),
+
+        totalPages:
+          Number(count.total || 0) > 0
+            ? Math.ceil(Number(count.total) / limit)
+            : 0,
       },
     };
   }
 
+  // ============================================================
+  // ADMIN - STOCK WARNING
+  // ============================================================
+
   static async getStockWarning(lowStock = 5) {
-    const sql = `
+    lowStock = Number(lowStock);
+
+    if (!Number.isFinite(lowStock) || lowStock < 1) {
+      lowStock = 5;
+    }
+
+    const [rows] = await pool.execute(
+      `
         SELECT
+          p.id,
+          p.name,
+          p.sku,
+          p.quantity,
 
-            p.id,
-            p.name,
-            p.sku,
-            p.quantity,
+          COALESCE(
+            sales.sold,
+            0
+          ) AS sold,
 
-            IFNULL((
-                SELECT SUM(oi.quantity)
-                FROM order_items oi
-                WHERE oi.product_id = p.id
-            ),0) AS sold,
-
-            (
-                p.quantity -
-                IFNULL((
-                    SELECT SUM(oi.quantity)
-                    FROM order_items oi
-                    WHERE oi.product_id = p.id
-                ),0)
-            ) AS remaining
+          p.quantity AS remaining
 
         FROM products p
 
+        LEFT JOIN (
+          SELECT
+            oi.product_id,
+            SUM(oi.quantity) AS sold
+
+          FROM order_items oi
+
+          INNER JOIN orders o
+            ON o.id = oi.order_id
+
+          WHERE
+            oi.deleted_at IS NULL
+            AND o.deleted_at IS NULL
+            AND o.status = 'COMPLETED'
+
+          GROUP BY oi.product_id
+        ) sales
+          ON sales.product_id = p.id
+
         WHERE
-            p.deleted_at IS NULL
-            AND p.status = 1
+          p.deleted_at IS NULL
+          AND p.status = 1
 
-        ORDER BY remaining ASC
-    `;
-
-    const [rows] = await pool.execute(sql);
+        ORDER BY
+          p.quantity ASC,
+          p.name ASC
+      `,
+    );
 
     const outOfStock = [];
     const lowStockProducts = [];
 
     for (const product of rows) {
-      if (product.remaining <= 0) {
-        outOfStock.push(product);
-      } else if (product.remaining <= lowStock) {
-        lowStockProducts.push(product);
+      const item = {
+        ...product,
+
+        id: Number(product.id),
+        quantity: Number(product.quantity || 0),
+        sold: Number(product.sold || 0),
+        remaining: Number(product.quantity || 0),
+      };
+
+      if (item.quantity <= 0) {
+        outOfStock.push(item);
+      } else if (item.quantity <= lowStock) {
+        lowStockProducts.push(item);
       }
     }
 
     return {
       outOfStock,
-
       lowStock: lowStockProducts,
     };
   }
 
+  // ============================================================
+  // ADMIN - STATISTICS
+  // ============================================================
+
   static async getStatistics() {
-    const sql = `
+    const [[stat]] = await pool.execute(
+      `
         SELECT
+          COUNT(*) AS total_products,
 
-            COUNT(*) AS total_products,
+          SUM(
+            CASE
+              WHEN deleted_at IS NULL
+              THEN 1
+              ELSE 0
+            END
+          ) AS total_active,
 
-            SUM(
-                CASE
-                    WHEN deleted_at IS NULL
-                    THEN 1
-                    ELSE 0
-                END
-            ) AS total_active,
+          SUM(
+            CASE
+              WHEN status = 1
+                AND deleted_at IS NULL
+              THEN 1
+              ELSE 0
+            END
+          ) AS published,
 
-            SUM(
-                CASE
-                    WHEN status = 1
-                    AND deleted_at IS NULL
-                    THEN 1
-                    ELSE 0
-                END
-            ) AS published,
+          SUM(
+            CASE
+              WHEN status = 0
+                AND deleted_at IS NULL
+              THEN 1
+              ELSE 0
+            END
+          ) AS hidden,
 
-            SUM(
-                CASE
-                    WHEN status = 0
-                    AND deleted_at IS NULL
-                    THEN 1
-                    ELSE 0
-                END
-            ) AS hidden,
-
-            SUM(
-                CASE
-                    WHEN deleted_at IS NOT NULL
-                    THEN 1
-                    ELSE 0
-                END
-            ) AS trash
+          SUM(
+            CASE
+              WHEN deleted_at IS NOT NULL
+              THEN 1
+              ELSE 0
+            END
+          ) AS trash
 
         FROM products
-    `;
+      `,
+    );
 
-    const [[stat]] = await pool.execute(sql);
-
-    const [stockRows] = await pool.execute(`
+    const [[stockStat]] = await pool.execute(
+      `
         SELECT
+          SUM(
+            CASE
+              WHEN quantity <= 0
+              THEN 1
+              ELSE 0
+            END
+          ) AS out_of_stock,
 
-            quantity,
+          SUM(
+            CASE
+              WHEN quantity BETWEEN 1 AND 5
+              THEN 1
+              ELSE 0
+            END
+          ) AS low_stock
 
-            IFNULL(
-                (
-                    SELECT SUM(oi.quantity)
-                    FROM order_items oi
-                    WHERE oi.product_id = p.id
-                ),
-                0
-            ) AS sold
-
-        FROM products p
+        FROM products
 
         WHERE deleted_at IS NULL
-    `);
-
-    let outOfStock = 0;
-
-    let lowStock = 0;
-
-    for (const item of stockRows) {
-      const remaining = Number(item.quantity) - Number(item.sold);
-
-      if (remaining <= 0) {
-        outOfStock++;
-      } else if (remaining <= 5) {
-        lowStock++;
-      }
-    }
+      `,
+    );
 
     return {
-      total_products: Number(stat.total_products),
+      total_products: Number(stat.total_products || 0),
 
-      total_active: Number(stat.total_active),
+      total_active: Number(stat.total_active || 0),
 
-      published: Number(stat.published),
+      published: Number(stat.published || 0),
 
-      hidden: Number(stat.hidden),
+      hidden: Number(stat.hidden || 0),
 
-      trash: Number(stat.trash),
+      trash: Number(stat.trash || 0),
 
-      out_of_stock: outOfStock,
+      out_of_stock: Number(stockStat.out_of_stock || 0),
 
-      low_stock: lowStock,
+      low_stock: Number(stockStat.low_stock || 0),
     };
   }
 
+  // ============================================================
+  // ADMIN - TOP SELLING
+  // ============================================================
+
   static async getTopSelling(limit = 10) {
-    try {
-      const sql = `
-        SELECT 
+    limit = Number(limit);
+
+    if (!Number.isInteger(limit) || limit < 1) {
+      limit = 10;
+    }
+
+    limit = Math.min(limit, 100);
+
+    const sql = `
+      SELECT
+        p.id,
+        p.name,
+        p.slug,
+        p.sku,
+        p.thumbnail,
+        p.price,
+        p.sale_price,
+        p.quantity,
+
+        COALESCE(
+          sales.sold,
+          0
+        ) AS sold
+
+      FROM products p
+
+      LEFT JOIN (
+        SELECT
+          oi.product_id,
+
+          SUM(oi.quantity) AS sold
+
+        FROM order_items oi
+
+        INNER JOIN orders o
+          ON o.id = oi.order_id
+
+        WHERE
+          oi.deleted_at IS NULL
+          AND o.deleted_at IS NULL
+          AND o.status = 'COMPLETED'
+
+        GROUP BY oi.product_id
+      ) sales
+        ON sales.product_id = p.id
+
+      WHERE p.deleted_at IS NULL
+
+      ORDER BY
+        sold DESC,
+        p.created_at DESC
+
+      LIMIT ?
+    `;
+
+    const [rows] = await pool.query(sql, [limit]);
+
+    return rows.map((item) => ({
+      ...item,
+
+      id: Number(item.id),
+
+      price: Number(item.price || 0),
+
+      sale_price: item.sale_price !== null ? Number(item.sale_price) : null,
+
+      quantity: Number(item.quantity || 0),
+
+      sold: Number(item.sold || 0),
+    }));
+  }
+
+  // ============================================================
+  // ADMIN - NEWEST
+  // ============================================================
+
+  static async getNewestProducts(limit = 10) {
+    limit = Number(limit);
+
+    if (!Number.isInteger(limit) || limit < 1) {
+      limit = 10;
+    }
+
+    limit = Math.min(limit, 100);
+
+    const [rows] = await pool.query(
+      `
+        SELECT
           p.id,
           p.name,
           p.slug,
+          p.sku,
+
           p.thumbnail,
+
           p.price,
           p.sale_price,
           p.quantity,
-          IFNULL(SUM(oi.quantity), 0) AS sold
-        FROM products p
-        LEFT JOIN order_items oi ON oi.product_id = p.id
-        WHERE p.deleted_at IS NULL
-        GROUP BY p.id
-        ORDER BY sold DESC
-        LIMIT ?
-      `;
-      // Lưu ý: Nếu bạn dùng pool.query hoặc pool.execute tùy vào cấu hình kết nối mysql2
-      const [rows] = await pool.query(sql, [Number(limit)]);
-      return rows;
-    } catch (error) {
-      console.error("Lỗi truy vấn getTopSelling:", error);
-      throw error;
-    }
-  }
 
-  static async getNewestProducts(limit = 10) {
-    const sql = `
-        SELECT
+          p.status,
 
-            p.id,
+          c.name AS category_name,
 
-            p.name,
-
-            p.sku,
-
-            p.thumbnail,
-
-            p.price,
-
-            p.sale_price,
-
-            p.quantity,
-
-            p.status,
-
-            c.name AS category_name,
-
-            p.created_at
+          p.created_at
 
         FROM products p
 
         LEFT JOIN categories c
-
-            ON c.id = p.category_id
+          ON c.id = p.category_id
 
         WHERE p.deleted_at IS NULL
 
-        ORDER BY p.created_at DESC
+        ORDER BY
+          p.created_at DESC,
+          p.id DESC
 
         LIMIT ?
-    `;
-
-    const [rows] = await pool.execute(sql, [Number(limit)]);
+      `,
+      [limit],
+    );
 
     return rows;
   }
 
+  // ============================================================
+  // ADMIN - TRASH
+  // ============================================================
+
   static async getTrash({ page = 1, limit = 10, search = "" } = {}) {
-    page = Number(page);
-    limit = Number(limit);
+    page = Number(page) || 1;
+    limit = Number(limit) || 10;
+
+    if (page < 1) page = 1;
+    if (limit < 1) limit = 10;
+
+    limit = Math.min(limit, 100);
 
     const offset = (page - 1) * limit;
 
     let where = `
-        WHERE p.deleted_at IS NOT NULL
+      WHERE p.deleted_at IS NOT NULL
     `;
 
     const params = [];
 
     if (search) {
       where += `
-            AND
-            (
-                p.name LIKE ?
-                OR p.sku LIKE ?
-            )
-        `;
+        AND (
+          p.name LIKE ?
+          OR p.sku LIKE ?
+        )
+      `;
 
       params.push(`%${search}%`);
       params.push(`%${search}%`);
@@ -546,68 +772,71 @@ class Product {
     const [[count]] = await pool.execute(
       `
         SELECT COUNT(*) AS total
+
         FROM products p
+
         ${where}
-        `,
+      `,
       params,
     );
 
-    const sql = `
+    const [rows] = await pool.execute(
+      `
         SELECT
+          p.id,
+          p.category_id,
 
-            p.id,
+          c.name AS category_name,
 
-            p.category_id,
+          p.name,
+          p.slug,
+          p.sku,
 
-            c.name AS category_name,
+          p.price,
+          p.sale_price,
+          p.quantity,
 
-            p.name,
+          p.thumbnail,
 
-            p.sku,
+          p.status,
 
-            p.price,
-
-            p.sale_price,
-
-            p.quantity,
-
-            p.thumbnail,
-
-            p.status,
-
-            p.deleted_at
+          p.deleted_at
 
         FROM products p
 
         LEFT JOIN categories c
-
-            ON c.id = p.category_id
+          ON c.id = p.category_id
 
         ${where}
 
         ORDER BY p.deleted_at DESC
 
         LIMIT ?
-
         OFFSET ?
-    `;
-
-    const [rows] = await pool.execute(sql, [...params, limit, offset]);
+      `,
+      [...params, limit, offset],
+    );
 
     return {
       products: rows,
 
       pagination: {
         page,
-
         limit,
 
-        total: count.total,
+        total: Number(count.total || 0),
 
-        totalPages: Math.ceil(count.total / limit),
+        totalPages:
+          Number(count.total || 0) > 0
+            ? Math.ceil(Number(count.total) / limit)
+            : 0,
       },
     };
   }
+
+  // ============================================================
+  // ADMIN - INCLUDE DELETED
+  // ============================================================
 
   static async getByIdIncludeDeleted(id) {
     const [rows] = await pool.execute(
@@ -616,26 +845,46 @@ class Product {
         FROM products
         WHERE id = ?
         LIMIT 1
-        `,
+      `,
       [id],
     );
 
-    if (rows.length === 0) {
-      return null;
-    }
-
-    return rows[0];
+    return rows[0] || null;
   }
 
-  //
+  static async getDeletedById(id) {
+    const [rows] = await pool.execute(
+      `
+        SELECT
+          id,
+          name,
+          sku,
+          deleted_at
+
+        FROM products
+
+        WHERE id = ?
+
+        LIMIT 1
+      `,
+      [id],
+    );
+
+    return rows[0] || null;
+  }
+
+  // ============================================================
+  // FILES
+  // ============================================================
 
   static async getFilesForDelete(id) {
     const [rows] = await pool.execute(
       `
-    SELECT thumbnail
-    FROM products
-    WHERE id = ?
-    `,
+        SELECT thumbnail
+        FROM products
+        WHERE id = ?
+        LIMIT 1
+      `,
       [id],
     );
 
@@ -643,43 +892,62 @@ class Product {
       return null;
     }
 
-    const thumbnail = rows[0].thumbnail;
-
     const [gallery] = await pool.execute(
       `
-    SELECT image_url
-    FROM product_images
-    WHERE product_id = ?
-    `,
+        SELECT image_url
+        FROM product_images
+        WHERE product_id = ?
+      `,
+      [id],
+    );
+
+    const [variantImages] = await pool.execute(
+      `
+        SELECT pvi.image_url
+
+        FROM product_variant_images pvi
+
+        INNER JOIN product_variants pv
+          ON pv.id = pvi.variant_id
+
+        WHERE pv.product_id = ?
+      `,
       [id],
     );
 
     return {
-      thumbnail,
+      thumbnail: rows[0].thumbnail,
+
       gallery,
+
+      variantImages,
     };
   }
 
+  // ============================================================
+  // SLUG
+  // ============================================================
+
   static async isSlugExists(slug, excludeId = null) {
     let sql = `
-    SELECT id
-    FROM products
-    WHERE slug = ?
-  `;
+      SELECT id
+      FROM products
+      WHERE slug = ?
+    `;
 
     const params = [slug];
 
     if (excludeId) {
       sql += `
-      AND id <> ?
-    `;
+        AND id <> ?
+      `;
 
       params.push(excludeId);
     }
 
     sql += `
-    LIMIT 1
-  `;
+      LIMIT 1
+    `;
 
     const [rows] = await pool.execute(sql, params);
 
@@ -706,54 +974,71 @@ class Product {
 
     while (await Product.isSlugExists(slug, excludeId)) {
       slug = `${baseSlug}-${suffix}`;
-
       suffix++;
     }
 
     return slug;
   }
 
-  // Create
+  // ============================================================
+  // ADMIN - CREATE PRODUCT
+  // ============================================================
 
   static async create(connection, data) {
     const slug = data.slug || (await Product.generateUniqueSlug(data.name));
 
     const sql = `
-    INSERT INTO products
-    (
-      category_id,
-      name,
-      slug,
-      sku,
-      price,
-      sale_price,
-      quantity,
-      thumbnail,
-      short_description,
-      description,
-      status,
-      socket,
-      ram_type
-    )
-    VALUES
-    (
-      ?,?,?,?,?,?,?,?,?,?,?,?,?
-    )
-  `;
+      INSERT INTO products
+      (
+        category_id,
+        name,
+        slug,
+        sku,
+        price,
+        sale_price,
+        quantity,
+        thumbnail,
+        short_description,
+        description,
+        status,
+        socket,
+        ram_type
+      )
+      VALUES
+      (
+        ?,?,?,?,?,?,?,?,?,?,?,?,?
+      )
+    `;
 
     const values = [
       data.category_id,
-      data.name,
+
+      String(data.name || "").trim(),
+
       slug,
-      data.sku,
-      data.price,
-      data.sale_price || null,
-      data.quantity,
+
+      String(data.sku || "").trim(),
+
+      Number(data.price),
+
+      data.sale_price === "" ||
+      data.sale_price === null ||
+      data.sale_price === undefined
+        ? null
+        : Number(data.sale_price),
+
+      Number(data.quantity || 0),
+
       data.thumbnail || null,
+
       data.short_description || null,
+
       data.description || null,
-      data.status ?? 1,
+
+      data.status !== undefined ? Number(data.status) : 1,
+
       data.socket || null,
+
       data.ram_type || null,
     ];
 
@@ -762,75 +1047,98 @@ class Product {
     return result.insertId;
   }
 
+  // ============================================================
+  // ADMIN - DUPLICATE PRODUCT BASE
+  // ============================================================
+
   static async duplicateProduct(connection, product) {
     const newName = `${product.name} (Copy)`;
 
     const newSlug = await Product.generateUniqueSlug(newName);
 
-    const sql = `
-    INSERT INTO products
-    (
-      category_id,
-      name,
-      slug,
-      sku,
-      price,
-      sale_price,
-      quantity,
-      thumbnail,
-      short_description,
-      description,
-      status,
-      socket,
-      ram_type
-    )
-    VALUES
-    (
-      ?,?,?,?,?,?,?,?,?,?,?,?,?
-    )
-  `;
+    const generatedSku = `${product.sku}-COPY-${Date.now()}`;
 
-    const [result] = await connection.execute(sql, [
-      product.category_id,
-      newName,
-      newSlug,
+    const [result] = await connection.execute(
+      `
+        INSERT INTO products
+        (
+          category_id,
+          name,
+          slug,
+          sku,
+          price,
+          sale_price,
+          quantity,
+          thumbnail,
+          short_description,
+          description,
+          status,
+          socket,
+          ram_type
+        )
+        VALUES
+        (
+          ?,?,?,?,?,?,?,?,?,?,?,?,?
+        )
+      `,
+      [
+        product.category_id,
 
-      `${product.sku}-COPY-${Date.now()}`,
+        newName,
 
-      product.price,
-      product.sale_price ?? null,
-      product.quantity,
-      product.thumbnail ?? null,
-      product.short_description || null,
-      product.description ?? null,
+        newSlug,
 
-      0,
+        generatedSku,
 
-      product.socket ?? null,
-      product.ram_type ?? null,
-    ]);
+        product.price,
+
+        product.sale_price ?? null,
+
+        product.quantity,
+
+        product.thumbnail ?? null,
+
+        product.short_description || null,
+
+        product.description ?? null,
+
+        // Bản copy mặc định ẩn.
+        0,
+
+        product.socket ?? null,
+
+        product.ram_type ?? null,
+      ],
+    );
 
     return result.insertId;
   }
 
+  // ============================================================
+  // GALLERY
+  // ============================================================
+
   static async insertGallery(connection, productId, images) {
+    if (!Array.isArray(images) || images.length === 0) {
+      return;
+    }
+
     const sql = `
-        INSERT INTO product_images
-        (
-            product_id,
-            image_url,
-            sort_order
-        )
-        VALUES
-        (
-            ?, ?, ?
-        )
+      INSERT INTO product_images
+      (
+        product_id,
+        image_url,
+        sort_order
+      )
+      VALUES (?, ?, ?)
     `;
 
     for (let i = 0; i < images.length; i++) {
       await connection.execute(sql, [
         productId,
+
         `/uploads/products/${images[i].filename}`,
+
         i + 1,
       ]);
     }
@@ -839,49 +1147,155 @@ class Product {
   static async duplicateGallery(connection, oldId, newId) {
     const [rows] = await connection.execute(
       `
-    SELECT
-      image_url,
-      sort_order
-    FROM product_images
-    WHERE product_id = ?
-    `,
+        SELECT
+          image_url,
+          sort_order
+
+        FROM product_images
+
+        WHERE
+          product_id = ?
+          AND deleted_at IS NULL
+      `,
       [oldId],
     );
 
     for (const image of rows) {
       await connection.execute(
         `
-      INSERT INTO product_images
-      (
-        product_id,
-        image_url,
-        sort_order
-      )
-      VALUES
-      (
-        ?,?,?
-      )
-      `,
+          INSERT INTO product_images
+          (
+            product_id,
+            image_url,
+            sort_order
+          )
+          VALUES (?, ?, ?)
+        `,
         [newId, image.image_url, image.sort_order],
       );
     }
   }
+
+  static async getGallery(productId) {
+    const [rows] = await pool.execute(
+      `
+        SELECT
+          id,
+          image_url,
+          sort_order
+
+        FROM product_images
+
+        WHERE
+          product_id = ?
+          AND deleted_at IS NULL
+
+        ORDER BY
+          sort_order ASC,
+          id ASC
+      `,
+      [productId],
+    );
+
+    return rows;
+  }
+
+  static async deleteGallery(connection, productId) {
+    await connection.execute(
+      `
+        DELETE
+        FROM product_images
+        WHERE product_id = ?
+      `,
+      [productId],
+    );
+  }
+
+  static async addGallery(connection, productId, files) {
+    if (!Array.isArray(files) || files.length === 0) {
+      return;
+    }
+
+    const [[max]] = await connection.execute(
+      `
+        SELECT
+          IFNULL(MAX(sort_order), 0) AS maxOrder
+
+        FROM product_images
+
+        WHERE
+          product_id = ?
+          AND deleted_at IS NULL
+      `,
+      [productId],
+    );
+
+    let order = Number(max.maxOrder || 0);
+
+    for (const file of files) {
+      order++;
+
+      await connection.execute(
+        `
+          INSERT INTO product_images
+          (
+            product_id,
+            image_url,
+            sort_order
+          )
+          VALUES (?, ?, ?)
+        `,
+        [productId, `/uploads/products/${file.filename}`, order],
+      );
+    }
+  }
+
+  static async getGalleryImage(imageId) {
+    const [rows] = await pool.execute(
+      `
+        SELECT *
+        FROM product_images
+        WHERE
+          id = ?
+          AND deleted_at IS NULL
+        LIMIT 1
+      `,
+      [imageId],
+    );
+
+    return rows[0] || null;
+  }
+
+  static async deleteGalleryImage(connection, imageId) {
+    const [result] = await connection.execute(
+      `
+        DELETE
+        FROM product_images
+        WHERE id = ?
+      `,
+      [imageId],
+    );
+
+    return result.affectedRows;
+  }
+
+  // ============================================================
+  // SPECIFICATIONS
+  // ============================================================
+
   static async insertSpecifications(connection, productId, specifications) {
-    if (!specifications || specifications.length === 0) {
+    if (!Array.isArray(specifications) || specifications.length === 0) {
       return;
     }
 
     const sql = `
-        INSERT INTO product_specifications
-        (
-            product_id,
-            spec_key,
-            spec_value
-        )
-        VALUES
-        (
-            ?, ?, ?
-        )
+      INSERT INTO product_specifications
+      (
+        product_id,
+        spec_key,
+        spec_value
+      )
+      VALUES (?, ?, ?)
     `;
 
     for (const spec of specifications) {
@@ -896,221 +1310,33 @@ class Product {
   static async duplicateSpecifications(connection, oldId, newId) {
     const [rows] = await connection.execute(
       `
-    SELECT
-      spec_key,
-      spec_value
-    FROM product_specifications
-    WHERE product_id = ?
-    `,
+        SELECT
+          spec_key,
+          spec_value
+
+        FROM product_specifications
+
+        WHERE
+          product_id = ?
+          AND deleted_at IS NULL
+      `,
       [oldId],
     );
 
     for (const spec of rows) {
       await connection.execute(
         `
-      INSERT INTO product_specifications
-      (
-        product_id,
-        spec_key,
-        spec_value
-      )
-      VALUES
-      (
-        ?,?,?
-      )
-      `,
+          INSERT INTO product_specifications
+          (
+            product_id,
+            spec_key,
+            spec_value
+          )
+          VALUES (?, ?, ?)
+        `,
         [newId, spec.spec_key, spec.spec_value],
       );
     }
-  }
-
-  // Check
-
-  static async isSkuExists(sku) {
-    const sql = `
-    SELECT id
-    FROM products
-    WHERE sku = ?
-      AND deleted_at IS NULL
-    LIMIT 1
-  `;
-
-    const [rows] = await pool.execute(sql, [sku]);
-
-    return rows.length > 0;
-  }
-
-  static async isSkuExistsExceptId(sku, id) {
-    const sql = `
-    SELECT id
-    FROM products
-    WHERE
-      sku = ?
-      AND id <> ?
-      AND deleted_at IS NULL
-    LIMIT 1
-  `;
-
-    const [rows] = await pool.execute(sql, [sku, id]);
-
-    return rows.length > 0;
-  }
-
-  static async getGallery(productId) {
-    const sql = `
-    SELECT
-      id,
-      image_url
-    FROM product_images
-    WHERE product_id = ?
-    ORDER BY sort_order ASC
-  `;
-
-    const [rows] = await pool.execute(sql, [productId]);
-
-    return rows;
-  }
-
-  static async deleteGallery(connection, productId) {
-    const sql = `
-      DELETE
-      FROM product_images
-      WHERE product_id = ?
-  `;
-
-    await connection.execute(sql, [productId]);
-  }
-  // Update
-  static async update(connection, id, data) {
-    const slug = await Product.generateUniqueSlug(data.name, id);
-
-    const sql = `
-    UPDATE products
-    SET
-      category_id = ?,
-      name = ?,
-      slug = ?,
-      sku = ?,
-      price = ?,
-      sale_price = ?,
-      quantity = ?,
-      thumbnail = ?,
-      short_description = ?,
-      description = ?,
-      status = ?,
-      socket = ?,
-      ram_type = ?,
-      updated_at = NOW()
-
-    WHERE
-      id = ?
-      AND deleted_at IS NULL
-  `;
-
-    const values = [
-      data.category_id,
-      data.name,
-      slug,
-      data.sku,
-      data.price,
-      data.sale_price || null,
-      data.quantity,
-      data.thumbnail || null,
-      data.short_description || null,
-      data.description || null,
-      data.status,
-      data.socket || null,
-      data.ram_type || null,
-      id,
-    ];
-
-    const [result] = await connection.execute(sql, values);
-
-    return result.affectedRows;
-  }
-
-  static async toggleStatus(connection, id) {
-    const sql = `
-    UPDATE products
-    SET
-      status = CASE
-        WHEN status = 1 THEN 0
-        ELSE 1
-      END,
-      updated_at = NOW()
-    WHERE
-      id = ?
-      AND deleted_at IS NULL
-  `;
-
-    const [result] = await connection.execute(sql, [id]);
-
-    return result.affectedRows;
-  }
-
-  static async updateQuantity(connection, id, quantity) {
-    await connection.execute(
-      `
-        UPDATE products
-        SET
-            quantity=?,
-            updated_at=NOW()
-        WHERE id=?
-        `,
-      [quantity, id],
-    );
-  }
-
-  // Delete
-
-  static async softDelete(connection, id) {
-    const sql = `
-    UPDATE products
-    SET
-      deleted_at = NOW(),
-      updated_at = NOW()
-    WHERE
-      id = ?
-      AND deleted_at IS NULL
-  `;
-
-    const [result] = await connection.execute(sql, [id]);
-
-    return result.affectedRows;
-  }
-
-  static async bulkDelete(connection, ids) {
-    if (!ids.length) {
-      return;
-    }
-
-    const placeholders = ids.map(() => "?").join(",");
-
-    const sql = `
-        UPDATE products
-        SET
-          deleted_at = NOW(),
-          updated_at = NOW()
-        WHERE id IN (${placeholders})
-        AND deleted_at IS NULL
-    `;
-
-    await connection.execute(sql, ids);
-  }
-
-  static async restore(connection, id) {
-    const sql = `
-    UPDATE products
-    SET
-      deleted_at = NULL,
-      updated_at = NOW()
-    WHERE id = ?
-      AND deleted_at IS NOT NULL
-  `;
-
-    const [result] = await connection.execute(sql, [id]);
-
-    return result.affectedRows;
   }
 
   static async deleteSpecifications(connection, productId) {
@@ -1118,32 +1344,582 @@ class Product {
       `
         DELETE FROM product_specifications
         WHERE product_id = ?
-        `,
+      `,
       [productId],
     );
   }
 
-  static async bulkRestore(connection, ids) {
-    if (!ids.length) {
+  // ============================================================
+  // SKU
+  // ============================================================
+
+  static async isSkuExists(sku) {
+    const [rows] = await pool.execute(
+      `
+        SELECT id
+        FROM products
+
+        WHERE
+          sku = ?
+          AND deleted_at IS NULL
+
+        LIMIT 1
+      `,
+      [String(sku || "").trim()],
+    );
+
+    return rows.length > 0;
+  }
+
+  static async isSkuExistsExceptId(sku, id) {
+    const [rows] = await pool.execute(
+      `
+        SELECT id
+
+        FROM products
+
+        WHERE
+          sku = ?
+          AND id <> ?
+          AND deleted_at IS NULL
+
+        LIMIT 1
+      `,
+      [String(sku || "").trim(), id],
+    );
+
+    return rows.length > 0;
+  }
+
+  static async checkSku(sku, id = null) {
+    let sql = `
+      SELECT id
+      FROM products
+
+      WHERE
+        sku = ?
+        AND deleted_at IS NULL
+    `;
+
+    const params = [String(sku || "").trim()];
+
+    if (id) {
+      sql += `
+        AND id <> ?
+      `;
+
+      params.push(id);
+    }
+
+    sql += `
+      LIMIT 1
+    `;
+
+    const [rows] = await pool.execute(sql, params);
+
+    return rows.length > 0;
+  }
+
+  // ============================================================
+  // ADMIN - UPDATE
+  // ============================================================
+
+  static async update(connection, id, data) {
+    const slug = await Product.generateUniqueSlug(data.name, id);
+
+    const [result] = await connection.execute(
+      `
+        UPDATE products
+
+        SET
+          category_id = ?,
+          name = ?,
+          slug = ?,
+          sku = ?,
+          price = ?,
+          sale_price = ?,
+          quantity = ?,
+          thumbnail = ?,
+          short_description = ?,
+          description = ?,
+          status = ?,
+          socket = ?,
+          ram_type = ?,
+          updated_at = NOW()
+
+        WHERE
+          id = ?
+          AND deleted_at IS NULL
+      `,
+      [
+        data.category_id,
+
+        String(data.name || "").trim(),
+
+        slug,
+
+        String(data.sku || "").trim(),
+
+        Number(data.price),
+
+        data.sale_price === "" ||
+        data.sale_price === null ||
+        data.sale_price === undefined
+          ? null
+          : Number(data.sale_price),
+
+        Number(data.quantity || 0),
+
+        data.thumbnail || null,
+
+        data.short_description || null,
+
+        data.description || null,
+
+        Number(data.status),
+
+        data.socket || null,
+
+        data.ram_type || null,
+
+        id,
+      ],
+    );
+
+    return result.affectedRows;
+  }
+
+  // ============================================================
+  // STATUS
+  // ============================================================
+
+  static async toggleStatus(connection, id) {
+    const [result] = await connection.execute(
+      `
+        UPDATE products
+
+        SET
+          status =
+            CASE
+              WHEN status = 1 THEN 0
+              ELSE 1
+            END,
+
+          updated_at = NOW()
+
+        WHERE
+          id = ?
+          AND deleted_at IS NULL
+      `,
+      [id],
+    );
+
+    return result.affectedRows;
+  }
+
+  // ============================================================
+  // STOCK
+  // ============================================================
+
+  static async updateQuantity(connection, id, quantity) {
+    const [result] = await connection.execute(
+      `
+        UPDATE products
+
+        SET
+          quantity = ?,
+          updated_at = NOW()
+
+        WHERE
+          id = ?
+          AND deleted_at IS NULL
+      `,
+      [Number(quantity), id],
+    );
+
+    return result.affectedRows;
+  }
+
+  static async decreaseStock(connection, productId, quantity) {
+    const [result] = await connection.execute(
+      `
+        UPDATE products
+
+        SET
+          quantity = quantity - ?,
+          updated_at = NOW()
+
+        WHERE
+          id = ?
+          AND deleted_at IS NULL
+          AND quantity >= ?
+      `,
+      [quantity, productId, quantity],
+    );
+
+    return result.affectedRows;
+  }
+
+  static async increaseStock(connection, productId, quantity) {
+    const [result] = await connection.execute(
+      `
+        UPDATE products
+
+        SET
+          quantity = quantity + ?,
+          updated_at = NOW()
+
+        WHERE
+          id = ?
+          AND deleted_at IS NULL
+      `,
+      [quantity, productId],
+    );
+
+    return result.affectedRows;
+  }
+
+  // ============================================================
+  // STOCK LOG
+  // ============================================================
+
+  static async insertStockLog(
+    connection,
+    {
+      productId,
+      variantId = null,
+      type,
+      quantity,
+      quantityBefore,
+      quantityAfter,
+      productQuantityBefore = null,
+      productQuantityAfter = null,
+      referenceType = null,
+      referenceId = null,
+      note,
+    },
+  ) {
+    const sql = `
+    INSERT INTO product_stock_logs
+    (
+      product_id,
+      variant_id,
+      type,
+      quantity,
+      quantity_before,
+      quantity_after,
+      product_quantity_before,
+      product_quantity_after,
+      reference_type,
+      reference_id,
+      note
+    )
+    VALUES
+    (
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    )
+  `;
+
+    await connection.execute(sql, [
+      productId,
+      variantId || null,
+      type,
+      quantity,
+      quantityBefore,
+      quantityAfter,
+      productQuantityBefore,
+      productQuantityAfter,
+      referenceType || null,
+      referenceId || null,
+      note || null,
+    ]);
+  }
+
+  static async getStockHistory(productId) {
+    const sql = `
+    SELECT
+      psl.id,
+      psl.product_id,
+      psl.variant_id,
+
+      psl.type,
+      psl.quantity,
+
+      psl.quantity_before,
+      psl.quantity_after,
+
+      psl.product_quantity_before,
+      psl.product_quantity_after,
+
+      psl.reference_type,
+      psl.reference_id,
+
+      psl.note,
+      psl.created_at,
+
+      pv.sku AS variant_sku,
+      pv.variant_name,
+
+      CASE
+        WHEN psl.variant_id IS NULL
+          THEN 'product'
+        ELSE 'variant'
+      END AS stock_scope
+
+    FROM product_stock_logs psl
+
+    LEFT JOIN product_variants pv
+      ON pv.id = psl.variant_id
+
+    WHERE psl.product_id = ?
+
+    ORDER BY
+      psl.created_at DESC,
+      psl.id DESC
+  `;
+
+    const [rows] = await pool.execute(sql, [productId]);
+
+    return rows.map((item) => ({
+      ...item,
+
+      id: Number(item.id),
+
+      product_id: Number(item.product_id),
+
+      variant_id: item.variant_id !== null ? Number(item.variant_id) : null,
+
+      quantity: Number(item.quantity || 0),
+
+      quantity_before: Number(item.quantity_before || 0),
+
+      quantity_after: Number(item.quantity_after || 0),
+
+      product_quantity_before:
+        item.product_quantity_before !== null
+          ? Number(item.product_quantity_before)
+          : null,
+
+      product_quantity_after:
+        item.product_quantity_after !== null
+          ? Number(item.product_quantity_after)
+          : null,
+
+      reference_id:
+        item.reference_id !== null ? Number(item.reference_id) : null,
+    }));
+  }
+
+  // ============================================================
+  // STOCK REPORT
+  // ============================================================
+
+  static async getStockReport() {
+    const [rows] = await pool.execute(
+      `
+        SELECT
+          p.id,
+          p.name,
+          p.sku,
+
+          c.name AS category_name,
+
+          p.quantity,
+
+          COALESCE(
+            sales.sold,
+            0
+          ) AS sold,
+
+          p.quantity AS remaining,
+
+          CASE
+            WHEN p.quantity <= 0
+              THEN 'out_of_stock'
+
+            WHEN p.quantity <= 5
+              THEN 'low_stock'
+
+            ELSE 'in_stock'
+          END AS stock_status,
+
+          (
+            SELECT COUNT(*)
+            FROM product_variants pv
+            WHERE
+              pv.product_id = p.id
+              AND pv.deleted_at IS NULL
+          ) AS variant_count,
+
+          p.updated_at
+
+        FROM products p
+
+        LEFT JOIN categories c
+          ON c.id = p.category_id
+
+        LEFT JOIN (
+          SELECT
+            oi.product_id,
+            SUM(oi.quantity) AS sold
+
+          FROM order_items oi
+
+          INNER JOIN orders o
+            ON o.id = oi.order_id
+
+          WHERE
+            oi.deleted_at IS NULL
+            AND o.deleted_at IS NULL
+            AND o.status = 'COMPLETED'
+
+          GROUP BY oi.product_id
+        ) sales
+          ON sales.product_id = p.id
+
+        WHERE p.deleted_at IS NULL
+
+        ORDER BY p.name ASC
+      `,
+    );
+
+    return rows.map((item) => ({
+      ...item,
+
+      id: Number(item.id),
+
+      quantity: Number(item.quantity || 0),
+
+      sold: Number(item.sold || 0),
+
+      remaining: Number(item.remaining || 0),
+
+      variant_count: Number(item.variant_count || 0),
+    }));
+  }
+
+  // ============================================================
+  // SOFT DELETE
+  // ============================================================
+
+  static async softDelete(connection, id) {
+    const [result] = await connection.execute(
+      `
+        UPDATE products
+
+        SET
+          deleted_at = NOW(),
+          updated_at = NOW()
+
+        WHERE
+          id = ?
+          AND deleted_at IS NULL
+      `,
+      [id],
+    );
+
+    return result.affectedRows;
+  }
+
+  static async bulkDelete(connection, ids) {
+    if (!Array.isArray(ids) || !ids.length) {
       return 0;
     }
 
     const placeholders = ids.map(() => "?").join(",");
 
-    const sql = `
-    UPDATE products
-    SET
-      deleted_at = NULL,
-      updated_at = NOW()
-    WHERE
-      id IN (${placeholders})
-      AND deleted_at IS NOT NULL
-  `;
+    const [result] = await connection.execute(
+      `
+        UPDATE products
 
-    const [result] = await connection.execute(sql, ids);
+        SET
+          deleted_at = NOW(),
+          updated_at = NOW()
+
+        WHERE
+          id IN (${placeholders})
+          AND deleted_at IS NULL
+      `,
+      ids,
+    );
 
     return result.affectedRows;
   }
+
+  // ============================================================
+  // RESTORE
+  // ============================================================
+
+  static async restore(connection, id) {
+    const [result] = await connection.execute(
+      `
+        UPDATE products
+
+        SET
+          deleted_at = NULL,
+          updated_at = NOW()
+
+        WHERE
+          id = ?
+          AND deleted_at IS NOT NULL
+      `,
+      [id],
+    );
+
+    return result.affectedRows;
+  }
+
+  static async bulkRestore(connection, ids) {
+    if (!Array.isArray(ids) || !ids.length) {
+      return 0;
+    }
+
+    const placeholders = ids.map(() => "?").join(",");
+
+    const [result] = await connection.execute(
+      `
+        UPDATE products
+
+        SET
+          deleted_at = NULL,
+          updated_at = NOW()
+
+        WHERE
+          id IN (${placeholders})
+          AND deleted_at IS NOT NULL
+      `,
+      ids,
+    );
+
+    return result.affectedRows;
+  }
+
+  static async isRestoreSkuExists(sku, id) {
+    const [rows] = await pool.execute(
+      `
+        SELECT id
+
+        FROM products
+
+        WHERE
+          sku = ?
+          AND id <> ?
+          AND deleted_at IS NULL
+
+        LIMIT 1
+      `,
+      [sku, id],
+    );
+
+    return rows.length > 0;
+  }
+
+  // ============================================================
+  // FORCE DELETE PRODUCT BASE
+  //
+  // Variant sẽ được controller xóa trước bằng:
+  // ProductVariant.forceDeleteByProduct(...)
+  // ============================================================
 
   static async forceDelete(connection, id) {
     await connection.execute(
@@ -1151,7 +1927,7 @@ class Product {
         DELETE
         FROM product_images
         WHERE product_id = ?
-        `,
+      `,
       [id],
     );
 
@@ -1160,7 +1936,7 @@ class Product {
         DELETE
         FROM product_specifications
         WHERE product_id = ?
-        `,
+      `,
       [id],
     );
 
@@ -1168,8 +1944,8 @@ class Product {
       `
         DELETE
         FROM product_stock_logs
-        WHERE product_id=?
-        `,
+        WHERE product_id = ?
+      `,
       [id],
     );
 
@@ -1178,385 +1954,184 @@ class Product {
         DELETE
         FROM products
         WHERE id = ?
-        `,
+      `,
       [id],
     );
   }
 
-  static async isRestoreSkuExists(sku, id) {
+  // ============================================================
+  // ORDER USAGE
+  // ============================================================
+
+  static async isUsedInOrders(productId) {
     const [rows] = await pool.execute(
       `
         SELECT id
-        FROM products
-        WHERE sku = ?
-        AND id <> ?
-        AND deleted_at IS NULL
+
+        FROM order_items
+
+        WHERE
+          product_id = ?
+          AND deleted_at IS NULL
+
         LIMIT 1
-        `,
-      [sku, id],
+      `,
+      [productId],
     );
 
     return rows.length > 0;
   }
 
-  static async decreaseStock(connection, productId, quantity) {
-    const sql = `
-    UPDATE products
-    SET quantity = quantity - ?
-    WHERE id = ?
-      AND deleted_at IS NULL
-      AND quantity >= ?
-  `;
+  // ============================================================
+  // SEARCH SUGGESTION ADMIN
+  // ============================================================
 
-    const [result] = await connection.execute(sql, [
-      quantity,
-      productId,
-      quantity,
-    ]);
+  static async searchSuggestion(keyword) {
+    const search = `%${keyword}%`;
 
-    return result.affectedRows;
-  }
-
-  static async getStockReport() {
-    const sql = `
-        SELECT
-
-            p.id,
-
-            p.name,
-
-            p.sku,
-
-            c.name AS category_name,
-
-            p.quantity,
-
-            IFNULL(
-
-                (
-                    SELECT SUM(oi.quantity)
-                    FROM order_items oi
-                    WHERE oi.product_id = p.id
-                ),
-
-                0
-
-            ) AS sold,
-
-            (
-                p.quantity -
-
-                IFNULL(
-
-                    (
-                        SELECT SUM(oi.quantity)
-                        FROM order_items oi
-                        WHERE oi.product_id = p.id
-                    ),
-
-                    0
-
-                )
-
-            ) AS remaining,
-
-            CASE
-
-                WHEN (
-
-                    p.quantity -
-
-                    IFNULL(
-
-                        (
-                            SELECT SUM(oi.quantity)
-                            FROM order_items oi
-                            WHERE oi.product_id = p.id
-                        ),
-
-                        0
-
-                    )
-
-                ) <= 0
-
-                THEN 'out_of_stock'
-
-                WHEN (
-
-                    p.quantity -
-
-                    IFNULL(
-
-                        (
-                            SELECT SUM(oi.quantity)
-                            FROM order_items oi
-                            WHERE oi.product_id = p.id
-                        ),
-
-                        0
-
-                    )
-
-                ) <= 5
-
-                THEN 'low_stock'
-
-                ELSE 'in_stock'
-
-            END AS stock_status,
-
-            p.updated_at
-
-        FROM products p
-
-        LEFT JOIN categories c
-
-            ON c.id = p.category_id
-
-        WHERE p.deleted_at IS NULL
-
-        ORDER BY p.name ASC
-    `;
-
-    const [rows] = await pool.execute(sql);
-
-    return rows;
-  }
-
-  static async increaseStock(connection, productId, quantity) {
-    const sql = `
-    UPDATE products
-    SET quantity = quantity + ?
-    WHERE id = ?
-      AND deleted_at IS NULL
-  `;
-
-    const [result] = await connection.execute(sql, [quantity, productId]);
-
-    return result.affectedRows;
-  }
-
-  static async insertStockLog(
-    connection,
-    { productId, type, quantity, quantityBefore, quantityAfter, note },
-  ) {
-    const sql = `
-        INSERT INTO product_stock_logs
-        (
-            product_id,
-            type,
-            quantity,
-            quantity_before,
-            quantity_after,
-            note
-        )
-        VALUES
-        (
-            ?,?,?,?,?,?
-        )
-    `;
-
-    await connection.execute(sql, [
-      productId,
-      type,
-      quantity,
-      quantityBefore,
-      quantityAfter,
-      note || null,
-    ]);
-  }
-
-  static async getStockHistory(productId) {
-    const sql = `
-        SELECT
-            id,
-            type,
-            quantity,
-            quantity_before,
-            quantity_after,
-            note,
-            created_at
-        FROM product_stock_logs
-        WHERE product_id = ?
-        ORDER BY created_at DESC
-    `;
-
-    const [rows] = await pool.execute(sql, [productId]);
-
-    return rows;
-  }
-
-  static async getDeletedById(id) {
-    const sql = `
+    const [rows] = await pool.execute(
+      `
         SELECT
           id,
           name,
           sku,
-          deleted_at
-      FROM products
-      WHERE id=?
-      LIMIT 1
-  `;
+          thumbnail
 
-    const [rows] = await pool.execute(sql, [id]);
+        FROM products
 
-    if (rows.length === 0) {
-      return null;
-    }
+        WHERE
+          deleted_at IS NULL
 
-    return rows[0];
-  }
+          AND (
+            name LIKE ?
+            OR sku LIKE ?
+          )
 
-  static async isUsedInOrders(productId) {
-    const sql = `
-    SELECT id
-    FROM order_items
-    WHERE product_id = ?
-    LIMIT 1
-  `;
+        ORDER BY name ASC
 
-    const [rows] = await pool.execute(sql, [productId]);
-
-    return rows.length > 0;
-  }
-
-  static async addGallery(connection, productId, files) {
-    const sql = `
-    INSERT INTO product_images
-    (
-      product_id,
-      image_url,
-      sort_order
-    )
-    VALUES
-    (
-      ?, ?, ?
-    )
-  `;
-
-    const [[max]] = await connection.execute(
-      `
-      SELECT
-        IFNULL(MAX(sort_order),0) AS maxOrder
-      FROM product_images
-      WHERE product_id = ?
-    `,
-      [productId],
+        LIMIT 10
+      `,
+      [search, search],
     );
-
-    let order = Number(max.maxOrder);
-
-    for (const file of files) {
-      order++;
-
-      await connection.execute(sql, [
-        productId,
-        `/uploads/products/${file.filename}`,
-        order,
-      ]);
-    }
-  }
-
-  static async getGalleryImage(imageId) {
-    const [rows] = await pool.execute(
-      `
-      SELECT *
-      FROM product_images
-      WHERE id = ?
-      LIMIT 1
-    `,
-      [imageId],
-    );
-
-    return rows[0] || null;
-  }
-
-  static async deleteGalleryImage(connection, imageId) {
-    const [result] = await connection.execute(
-      `
-      DELETE
-      FROM product_images
-      WHERE id = ?
-    `,
-      [imageId],
-    );
-
-    return result.affectedRows;
-  }
-
-  static async checkSku(sku, id = null) {
-    let sql = `
-    SELECT id
-    FROM products
-    WHERE sku = ?
-      AND deleted_at IS NULL
-  `;
-
-    const params = [sku];
-
-    if (id) {
-      sql += " AND id <> ?";
-      params.push(id);
-    }
-
-    sql += " LIMIT 1";
-
-    const [rows] = await pool.execute(sql, params);
-
-    return rows.length > 0;
-  }
-  static async searchSuggestion(keyword) {
-    const sql = `
-    SELECT
-      id,
-      name,
-      sku,
-      thumbnail
-    FROM products
-    WHERE
-      deleted_at IS NULL
-      AND (
-        name LIKE ?
-        OR sku LIKE ?
-      )
-    ORDER BY name ASC
-    LIMIT 10
-  `;
-
-    const search = `%${keyword}%`;
-
-    const [rows] = await pool.execute(sql, [search, search]);
 
     return rows;
   }
 
+  // ============================================================
+  // ADMIN FORM DATA
+  // ============================================================
+
   static async getFormData() {
-    const [categories] = await pool.execute(`
-      SELECT
-        id,
-        name
-      FROM categories
-      WHERE status = 1
-        AND deleted_at IS NULL
-      ORDER BY name ASC
-  `);
+    const [categories] = await pool.execute(
+      `
+        SELECT
+          id,
+          name
 
-    const [socketRows] = await pool.execute(`
-      SELECT DISTINCT socket
-      FROM products
-      WHERE socket IS NOT NULL
-        AND socket <> ''
-      ORDER BY socket ASC
-  `);
+        FROM categories
 
-    const [ramRows] = await pool.execute(`
-      SELECT DISTINCT ram_type
-      FROM products
-      WHERE ram_type IS NOT NULL
-        AND ram_type <> ''
-      ORDER BY ram_type ASC
-  `);
+        WHERE
+          status = 1
+          AND deleted_at IS NULL
+
+        ORDER BY name ASC
+      `,
+    );
+
+    const [socketRows] = await pool.execute(
+      `
+        SELECT DISTINCT socket
+
+        FROM products
+
+        WHERE
+          socket IS NOT NULL
+          AND socket <> ''
+
+        ORDER BY socket ASC
+      `,
+    );
+
+    const [ramRows] = await pool.execute(
+      `
+        SELECT DISTINCT ram_type
+
+        FROM products
+
+        WHERE
+          ram_type IS NOT NULL
+          AND ram_type <> ''
+
+        ORDER BY ram_type ASC
+      `,
+    );
+
+    const [optionRows] = await pool.execute(
+      `
+        SELECT
+          id,
+          name,
+          code,
+          display_type,
+          sort_order
+
+        FROM product_options
+
+        WHERE
+          deleted_at IS NULL
+          AND status = 1
+
+        ORDER BY
+          sort_order ASC,
+          name ASC
+      `,
+    );
+
+    const options = [];
+
+    for (const option of optionRows) {
+      const [values] = await pool.execute(
+        `
+          SELECT
+            id,
+            option_id,
+            value,
+            label,
+            color_code,
+            sort_order
+
+          FROM product_option_values
+
+          WHERE
+            option_id = ?
+            AND deleted_at IS NULL
+            AND status = 1
+
+          ORDER BY
+            sort_order ASC,
+            id ASC
+        `,
+        [option.id],
+      );
+
+      options.push({
+        ...option,
+
+        id: Number(option.id),
+
+        sort_order: Number(option.sort_order || 0),
+
+        values: values.map((item) => ({
+          ...item,
+
+          id: Number(item.id),
+
+          option_id: Number(item.option_id),
+
+          sort_order: Number(item.sort_order || 0),
+        })),
+      });
+    }
 
     return {
       categories,
@@ -1564,6 +2139,8 @@ class Product {
       socket: socketRows.map((item) => item.socket),
 
       ramType: ramRows.map((item) => item.ram_type),
+
+      options,
 
       status: [
         {
@@ -1578,47 +2155,74 @@ class Product {
     };
   }
 
-  static async findByCategory(category) {
-    try {
-      const query = `
-          SELECT 
-            p.id, 
-            p.name, 
-            p.price,
-            -- Trích xuất thông số socket và ram_type từ chuỗi JSON trong DB
-            JSON_UNQUOTE(JSON_EXTRACT(pp.specifications, '$.socket')) AS socket,
-            JSON_UNQUOTE(JSON_EXTRACT(pp.specifications, '$.ram_type')) AS ram_type
-          FROM pc_parts pp
-          JOIN products p ON pp.product_id = p.id
-          JOIN pc_part_types pt ON pp.type_id = pt.id
-          WHERE LOWER(pt.type_code) = LOWER(?) OR LOWER(pt.type_name) = LOWER(?)
-        `;
+  // ============================================================
+  // BUILD PC HELPER
+  // ============================================================
 
-      const [rows] = await pool.query(query, [category, category]);
-      return rows;
-    } catch (error) {
-      throw error;
-    }
+  static async findByCategory(category) {
+    const query = `
+      SELECT
+        p.id,
+        p.name,
+        p.price,
+
+        JSON_UNQUOTE(
+          JSON_EXTRACT(
+            pp.specifications,
+            '$.socket'
+          )
+        ) AS socket,
+
+        JSON_UNQUOTE(
+          JSON_EXTRACT(
+            pp.specifications,
+            '$.ram_type'
+          )
+        ) AS ram_type
+
+      FROM pc_parts pp
+
+      JOIN products p
+        ON pp.product_id = p.id
+
+      JOIN pc_part_types pt
+        ON pp.type_id = pt.id
+
+      WHERE
+        LOWER(pt.type_code) = LOWER(?)
+        OR LOWER(pt.type_name) = LOWER(?)
+    `;
+
+    const [rows] = await pool.query(query, [category, category]);
+
+    return rows;
   }
 
-  // ======================================================
+  // ============================================================
   // CLIENT HELPERS
-  // ======================================================
+  //
+  // PHẦN CLIENT CHƯA CHUYỂN SANG VARIANT.
+  // Giữ products là aggregate/default để client cũ vẫn chạy.
+  // ============================================================
 
   static normalizeClientProduct(row) {
     if (!row) return null;
 
     const price = Number(row.price || 0);
+
     const salePrice =
       row.sale_price !== null && row.sale_price !== undefined
         ? Number(row.sale_price)
         : null;
 
     const finalPrice = Number(row.final_price || price);
+
     const quantity = Math.max(Number(row.quantity || 0), 0);
+
     const sold = Math.max(Number(row.sold || 0), 0);
 
     const averageRating = Number(row.average_rating || 0);
+
     const reviewCount = Number(row.review_count || 0);
 
     const isSale = salePrice !== null && salePrice > 0 && salePrice < price;
@@ -1627,13 +2231,17 @@ class Product {
       ...row,
 
       id: Number(row.id),
+
       category_id: Number(row.category_id),
 
       price,
+
       sale_price: salePrice,
+
       final_price: finalPrice,
 
       quantity,
+
       sold,
 
       is_sale: isSale,
@@ -1651,18 +2259,19 @@ class Product {
 
       rating: {
         average: Number(averageRating.toFixed(1)),
+
         count: reviewCount,
       },
 
-      // Không cần gửi duplicated field này ra FE.
       average_rating: undefined,
+
       review_count: undefined,
     };
   }
 
-  // ======================================================
+  // ============================================================
   // CLIENT - DANH SÁCH SẢN PHẨM
-  // ======================================================
+  // ============================================================
 
   static async getClientProducts({
     page = 1,
@@ -1683,11 +2292,8 @@ class Product {
     stock = "",
     sale = "",
   } = {}) {
-    // =========================================
-    // Pagination
-    // =========================================
-
     page = Number.parseInt(page, 10);
+
     limit = Number.parseInt(limit, 10);
 
     if (!Number.isInteger(page) || page < 1) {
@@ -1698,19 +2304,16 @@ class Product {
       limit = 12;
     }
 
-    // Không cho client lấy quá nhiều record một lần.
     limit = Math.min(limit, 48);
 
     const offset = (page - 1) * limit;
 
-    // =========================================
-    // Normalize query
-    // =========================================
-
     search = String(search || "")
       .trim()
       .slice(0, 100);
+
     category = String(category || "").trim();
+
     socket = String(socket || "").trim();
 
     const ramFilter = String(ram_type || ram || "").trim();
@@ -1718,31 +2321,25 @@ class Product {
     stock = String(stock || "")
       .trim()
       .toLowerCase();
+
     sale = String(sale || "")
       .trim()
       .toLowerCase();
+
     sort = String(sort || "newest")
       .trim()
       .toLowerCase();
 
-    // =========================================
-    // Giá thực tế
-    // =========================================
-
     const finalPriceSql = `
-    CASE
-      WHEN p.sale_price IS NOT NULL
-        AND p.sale_price > 0
-        AND p.sale_price < p.price
-      THEN p.sale_price
+      CASE
+        WHEN p.sale_price IS NOT NULL
+          AND p.sale_price > 0
+          AND p.sale_price < p.price
+        THEN p.sale_price
 
-      ELSE p.price
-    END
-  `;
-
-    // =========================================
-    // WHERE
-    // =========================================
+        ELSE p.price
+      END
+    `;
 
     const where = [
       "p.deleted_at IS NULL",
@@ -1754,56 +2351,41 @@ class Product {
 
     const params = [];
 
-    // =========================================
-    // Search
-    // =========================================
-
     if (search) {
       const keyword = `%${search}%`;
 
       where.push(`
-      (
-        p.name LIKE ?
-        OR p.sku LIKE ?
-        OR COALESCE(p.short_description, '') LIKE ?
-        OR c.name LIKE ?
-      )
-    `);
+        (
+          p.name LIKE ?
+          OR p.sku LIKE ?
+          OR COALESCE(
+            p.short_description,
+            ''
+          ) LIKE ?
+          OR c.name LIKE ?
+        )
+      `);
 
       params.push(keyword, keyword, keyword, keyword);
     }
 
-    // =========================================
-    // Category
-    // =========================================
-
     if (category) {
       where.push("c.slug = ?");
+
       params.push(category);
     }
 
-    // =========================================
-    // Socket
-    // =========================================
-
     if (socket) {
       where.push("p.socket = ?");
+
       params.push(socket);
     }
 
-    // =========================================
-    // RAM Type
-    // =========================================
-
     if (ramFilter) {
       where.push("p.ram_type = ?");
+
       params.push(ramFilter);
     }
-
-    // =========================================
-    // Stock
-    // products.quantity = tồn kho hiện tại
-    // =========================================
 
     switch (stock) {
       case "in_stock":
@@ -1822,21 +2404,13 @@ class Product {
         break;
     }
 
-    // =========================================
-    // Sale
-    // =========================================
-
     if (sale === "1" || sale === "true" || sale === "yes") {
       where.push(`
-      p.sale_price IS NOT NULL
-      AND p.sale_price > 0
-      AND p.sale_price < p.price
-    `);
+        p.sale_price IS NOT NULL
+        AND p.sale_price > 0
+        AND p.sale_price < p.price
+      `);
     }
-
-    // =========================================
-    // Price range
-    // =========================================
 
     const minPrice = price_min !== "" ? Number(price_min) : null;
 
@@ -1844,362 +2418,363 @@ class Product {
 
     if (minPrice !== null && Number.isFinite(minPrice) && minPrice >= 0) {
       where.push(`${finalPriceSql} >= ?`);
+
       params.push(minPrice);
     }
 
     if (maxPrice !== null && Number.isFinite(maxPrice) && maxPrice >= 0) {
       where.push(`${finalPriceSql} <= ?`);
+
       params.push(maxPrice);
     }
 
     const whereSql = `
-    WHERE ${where.join("\n AND ")}
-  `;
-
-    // =========================================
-    // Sort
-    // =========================================
+      WHERE ${where.join("\n AND ")}
+    `;
 
     let orderBy = `
-    ORDER BY
-      p.created_at DESC,
-      p.id DESC
-  `;
+      ORDER BY
+        p.created_at DESC,
+        p.id DESC
+    `;
 
     switch (sort) {
       case "oldest":
         orderBy = `
-        ORDER BY
-          p.created_at ASC,
-          p.id ASC
-      `;
+          ORDER BY
+            p.created_at ASC,
+            p.id ASC
+        `;
         break;
 
       case "price_asc":
         orderBy = `
-        ORDER BY
-          ${finalPriceSql} ASC,
-          p.id DESC
-      `;
+          ORDER BY
+            ${finalPriceSql} ASC,
+            p.id DESC
+        `;
         break;
 
       case "price_desc":
         orderBy = `
-        ORDER BY
-          ${finalPriceSql} DESC,
-          p.id DESC
-      `;
+          ORDER BY
+            ${finalPriceSql} DESC,
+            p.id DESC
+        `;
         break;
 
       case "name_asc":
         orderBy = `
-        ORDER BY
-          p.name ASC,
-          p.id DESC
-      `;
+          ORDER BY
+            p.name ASC,
+            p.id DESC
+        `;
         break;
 
       case "name_desc":
         orderBy = `
-        ORDER BY
-          p.name DESC,
-          p.id DESC
-      `;
+          ORDER BY
+            p.name DESC,
+            p.id DESC
+        `;
         break;
 
       case "best_selling":
       case "sold_desc":
         orderBy = `
-        ORDER BY
-          COALESCE(sales.sold, 0) DESC,
-          p.created_at DESC,
-          p.id DESC
-      `;
+          ORDER BY
+            COALESCE(
+              sales.sold,
+              0
+            ) DESC,
+
+            p.created_at DESC,
+
+            p.id DESC
+        `;
         break;
 
       case "rating_desc":
         orderBy = `
-        ORDER BY
-          COALESCE(review_stats.average_rating, 0) DESC,
-          COALESCE(review_stats.review_count, 0) DESC,
-          p.id DESC
-      `;
+          ORDER BY
+            COALESCE(
+              review_stats.average_rating,
+              0
+            ) DESC,
+
+            COALESCE(
+              review_stats.review_count,
+              0
+            ) DESC,
+
+            p.id DESC
+        `;
         break;
 
       case "discount_desc":
         orderBy = `
-        ORDER BY
-          discount_percent DESC,
-          p.id DESC
-      `;
-        break;
-
-      case "newest":
-      default:
+          ORDER BY
+            discount_percent DESC,
+            p.id DESC
+        `;
         break;
     }
 
-    // =========================================
-    // Count
-    // =========================================
-
     const [[countRow]] = await pool.execute(
       `
-      SELECT
-        COUNT(*) AS total
+          SELECT
+            COUNT(*) AS total
 
-      FROM products p
+          FROM products p
 
-      INNER JOIN categories c
-        ON c.id = p.category_id
+          INNER JOIN categories c
+            ON c.id = p.category_id
 
-      ${whereSql}
-    `,
+          ${whereSql}
+        `,
       params,
     );
 
     const total = Number(countRow.total || 0);
 
-    // =========================================
-    // Product list
-    // =========================================
-
     const [rows] = await pool.execute(
       `
-      SELECT
-        p.id,
-        p.category_id,
+          SELECT
+            p.id,
+            p.category_id,
 
-        c.name AS category_name,
-        c.slug AS category_slug,
+            c.name AS category_name,
+            c.slug AS category_slug,
 
-        p.name,
-        p.slug,
-        p.sku,
+            p.name,
+            p.slug,
+            p.sku,
 
-        p.price,
-        p.sale_price,
+            p.price,
+            p.sale_price,
 
-        ${finalPriceSql} AS final_price,
+            ${finalPriceSql}
+              AS final_price,
 
-        CASE
-          WHEN p.sale_price IS NOT NULL
-            AND p.sale_price > 0
-            AND p.sale_price < p.price
-          THEN ROUND(
-            (
-              (p.price - p.sale_price)
-              / p.price
-            ) * 100
-          )
+            CASE
+              WHEN
+                p.sale_price IS NOT NULL
+                AND p.sale_price > 0
+                AND p.sale_price < p.price
 
-          ELSE 0
-        END AS discount_percent,
+              THEN ROUND(
+                (
+                  (
+                    p.price -
+                    p.sale_price
+                  )
+                  / p.price
+                ) * 100
+              )
 
-        p.quantity,
+              ELSE 0
+            END AS discount_percent,
 
-        CASE
-          WHEN p.quantity <= 0
-            THEN 'out_of_stock'
+            p.quantity,
 
-          WHEN p.quantity <= 5
-            THEN 'low_stock'
+            CASE
+              WHEN p.quantity <= 0
+                THEN 'out_of_stock'
 
-          ELSE 'in_stock'
-        END AS stock_status,
+              WHEN p.quantity <= 5
+                THEN 'low_stock'
 
-        p.thumbnail,
-        p.short_description,
+              ELSE 'in_stock'
+            END AS stock_status,
 
-        p.socket,
-        p.ram_type,
+            p.thumbnail,
 
-        COALESCE(
-          sales.sold,
-          0
-        ) AS sold,
+            p.short_description,
 
-        COALESCE(
-          review_stats.average_rating,
-          0
-        ) AS average_rating,
+            p.socket,
+            p.ram_type,
 
-        COALESCE(
-          review_stats.review_count,
-          0
-        ) AS review_count,
+            COALESCE(
+              sales.sold,
+              0
+            ) AS sold,
 
-        p.created_at,
-        p.updated_at
+            COALESCE(
+              review_stats.average_rating,
+              0
+            ) AS average_rating,
 
-      FROM products p
+            COALESCE(
+              review_stats.review_count,
+              0
+            ) AS review_count,
 
-      INNER JOIN categories c
-        ON c.id = p.category_id
+            p.created_at,
+            p.updated_at
 
-      LEFT JOIN (
-        SELECT
-          oi.product_id,
+          FROM products p
 
-          SUM(oi.quantity) AS sold
+          INNER JOIN categories c
+            ON c.id = p.category_id
 
-        FROM order_items oi
+          LEFT JOIN (
+            SELECT
+              oi.product_id,
 
-        INNER JOIN orders o
-          ON o.id = oi.order_id
+              SUM(oi.quantity)
+                AS sold
 
-        WHERE
-          oi.deleted_at IS NULL
-          AND o.deleted_at IS NULL
+            FROM order_items oi
 
-          -- Chỉ tính sản phẩm thực sự hoàn thành.
-          AND o.status = 'COMPLETED'
+            INNER JOIN orders o
+              ON o.id = oi.order_id
 
-        GROUP BY oi.product_id
-      ) AS sales
-        ON sales.product_id = p.id
+            WHERE
+              oi.deleted_at IS NULL
+              AND o.deleted_at IS NULL
+              AND o.status = 'COMPLETED'
 
-      LEFT JOIN (
-        SELECT
-          product_id,
+            GROUP BY oi.product_id
+          ) AS sales
+            ON sales.product_id = p.id
 
-          ROUND(
-            AVG(rating),
-            1
-          ) AS average_rating,
+          LEFT JOIN (
+            SELECT
+              product_id,
 
-          COUNT(*) AS review_count
+              ROUND(
+                AVG(rating),
+                1
+              ) AS average_rating,
 
-        FROM comments
+              COUNT(*)
+                AS review_count
 
-        WHERE
-          deleted_at IS NULL
-          AND is_approved = 1
-          AND rating BETWEEN 1 AND 5
+            FROM comments
 
-        GROUP BY product_id
-      ) AS review_stats
-        ON review_stats.product_id = p.id
+            WHERE
+              deleted_at IS NULL
+              AND is_approved = 1
+              AND rating BETWEEN 1 AND 5
 
-      ${whereSql}
+            GROUP BY product_id
+          ) AS review_stats
+            ON review_stats.product_id = p.id
 
-      ${orderBy}
+          ${whereSql}
 
-      LIMIT ?
-      OFFSET ?
-    `,
+          ${orderBy}
+
+          LIMIT ?
+          OFFSET ?
+        `,
       [...params, limit, offset],
     );
 
     const products = rows.map((row) => Product.normalizeClientProduct(row));
 
-    // =========================================
-    // FILTER DATA
-    // =========================================
-
     const [categories] = await pool.execute(
       `
-      SELECT
-        c.id,
-        c.name,
-        c.slug,
-        c.image,
+          SELECT
+            c.id,
+            c.name,
+            c.slug,
+            c.image,
 
-        COUNT(p.id) AS product_count
+            COUNT(p.id)
+              AS product_count
 
-      FROM categories c
+          FROM categories c
 
-      INNER JOIN products p
-        ON p.category_id = c.id
-        AND p.deleted_at IS NULL
-        AND p.status = 1
+          INNER JOIN products p
+            ON p.category_id = c.id
+            AND p.deleted_at IS NULL
+            AND p.status = 1
 
-      WHERE
-        c.deleted_at IS NULL
-        AND c.status = 1
+          WHERE
+            c.deleted_at IS NULL
+            AND c.status = 1
 
-      GROUP BY
-        c.id,
-        c.name,
-        c.slug,
-        c.image
+          GROUP BY
+            c.id,
+            c.name,
+            c.slug,
+            c.image
 
-      ORDER BY c.name ASC
-    `,
+          ORDER BY c.name ASC
+        `,
     );
 
     const [socketRows] = await pool.execute(
       `
-      SELECT DISTINCT
-        socket
+          SELECT DISTINCT socket
 
-      FROM products
+          FROM products
 
-      WHERE
-        deleted_at IS NULL
-        AND status = 1
+          WHERE
+            deleted_at IS NULL
+            AND status = 1
 
-        AND socket IS NOT NULL
-        AND socket <> ''
+            AND socket IS NOT NULL
+            AND socket <> ''
 
-      ORDER BY socket ASC
-    `,
+          ORDER BY socket ASC
+        `,
     );
 
     const [ramRows] = await pool.execute(
       `
-      SELECT DISTINCT
-        ram_type
+          SELECT DISTINCT ram_type
 
-      FROM products
+          FROM products
 
-      WHERE
-        deleted_at IS NULL
-        AND status = 1
+          WHERE
+            deleted_at IS NULL
+            AND status = 1
 
-        AND ram_type IS NOT NULL
-        AND ram_type <> ''
+            AND ram_type IS NOT NULL
+            AND ram_type <> ''
 
-      ORDER BY ram_type ASC
-    `,
+          ORDER BY ram_type ASC
+        `,
     );
 
     const [[priceRange]] = await pool.execute(
       `
-      SELECT
-        MIN(
-          CASE
-            WHEN sale_price IS NOT NULL
-              AND sale_price > 0
-              AND sale_price < price
-            THEN sale_price
+          SELECT
+            MIN(
+              CASE
+                WHEN
+                  sale_price IS NOT NULL
+                  AND sale_price > 0
+                  AND sale_price < price
 
-            ELSE price
-          END
-        ) AS min_price,
+                THEN sale_price
 
-        MAX(
-          CASE
-            WHEN sale_price IS NOT NULL
-              AND sale_price > 0
-              AND sale_price < price
-            THEN sale_price
+                ELSE price
+              END
+            ) AS min_price,
 
-            ELSE price
-          END
-        ) AS max_price
+            MAX(
+              CASE
+                WHEN
+                  sale_price IS NOT NULL
+                  AND sale_price > 0
+                  AND sale_price < price
 
-      FROM products
+                THEN sale_price
 
-      WHERE
-        deleted_at IS NULL
-        AND status = 1
-    `,
+                ELSE price
+              END
+            ) AS max_price
+
+          FROM products
+
+          WHERE
+            deleted_at IS NULL
+            AND status = 1
+        `,
     );
-
-    // =========================================
-    // Response
-    // =========================================
 
     return {
       products,
@@ -2208,6 +2783,7 @@ class Product {
         page,
         limit,
         total,
+
         totalPages: total > 0 ? Math.ceil(total / limit) : 0,
 
         hasPreviousPage: page > 1,
@@ -2218,7 +2794,9 @@ class Product {
       filters: {
         categories: categories.map((item) => ({
           ...item,
+
           id: Number(item.id),
+
           product_count: Number(item.product_count || 0),
         })),
 
@@ -2237,6 +2815,7 @@ class Product {
         category,
         search,
         sort,
+
         price_min:
           minPrice !== null && Number.isFinite(minPrice) ? minPrice : null,
 
@@ -2254,9 +2833,9 @@ class Product {
     };
   }
 
-  // ======================================================
+  // ============================================================
   // CLIENT - SEARCH SUGGESTIONS
-  // ======================================================
+  // ============================================================
 
   static async getClientSearchSuggestions(keyword, limit = 8) {
     keyword = String(keyword || "")
@@ -2279,56 +2858,58 @@ class Product {
 
     const [rows] = await pool.execute(
       `
-      SELECT
-        p.id,
-        p.name,
-        p.slug,
-        p.sku,
-        p.thumbnail,
+          SELECT
+            p.id,
+            p.name,
+            p.slug,
+            p.sku,
+            p.thumbnail,
 
-        p.price,
-        p.sale_price,
+            p.price,
+            p.sale_price,
 
-        CASE
-          WHEN p.sale_price IS NOT NULL
-            AND p.sale_price > 0
-            AND p.sale_price < p.price
-          THEN p.sale_price
+            CASE
+              WHEN
+                p.sale_price IS NOT NULL
+                AND p.sale_price > 0
+                AND p.sale_price < p.price
 
-          ELSE p.price
-        END AS final_price,
+              THEN p.sale_price
 
-        c.name AS category_name,
-        c.slug AS category_slug
+              ELSE p.price
+            END AS final_price,
 
-      FROM products p
+            c.name AS category_name,
+            c.slug AS category_slug
 
-      INNER JOIN categories c
-        ON c.id = p.category_id
+          FROM products p
 
-      WHERE
-        p.deleted_at IS NULL
-        AND p.status = 1
+          INNER JOIN categories c
+            ON c.id = p.category_id
 
-        AND c.deleted_at IS NULL
-        AND c.status = 1
+          WHERE
+            p.deleted_at IS NULL
+            AND p.status = 1
 
-        AND (
-          p.name LIKE ?
-          OR p.sku LIKE ?
-        )
+            AND c.deleted_at IS NULL
+            AND c.status = 1
 
-      ORDER BY
-        CASE
-          WHEN p.name LIKE ?
-            THEN 0
-          ELSE 1
-        END,
+            AND (
+              p.name LIKE ?
+              OR p.sku LIKE ?
+            )
 
-        p.name ASC
+          ORDER BY
+            CASE
+              WHEN p.name LIKE ?
+                THEN 0
+              ELSE 1
+            END,
 
-      LIMIT ?
-    `,
+            p.name ASC
+
+          LIMIT ?
+        `,
       [search, search, `${keyword}%`, limit],
     );
 
@@ -2345,9 +2926,9 @@ class Product {
     }));
   }
 
-  // ======================================================
-  // CLIENT - CHI TIẾT SẢN PHẨM
-  // ======================================================
+  // ============================================================
+  // CLIENT - PRODUCT DETAIL
+  // ============================================================
 
   static async getClientProductBySlug(slug) {
     slug = String(slug || "").trim();
@@ -2356,133 +2937,139 @@ class Product {
       return null;
     }
 
-    // =========================================
-    // PRODUCT
-    // =========================================
-
     const [products] = await pool.execute(
       `
-      SELECT
-        p.id,
-        p.category_id,
+          SELECT
+            p.id,
+            p.category_id,
 
-        p.name,
-        p.slug,
-        p.sku,
+            p.name,
+            p.slug,
+            p.sku,
 
-        p.price,
-        p.sale_price,
+            p.price,
+            p.sale_price,
 
-        CASE
-          WHEN p.sale_price IS NOT NULL
-            AND p.sale_price > 0
-            AND p.sale_price < p.price
-          THEN p.sale_price
+            CASE
+              WHEN
+                p.sale_price IS NOT NULL
+                AND p.sale_price > 0
+                AND p.sale_price < p.price
 
-          ELSE p.price
-        END AS final_price,
+              THEN p.sale_price
 
-        CASE
-          WHEN p.sale_price IS NOT NULL
-            AND p.sale_price > 0
-            AND p.sale_price < p.price
-          THEN ROUND(
-            (
-              (p.price - p.sale_price)
-              / p.price
-            ) * 100
-          )
+              ELSE p.price
+            END AS final_price,
 
-          ELSE 0
-        END AS discount_percent,
+            CASE
+              WHEN
+                p.sale_price IS NOT NULL
+                AND p.sale_price > 0
+                AND p.sale_price < p.price
 
-        p.quantity,
+              THEN ROUND(
+                (
+                  (
+                    p.price -
+                    p.sale_price
+                  )
+                  / p.price
+                ) * 100
+              )
 
-        p.thumbnail,
-        p.short_description,
-        p.description,
+              ELSE 0
+            END AS discount_percent,
 
-        p.socket,
-        p.ram_type,
+            p.quantity,
 
-        p.created_at,
-        p.updated_at,
+            p.thumbnail,
+            p.short_description,
+            p.description,
 
-        c.name AS category_name,
-        c.slug AS category_slug,
+            p.socket,
+            p.ram_type,
 
-        COALESCE(
-          sales.sold,
-          0
-        ) AS sold,
+            p.created_at,
+            p.updated_at,
 
-        COALESCE(
-          review_stats.average_rating,
-          0
-        ) AS average_rating,
+            c.name AS category_name,
+            c.slug AS category_slug,
 
-        COALESCE(
-          review_stats.review_count,
-          0
-        ) AS review_count
+            COALESCE(
+              sales.sold,
+              0
+            ) AS sold,
 
-      FROM products p
+            COALESCE(
+              review_stats.average_rating,
+              0
+            ) AS average_rating,
 
-      INNER JOIN categories c
-        ON c.id = p.category_id
+            COALESCE(
+              review_stats.review_count,
+              0
+            ) AS review_count
 
-      LEFT JOIN (
-        SELECT
-          oi.product_id,
-          SUM(oi.quantity) AS sold
+          FROM products p
 
-        FROM order_items oi
+          INNER JOIN categories c
+            ON c.id = p.category_id
 
-        INNER JOIN orders o
-          ON o.id = oi.order_id
+          LEFT JOIN (
+            SELECT
+              oi.product_id,
 
-        WHERE
-          oi.deleted_at IS NULL
-          AND o.deleted_at IS NULL
-          AND o.status = 'COMPLETED'
+              SUM(oi.quantity)
+                AS sold
 
-        GROUP BY oi.product_id
-      ) AS sales
-        ON sales.product_id = p.id
+            FROM order_items oi
 
-      LEFT JOIN (
-        SELECT
-          product_id,
+            INNER JOIN orders o
+              ON o.id = oi.order_id
 
-          ROUND(
-            AVG(rating),
-            1
-          ) AS average_rating,
+            WHERE
+              oi.deleted_at IS NULL
+              AND o.deleted_at IS NULL
+              AND o.status = 'COMPLETED'
 
-          COUNT(*) AS review_count
+            GROUP BY oi.product_id
+          ) AS sales
+            ON sales.product_id = p.id
 
-        FROM comments
+          LEFT JOIN (
+            SELECT
+              product_id,
 
-        WHERE
-          deleted_at IS NULL
-          AND is_approved = 1
-          AND rating BETWEEN 1 AND 5
+              ROUND(
+                AVG(rating),
+                1
+              ) AS average_rating,
 
-        GROUP BY product_id
-      ) AS review_stats
-        ON review_stats.product_id = p.id
+              COUNT(*)
+                AS review_count
 
-      WHERE
-        p.slug = ?
+            FROM comments
 
-        AND p.deleted_at IS NULL
-        AND p.status = 1
+            WHERE
+              deleted_at IS NULL
+              AND is_approved = 1
+              AND rating BETWEEN 1 AND 5
 
-        AND c.deleted_at IS NULL
-        AND c.status = 1
+            GROUP BY product_id
+          ) AS review_stats
+            ON review_stats.product_id = p.id
 
-      LIMIT 1
-    `,
+          WHERE
+            p.slug = ?
+
+            AND p.deleted_at IS NULL
+            AND p.status = 1
+
+            AND c.deleted_at IS NULL
+            AND c.status = 1
+
+          LIMIT 1
+        `,
       [slug],
     );
 
@@ -2492,43 +3079,36 @@ class Product {
 
     const product = Product.normalizeClientProduct(products[0]);
 
-    // =========================================
-    // GALLERY
-    // =========================================
-
     const [gallery] = await pool.execute(
       `
-      SELECT
-        id,
-        image_url,
-        sort_order
+          SELECT
+            id,
+            image_url,
+            sort_order
 
-      FROM product_images
+          FROM product_images
 
-      WHERE
-        product_id = ?
-        AND deleted_at IS NULL
+          WHERE
+            product_id = ?
+            AND deleted_at IS NULL
 
-      ORDER BY
-        sort_order ASC,
-        id ASC
-    `,
+          ORDER BY
+            sort_order ASC,
+            id ASC
+        `,
       [product.id],
     );
 
-    /*
-     * Thumbnail cũng được đưa vào danh sách ảnh.
-     *
-     * Nếu thumbnail đã xuất hiện trong gallery
-     * thì không thêm lần nữa.
-     */
     const normalizedGallery = [];
 
     if (product.thumbnail) {
       normalizedGallery.push({
         id: null,
+
         image_url: product.thumbnail,
+
         sort_order: 0,
+
         is_thumbnail: true,
       });
     }
@@ -2549,48 +3129,42 @@ class Product {
       });
     }
 
-    // =========================================
-    // SPECIFICATIONS
-    // =========================================
-
     const [specifications] = await pool.execute(
       `
-        SELECT
-          id,
-          spec_key,
-          spec_value
+          SELECT
+            id,
+            spec_key,
+            spec_value
 
-        FROM product_specifications
+          FROM product_specifications
 
-        WHERE
-          product_id = ?
-          AND deleted_at IS NULL
+          WHERE
+            product_id = ?
+            AND deleted_at IS NULL
 
-        ORDER BY id ASC
-      `,
+          ORDER BY id ASC
+        `,
       [product.id],
     );
 
-    // =========================================
-    // RATING DISTRIBUTION
-    // =========================================
-
     const [ratingRows] = await pool.execute(
       `
-        SELECT
-          rating,
-          COUNT(*) AS total
+          SELECT
+            rating,
 
-        FROM comments
+            COUNT(*)
+              AS total
 
-        WHERE
-          product_id = ?
-          AND deleted_at IS NULL
-          AND is_approved = 1
-          AND rating BETWEEN 1 AND 5
+          FROM comments
 
-        GROUP BY rating
-      `,
+          WHERE
+            product_id = ?
+            AND deleted_at IS NULL
+            AND is_approved = 1
+            AND rating BETWEEN 1 AND 5
+
+          GROUP BY rating
+        `,
       [product.id],
     );
 
@@ -2610,209 +3184,211 @@ class Product {
       }
     }
 
-    // =========================================
-    // REVIEW PREVIEW
-    // =========================================
-
     const [reviews] = await pool.execute(
       `
-        SELECT
-          cm.id,
-          cm.user_id,
-          cm.content,
-          cm.rating,
-          cm.created_at,
+          SELECT
+            cm.id,
+            cm.user_id,
+            cm.content,
+            cm.rating,
+            cm.created_at,
 
-          u.full_name AS user_name,
-          u.avatar AS user_avatar
+            u.full_name
+              AS user_name,
 
-        FROM comments cm
+            u.avatar
+              AS user_avatar
 
-        INNER JOIN users u
-          ON u.id = cm.user_id
+          FROM comments cm
 
-        WHERE
-          cm.product_id = ?
+          INNER JOIN users u
+            ON u.id = cm.user_id
 
-          AND cm.deleted_at IS NULL
-          AND cm.is_approved = 1
+          WHERE
+            cm.product_id = ?
 
-          AND u.deleted_at IS NULL
-          AND u.status = 1
+            AND cm.deleted_at IS NULL
+            AND cm.is_approved = 1
 
-        ORDER BY
-          cm.created_at DESC,
-          cm.id DESC
+            AND u.deleted_at IS NULL
+            AND u.status = 1
 
-        LIMIT 5
-      `,
+          ORDER BY
+            cm.created_at DESC,
+            cm.id DESC
+
+          LIMIT 5
+        `,
       [product.id],
     );
-
-    // =========================================
-    // RELATED PRODUCTS
-    // =========================================
 
     const currentPrice = Number(product.final_price || 0);
 
     const [relatedRows] = await pool.execute(
       `
-        SELECT
-          p.id,
-          p.category_id,
-
-          p.name,
-          p.slug,
-          p.sku,
-          p.thumbnail,
-
-          p.price,
-          p.sale_price,
-
-          CASE
-            WHEN p.sale_price IS NOT NULL
-              AND p.sale_price > 0
-              AND p.sale_price < p.price
-            THEN p.sale_price
-
-            ELSE p.price
-          END AS final_price,
-
-          CASE
-            WHEN p.sale_price IS NOT NULL
-              AND p.sale_price > 0
-              AND p.sale_price < p.price
-            THEN ROUND(
-              (
-                (p.price - p.sale_price)
-                / p.price
-              ) * 100
-            )
-
-            ELSE 0
-          END AS discount_percent,
-
-          p.quantity,
-
-          c.name AS category_name,
-          c.slug AS category_slug,
-
-          COALESCE(
-            sales.sold,
-            0
-          ) AS sold,
-
-          COALESCE(
-            review_stats.average_rating,
-            0
-          ) AS average_rating,
-
-          COALESCE(
-            review_stats.review_count,
-            0
-          ) AS review_count
-
-        FROM products p
-
-        INNER JOIN categories c
-          ON c.id = p.category_id
-
-        LEFT JOIN (
           SELECT
-            oi.product_id,
+            p.id,
+            p.category_id,
 
-            SUM(oi.quantity)
-              AS sold
+            p.name,
+            p.slug,
+            p.sku,
+            p.thumbnail,
 
-          FROM order_items oi
+            p.price,
+            p.sale_price,
 
-          INNER JOIN orders o
-            ON o.id = oi.order_id
+            CASE
+              WHEN
+                p.sale_price IS NOT NULL
+                AND p.sale_price > 0
+                AND p.sale_price < p.price
 
-          WHERE
-            oi.deleted_at IS NULL
-            AND o.deleted_at IS NULL
-            AND o.status = 'COMPLETED'
+              THEN p.sale_price
 
-          GROUP BY oi.product_id
-        ) AS sales
-          ON sales.product_id = p.id
+              ELSE p.price
+            END AS final_price,
 
-        LEFT JOIN (
-          SELECT
-            product_id,
+            CASE
+              WHEN
+                p.sale_price IS NOT NULL
+                AND p.sale_price > 0
+                AND p.sale_price < p.price
 
-            ROUND(
-              AVG(rating),
-              1
+              THEN ROUND(
+                (
+                  (
+                    p.price -
+                    p.sale_price
+                  )
+                  / p.price
+                ) * 100
+              )
+
+              ELSE 0
+            END AS discount_percent,
+
+            p.quantity,
+
+            c.name AS category_name,
+            c.slug AS category_slug,
+
+            COALESCE(
+              sales.sold,
+              0
+            ) AS sold,
+
+            COALESCE(
+              review_stats.average_rating,
+              0
             ) AS average_rating,
 
-            COUNT(*)
-              AS review_count
+            COALESCE(
+              review_stats.review_count,
+              0
+            ) AS review_count
 
-          FROM comments
+          FROM products p
+
+          INNER JOIN categories c
+            ON c.id = p.category_id
+
+          LEFT JOIN (
+            SELECT
+              oi.product_id,
+
+              SUM(oi.quantity)
+                AS sold
+
+            FROM order_items oi
+
+            INNER JOIN orders o
+              ON o.id = oi.order_id
+
+            WHERE
+              oi.deleted_at IS NULL
+              AND o.deleted_at IS NULL
+              AND o.status = 'COMPLETED'
+
+            GROUP BY oi.product_id
+          ) AS sales
+            ON sales.product_id = p.id
+
+          LEFT JOIN (
+            SELECT
+              product_id,
+
+              ROUND(
+                AVG(rating),
+                1
+              ) AS average_rating,
+
+              COUNT(*)
+                AS review_count
+
+            FROM comments
+
+            WHERE
+              deleted_at IS NULL
+              AND is_approved = 1
+              AND rating BETWEEN 1 AND 5
+
+            GROUP BY product_id
+          ) AS review_stats
+            ON review_stats.product_id = p.id
 
           WHERE
-            deleted_at IS NULL
-            AND is_approved = 1
-            AND rating BETWEEN 1 AND 5
+            p.category_id = ?
 
-          GROUP BY product_id
-        ) AS review_stats
-          ON review_stats.product_id = p.id
+            AND p.id <> ?
 
-        WHERE
-          p.category_id = ?
+            AND p.status = 1
+            AND p.deleted_at IS NULL
 
-          AND p.id <> ?
+            AND p.slug IS NOT NULL
+            AND p.slug <> ''
 
-          AND p.status = 1
-          AND p.deleted_at IS NULL
+            AND c.status = 1
+            AND c.deleted_at IS NULL
 
-          AND p.slug IS NOT NULL
-          AND p.slug <> ''
+          ORDER BY
+            CASE
+              WHEN p.quantity > 0
+                THEN 0
 
-          AND c.status = 1
-          AND c.deleted_at IS NULL
+              ELSE 1
+            END ASC,
 
-        ORDER BY
-          CASE
-            WHEN p.quantity > 0
-              THEN 0
-            ELSE 1
-          END ASC,
+            ABS(
+              (
+                CASE
+                  WHEN
+                    p.sale_price IS NOT NULL
+                    AND p.sale_price > 0
+                    AND p.sale_price < p.price
 
-          ABS(
-            (
-              CASE
-                WHEN p.sale_price IS NOT NULL
-                  AND p.sale_price > 0
-                  AND p.sale_price < p.price
-                THEN p.sale_price
-                ELSE p.price
-              END
-            ) - ?
-          ) ASC,
+                  THEN p.sale_price
 
-          COALESCE(
-            sales.sold,
-            0
-          ) DESC,
+                  ELSE p.price
+                END
+              ) - ?
+            ) ASC,
 
-          p.created_at DESC
+            COALESCE(
+              sales.sold,
+              0
+            ) DESC,
 
-        LIMIT 8
-      `,
+            p.created_at DESC
+
+          LIMIT 8
+        `,
       [product.category_id, product.id, currentPrice],
     );
 
     const relatedProducts = relatedRows.map((row) =>
       Product.normalizeClientProduct(row),
     );
-
-    // =========================================
-    // RESPONSE
-    // =========================================
 
     return {
       product,
@@ -2821,6 +3397,7 @@ class Product {
 
       specifications: specifications.map((item) => ({
         ...item,
+
         id: Number(item.id),
       })),
 
