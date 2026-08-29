@@ -112,11 +112,8 @@ function Header() {
 
   useEffect(() => {
     setIsUserMenuOpen(false);
-
     setIsLogoutOpen(false);
-
     setIsMobileMenuOpen(false);
-
     setIsMobileProductOpen(false);
   }, [location.pathname, location.search]);
 
@@ -146,9 +143,7 @@ function Header() {
     const handleDocument = (event) => {
       if (event.type === "keydown" && event.key === "Escape") {
         setIsUserMenuOpen(false);
-
         setIsMobileMenuOpen(false);
-
         setIsMobileProductOpen(false);
 
         return;
@@ -255,7 +250,7 @@ function Header() {
   };
 
   // ==========================================================
-  // USER NAME
+  // USER DISPLAY
   // ==========================================================
 
   const displayUserName =
@@ -272,7 +267,7 @@ function Header() {
     <>
       <header className="client-header">
         {/* ====================================================
-            TOP BAR
+            TOPBAR
         ==================================================== */}
 
         <div className="client-header-topbar">
@@ -332,8 +327,10 @@ function Header() {
                       )}
                     </span>
 
-                    <span className="client-header-account__name">
-                      {displayUserName}
+                    <span className="client-header-account__info">
+                      <small>Tài khoản</small>
+
+                      <strong>{displayUserName}</strong>
                     </span>
 
                     <i
@@ -510,11 +507,11 @@ function Header() {
               </button>
             </form>
 
-            {/* QUICK ACTIONS */}
+            {/* ACTIONS */}
 
             <div className="client-header-main__actions">
               <Link to="/build-pc" className="client-header-build-action">
-                <span>
+                <span className="client-header-action-icon">
                   <i className="bi bi-pc-display-horizontal" />
                 </span>
 
@@ -563,7 +560,7 @@ function Header() {
         </div>
 
         {/* ====================================================
-            DESKTOP NAVIGATION
+            NAVIGATION
         ==================================================== */}
 
         <nav className="client-header-nav">
@@ -691,12 +688,15 @@ function Header() {
             </ul>
 
             <div className="client-header-nav__support">
-              <i className="bi bi-headset" />
-
-              <span>
-                Cần tư vấn?
-                <strong>1900 1234</strong>
+              <span className="client-header-nav__support-icon">
+                <i className="bi bi-headset" />
               </span>
+
+              <div>
+                <small>Cần tư vấn?</small>
+
+                <strong>1900 1234</strong>
+              </div>
             </div>
           </div>
         </nav>
@@ -896,6 +896,12 @@ function Header() {
           </div>
         </div>
       </header>
+
+      {/* ======================================================
+          HEADER SPACER
+      ====================================================== */}
+
+      <div className="client-header-spacer" aria-hidden="true" />
 
       {/* ======================================================
           AUTH MODAL
