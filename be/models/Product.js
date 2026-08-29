@@ -2834,6 +2834,346 @@ class Product {
   }
 
   // ============================================================
+  // CLIENT - TOP SELLING PRODUCTS
+  //
+  // Dùng cho:
+  // GET /api/client/products/top-sellers
+  //
+  // QUAN TRỌNG:
+  // - Không dùng getTopSelling() của Admin.
+  // - Chỉ lấy Product đang hiển thị.
+  // - Chỉ lấy Category đang hiển thị.
+  // - Doanh số chỉ tính đơn COMPLETED.
+  // - Rating chỉ tính comment đã duyệt.
+  // - Giá/stock/SKU/thumbnail ưu tiên Client Default Variant.
+  // - Không tin dữ liệu variant đã ẩn hoặc đã soft-delete.
+  // ============================================================
+
+  static async getClientTopSellingProducts(limit = 8) {
+    // ==========================================================
+    // LIMIT
+    // ==========================================================
+
+    limit = Number.parseInt(limit, 10);
+
+    if (!Number.isInteger(limit) || limit < 1) {
+      limit = 8;
+    }
+
+    // Home không cần trả quá nhiều sản phẩm.
+    limit = Math.min(limit, 24);
+
+    // ==========================================================
+    // PRODUCT BASE QUERY
+    // ==========================================================
+
+    const [rows] = await pool.execute(
+      `
+      SELECT
+        p.id,
+        p.category_id,
+
+        c.name AS category_name,
+        c.slug AS category_slug,
+
+        p.name,
+        p.slug,
+        p.sku,
+
+        p.price,
+        p.sale_price,
+
+        CASE
+          WHEN
+            p.sale_price IS NOT NULL
+            AND p.sale_price > 0
+            AND p.sale_price < p.price
+
+          THEN p.sale_price
+
+          ELSE p.price
+        END AS final_price,
+
+        CASE
+          WHEN
+            p.sale_price IS NOT NULL
+            AND p.sale_price > 0
+            AND p.sale_price < p.price
+            AND p.price > 0
+
+          THEN ROUND(
+            (
+              (
+                p.price -
+                p.sale_price
+              )
+              / p.price
+            ) * 100
+          )
+
+          ELSE 0
+        END AS discount_percent,
+
+        p.quantity,
+
+        p.thumbnail,
+        p.short_description,
+
+        p.socket,
+        p.ram_type,
+
+        COALESCE(
+          sales.sold,
+          0
+        ) AS sold,
+
+        COALESCE(
+          sales.order_count,
+          0
+        ) AS order_count,
+
+        COALESCE(
+          review_stats.average_rating,
+          0
+        ) AS average_rating,
+
+        COALESCE(
+          review_stats.review_count,
+          0
+        ) AS review_count,
+
+        p.created_at,
+        p.updated_at
+
+      FROM products p
+
+      INNER JOIN categories c
+        ON c.id = p.category_id
+
+      LEFT JOIN (
+        SELECT
+          oi.product_id,
+
+          SUM(oi.quantity) AS sold,
+
+          COUNT(
+            DISTINCT oi.order_id
+          ) AS order_count
+
+        FROM order_items oi
+
+        INNER JOIN orders o
+          ON o.id = oi.order_id
+
+        WHERE
+          oi.deleted_at IS NULL
+          AND o.deleted_at IS NULL
+          AND o.status = 'COMPLETED'
+
+        GROUP BY oi.product_id
+      ) AS sales
+        ON sales.product_id = p.id
+
+      LEFT JOIN (
+        SELECT
+          cm.product_id,
+
+          ROUND(
+            AVG(cm.rating),
+            1
+          ) AS average_rating,
+
+          COUNT(*)
+            AS review_count
+
+        FROM comments cm
+
+        WHERE
+          cm.deleted_at IS NULL
+          AND cm.is_approved = 1
+          AND cm.rating BETWEEN 1 AND 5
+
+        GROUP BY cm.product_id
+      ) AS review_stats
+        ON review_stats.product_id = p.id
+
+      WHERE
+        p.deleted_at IS NULL
+        AND p.status = 1
+
+        AND p.slug IS NOT NULL
+        AND p.slug <> ''
+
+        AND c.deleted_at IS NULL
+        AND c.status = 1
+
+      ORDER BY
+        COALESCE(
+          sales.sold,
+          0
+        ) DESC,
+
+        COALESCE(
+          sales.order_count,
+          0
+        ) DESC,
+
+        COALESCE(
+          review_stats.average_rating,
+          0
+        ) DESC,
+
+        p.created_at DESC,
+
+        p.id DESC
+
+      LIMIT ?
+    `,
+      [limit],
+    );
+
+    // ==========================================================
+    // NORMALIZE + VARIANT DATA
+    // ==========================================================
+
+    const products = await Promise.all(
+      rows.map(async (row) => {
+        const product = Product.normalizeClientProduct(row);
+
+        product.order_count = Math.max(Number(row.order_count || 0), 0);
+
+        // ======================================================
+        // CLIENT VARIANT DATA
+        // ======================================================
+
+        const variantData = await ProductVariant.getClientProductVariantData(
+          product.id,
+        );
+
+        const defaultVariant = variantData.default_variant;
+
+        product.has_variants = Boolean(variantData.has_variants);
+
+        product.default_variant_id = defaultVariant
+          ? Number(defaultVariant.id)
+          : null;
+
+        product.available_variant_count = Number(
+          variantData.available_variant_count || 0,
+        );
+
+        product.total_available_quantity = Number(
+          variantData.available_quantity || 0,
+        );
+
+        /*
+         * Mỗi Product hiện tại của project đều thường có ít nhất
+         * một default variant.
+         *
+         * Nhưng vẫn giữ fallback Product để hỗ trợ dữ liệu legacy.
+         */
+        if (defaultVariant) {
+          product.sku = defaultVariant.sku || product.sku;
+
+          product.price = Number(defaultVariant.price || 0);
+
+          product.sale_price =
+            defaultVariant.sale_price !== null &&
+            defaultVariant.sale_price !== undefined
+              ? Number(defaultVariant.sale_price)
+              : null;
+
+          product.final_price = Number(
+            defaultVariant.final_price || defaultVariant.price || 0,
+          );
+
+          product.discount_percent = Number(
+            defaultVariant.discount_percent || 0,
+          );
+
+          product.is_sale = Boolean(defaultVariant.is_sale);
+
+          /*
+           * Thumbnail variant mặc định thắng thumbnail Product.
+           */
+          if (defaultVariant.thumbnail) {
+            product.thumbnail = defaultVariant.thumbnail;
+          }
+
+          /*
+           * quantity trên card:
+           * giữ quantity của variant mặc định để FE biết chính xác
+           * variant đang đại diện cho giá hiển thị còn bao nhiêu.
+           */
+          product.quantity = Math.max(Number(defaultVariant.quantity || 0), 0);
+
+          product.default_variant = {
+            id: Number(defaultVariant.id),
+
+            sku: defaultVariant.sku,
+
+            variant_name: defaultVariant.variant_name,
+
+            price: Number(defaultVariant.price || 0),
+
+            sale_price:
+              defaultVariant.sale_price !== null &&
+              defaultVariant.sale_price !== undefined
+                ? Number(defaultVariant.sale_price)
+                : null,
+
+            final_price: Number(
+              defaultVariant.final_price || defaultVariant.price || 0,
+            ),
+
+            discount_percent: Number(defaultVariant.discount_percent || 0),
+
+            quantity: Math.max(Number(defaultVariant.quantity || 0), 0),
+
+            thumbnail: defaultVariant.thumbnail || null,
+
+            in_stock: Boolean(defaultVariant.in_stock),
+
+            stock_status: defaultVariant.stock_status,
+
+            is_default: Number(defaultVariant.is_default) === 1,
+          };
+        } else {
+          product.default_variant = null;
+        }
+
+        // ======================================================
+        // CLIENT STOCK
+        //
+        // Product được xem là còn hàng nếu ít nhất một visible
+        // variant còn hàng.
+        //
+        // Nếu là dữ liệu legacy không có variant visible thì
+        // fallback về quantity Product.
+        // ======================================================
+
+        const availableQuantity =
+          variantData.available_variant_count > 0
+            ? Number(variantData.available_quantity || 0)
+            : Number(product.quantity || 0);
+
+        product.in_stock = availableQuantity > 0;
+
+        product.stock_status =
+          availableQuantity <= 0
+            ? "out_of_stock"
+            : availableQuantity <= 5
+              ? "low_stock"
+              : "in_stock";
+
+        return product;
+      }),
+    );
+
+    return products;
+  }
+
+  // ============================================================
   // CLIENT - SEARCH SUGGESTIONS
   // ============================================================
 

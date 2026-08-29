@@ -287,7 +287,7 @@ const extractAutoBuildItems = (response) => {
   ];
 
   for (const candidate of candidates) {
-    if (Array.isArray(candidate)) {
+    if (Array.isArray(candidate) && candidate.length > 0) {
       return candidate;
     }
   }
@@ -327,10 +327,16 @@ const extractSavedBuildItems = (build) => {
   ];
 
   for (const candidate of candidates) {
-    if (Array.isArray(candidate)) {
-      return candidate.filter(
-        (item) => !item?.replaced_at && !item?.deleted_at,
-      );
+    if (!Array.isArray(candidate) || candidate.length === 0) {
+      continue;
+    }
+
+    const activeItems = candidate.filter(
+      (item) => !item?.replaced_at && !item?.deleted_at,
+    );
+
+    if (activeItems.length > 0) {
+      return activeItems;
     }
   }
 
@@ -539,50 +545,55 @@ const BuildPC = () => {
           throw new Error("Không tìm thấy cấu hình đã lưu.");
         }
 
-        let rawItems = extractSavedBuildItems(savedBuild);
+        const savedItems = extractSavedBuildItems(savedBuild);
 
-        if (rawItems.length === 0) {
+        if (savedItems.length === 0) {
           throw new Error("Cấu hình đã lưu không có linh kiện.");
         }
 
-        rawItems = await Promise.all(
-          rawItems.map(async (item) => {
-            const quantity = Number(item.quantity || 1);
+        const refreshedItems = await Promise.all(
+          savedItems.map(async (savedItem) => {
+            const quantity = Math.max(1, Number(savedItem.quantity || 1));
 
-            let normalized = normalizePart(item, quantity);
+            const partId = Number(
+              savedItem.part_id ?? savedItem.pc_part_id ?? savedItem.id ?? 0,
+            );
 
-            const needsDetail =
-              !normalized?.type_code ||
-              !normalized?.display_name ||
-              normalized?.display_name === "Linh kiện";
-
-            if (!needsDetail) {
-              return normalized;
-            }
-
-            const partId = Number(item.part_id || item.pc_part_id || 0);
-
-            if (!partId) {
-              return normalized;
+            if (!Number.isInteger(partId) || partId <= 0) {
+              return normalizePart(savedItem, quantity);
             }
 
             try {
               const detailResponse = await buildPcService.getPartById(partId);
 
-              const detail = getSingleData(detailResponse);
+              const currentPart = getSingleData(detailResponse);
 
+              /*
+               * Saved Build giữ snapshot lịch sử.
+               * Current PcPart phải thắng các field hiện tại như:
+               * - giá
+               * - tồn kho
+               * - variant
+               * - thumbnail
+               * - type_code
+               *
+               * Quantity vẫn giữ theo Saved Build.
+               */
               return normalizePart(
                 {
-                  ...(detail || {}),
-
-                  ...item,
-
+                  ...savedItem,
+                  ...(currentPart || {}),
                   part_id: partId,
                 },
                 quantity,
               );
-            } catch {
-              return normalized;
+            } catch (error) {
+              /*
+               * Nếu linh kiện hiện tại đã bị xóa / ẩn / không còn bán,
+               * vẫn giữ snapshot để người dùng thấy cấu hình cũ.
+               * Backend validate/update sẽ là nguồn quyết định cuối cùng.
+               */
+              return normalizePart(savedItem, quantity);
             }
           }),
         );
@@ -599,7 +610,7 @@ const BuildPC = () => {
 
         let mappedCount = 0;
 
-        rawItems.forEach((item) => {
+        refreshedItems.forEach((item) => {
           if (!item) {
             return;
           }
@@ -1038,8 +1049,9 @@ const BuildPC = () => {
 
             return normalizePart(
               {
-                ...(detail || {}),
                 ...item,
+                ...(detail || {}),
+                part_id: partId,
               },
               item.quantity || 1,
             );
@@ -1274,55 +1286,36 @@ const BuildPC = () => {
 
       <main className="client-build-page">
         <div className="client-build-shell">
-          {/* EDIT MODE NOTICE */}
-
           {isEditMode && (
             <section
               style={{
                 marginBottom: "16px",
-
                 padding: "14px 18px",
-
                 display: "flex",
-
                 alignItems: "center",
-
                 justifyContent: "space-between",
-
                 gap: "16px",
-
                 border: "1px solid rgba(239,35,60,.16)",
-
                 borderRadius: "14px",
-
                 background: "#fff",
-
                 boxShadow: "0 8px 24px rgba(15,23,42,.05)",
               }}
             >
               <div
                 style={{
                   display: "flex",
-
                   alignItems: "center",
-
                   gap: "11px",
                 }}
               >
                 <span
                   style={{
                     width: "40px",
-
                     height: "40px",
-
                     display: "grid",
-
                     placeItems: "center",
-
                     borderRadius: "10px",
-
                     background: "#fff1f2",
-
                     color: "#ef233c",
                   }}
                 >
@@ -1333,9 +1326,7 @@ const BuildPC = () => {
                   <strong
                     style={{
                       display: "block",
-
                       color: "#0f172a",
-
                       fontSize: "13px",
                     }}
                   >
@@ -1357,19 +1348,12 @@ const BuildPC = () => {
                 onClick={() => navigate(`/account/builds/${editBuildId}`)}
                 style={{
                   minHeight: "38px",
-
                   padding: "0 13px",
-
                   border: "1px solid #dfe5ec",
-
                   borderRadius: "9px",
-
                   background: "#fff",
-
                   color: "#475569",
-
                   cursor: "pointer",
-
                   fontWeight: "700",
                 }}
               >
@@ -1405,13 +1389,10 @@ const BuildPC = () => {
             </div>
           )}
 
-          {/* HERO */}
-
           {!editLoading && !editError && (
             <>
               <section className="client-build-hero">
                 <div className="client-build-hero-glow client-build-hero-glow--one" />
-
                 <div className="client-build-hero-glow client-build-hero-glow--two" />
 
                 <div className="client-build-hero-content">
@@ -1463,9 +1444,7 @@ const BuildPC = () => {
                     disabled={partTypesLoading}
                   >
                     <i className="bi bi-stars" />
-
                     <span>Build tự động</span>
-
                     <small>Theo ngân sách</small>
                   </button>
 
@@ -1481,15 +1460,12 @@ const BuildPC = () => {
                 </div>
               </section>
 
-              {/* STEPS */}
-
               <section className="client-build-steps">
                 <div className="client-build-step client-build-step--active">
                   <span>01</span>
 
                   <div>
                     <strong>Chọn linh kiện</strong>
-
                     <small>Manual / Auto</small>
                   </div>
                 </div>
@@ -1505,7 +1481,6 @@ const BuildPC = () => {
 
                   <div>
                     <strong>Kiểm tra</strong>
-
                     <small>Compatibility</small>
                   </div>
                 </div>
@@ -1521,13 +1496,10 @@ const BuildPC = () => {
 
                   <div>
                     <strong>{isEditMode ? "Cập nhật" : "Hoàn tất"}</strong>
-
                     <small>{isEditMode ? "Save changes" : "Lưu / Cart"}</small>
                   </div>
                 </div>
               </section>
-
-              {/* MAIN */}
 
               <div className="client-build-layout">
                 <section className="client-build-board">
@@ -1544,7 +1516,6 @@ const BuildPC = () => {
 
                     <div className="client-build-board-progress">
                       <strong>{selectedCount}</strong>
-
                       <span>/ {partTypes.length || 8} nhóm</span>
                     </div>
                   </div>
@@ -1632,8 +1603,6 @@ const BuildPC = () => {
                       </div>
                     )}
                 </section>
-
-                {/* SUMMARY */}
 
                 <aside className="client-build-summary-wrap">
                   <section className="client-build-summary">
@@ -1759,7 +1728,6 @@ const BuildPC = () => {
                         {validationError && (
                           <div className="client-build-compat-message client-build-compat-message--error">
                             <i className="bi bi-exclamation-circle" />
-
                             <span>{validationError}</span>
                           </div>
                         )}
@@ -1767,7 +1735,6 @@ const BuildPC = () => {
                         {!validating && !validationError && isValid && (
                           <div className="client-build-compat-message client-build-compat-message--success">
                             <i className="bi bi-shield-check" />
-
                             <span>
                               Các linh kiện hiện tại tương thích với nhau.
                             </span>
@@ -1823,6 +1790,7 @@ const BuildPC = () => {
 
                                   <span>
                                     {check.message ||
+                                      check.rule ||
                                       check.code ||
                                       `Kiểm tra ${index + 1}`}
                                   </span>
@@ -1837,7 +1805,6 @@ const BuildPC = () => {
                     <div className="client-build-total">
                       <div>
                         <span>Tổng giá trị cấu hình</span>
-
                         <small>Giá được xác minh bởi Backend</small>
                       </div>
 
@@ -1909,8 +1876,6 @@ const BuildPC = () => {
         </div>
       </main>
 
-      {/* PART SELECTOR */}
-
       <PartSelectorModal
         open={selectorOpen}
         partType={activePartType}
@@ -1931,8 +1896,6 @@ const BuildPC = () => {
         }}
       />
 
-      {/* AUTO BUILD */}
-
       <AutoBuildModal
         open={autoBuildOpen}
         options={autoBuildOptions}
@@ -1945,8 +1908,6 @@ const BuildPC = () => {
         }}
         onGenerate={handleGenerateAutoBuild}
       />
-
-      {/* SAVE / UPDATE */}
 
       <SaveBuildModal
         open={saveModalOpen}
@@ -1963,8 +1924,6 @@ const BuildPC = () => {
         }}
         onSave={handleSaveBuild}
       />
-
-      {/* RESET */}
 
       <ResetBuildModal
         open={resetModalOpen}

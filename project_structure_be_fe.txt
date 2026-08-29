@@ -370,6 +370,9 @@ fe/
 │   │       │   └── About.jsx
 │   │       ├── Account/
 │   │       │   ├── Account.css
+│   │       │   ├── AccountBuildDetail.jsx
+│   │       │   ├── AccountBuilds.css
+│   │       │   ├── AccountBuilds.jsx
 │   │       │   ├── AccountChangePassword.jsx
 │   │       │   ├── AccountLayout.jsx
 │   │       │   ├── AccountOrderDetail.jsx
@@ -390,10 +393,14 @@ fe/
 │   │       │   └── BlogDetail.jsx
 │   │       ├── BuildPC/
 │   │       │   ├── components/
+│   │       │   │   ├── AutoBuildModal.jsx
 │   │       │   │   ├── BuildPartRow.jsx
-│   │       │   │   └── PartSelectorModal.jsx
+│   │       │   │   ├── PartSelectorModal.jsx
+│   │       │   │   ├── ResetBuildModal.jsx
+│   │       │   │   └── SaveBuildModal.jsx
 │   │       │   ├── BuildPC.css
-│   │       │   └── BuildPC.jsx
+│   │       │   ├── BuildPC.jsx
+│   │       │   └── BuildPCActions.css
 │   │       ├── Cart/
 │   │       │   ├── Cart.css
 │   │       │   └── Cart.jsx
@@ -432,7 +439,7 @@ fe/
 └── README.md
 
 Frontend folders: 62
-Frontend files: 215
+Frontend files: 222
 
 
 ==========================================================================================
@@ -647,6 +654,9 @@ src/
 │       │   └── About.jsx
 │       ├── Account/
 │       │   ├── Account.css
+│       │   ├── AccountBuildDetail.jsx
+│       │   ├── AccountBuilds.css
+│       │   ├── AccountBuilds.jsx
 │       │   ├── AccountChangePassword.jsx
 │       │   ├── AccountLayout.jsx
 │       │   ├── AccountOrderDetail.jsx
@@ -667,10 +677,14 @@ src/
 │       │   └── BlogDetail.jsx
 │       ├── BuildPC/
 │       │   ├── components/
+│       │   │   ├── AutoBuildModal.jsx
 │       │   │   ├── BuildPartRow.jsx
-│       │   │   └── PartSelectorModal.jsx
+│       │   │   ├── PartSelectorModal.jsx
+│       │   │   ├── ResetBuildModal.jsx
+│       │   │   └── SaveBuildModal.jsx
 │       │   ├── BuildPC.css
-│       │   └── BuildPC.jsx
+│       │   ├── BuildPC.jsx
+│       │   └── BuildPCActions.css
 │       ├── Cart/
 │       │   ├── Cart.css
 │       │   └── Cart.jsx

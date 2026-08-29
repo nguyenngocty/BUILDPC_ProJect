@@ -1,42 +1,119 @@
+import { Link } from "react-router-dom";
+
 import SectionTitle from "./SectionTitle";
 
-function SuggestedBuildSection({ builds }) {
+// ============================================================
+// BUILD INTENTS
+//
+// Đây KHÔNG phải cấu hình sản phẩm cố định.
+// Chỉ là các hướng nhu cầu để đưa người dùng vào Build PC.
+// ============================================================
+
+const buildSuggestions = [
+  {
+    id: "gaming",
+    icon: "bi-controller",
+    label: "Gaming",
+    title: "PC Gaming",
+    description:
+      "Ưu tiên hiệu năng CPU và GPU để chơi game ổn định ở độ phân giải phù hợp.",
+    tags: ["Gaming", "FPS", "AAA"],
+  },
+  {
+    id: "office",
+    icon: "bi-briefcase",
+    label: "Học tập & công việc",
+    title: "PC Văn phòng",
+    description:
+      "Tập trung vào độ ổn định, khả năng đa nhiệm và chi phí hợp lý cho công việc hằng ngày.",
+    tags: ["Office", "Học tập", "Đa nhiệm"],
+  },
+  {
+    id: "creator",
+    icon: "bi-bezier2",
+    label: "Creator",
+    title: "PC Đồ họa",
+    description:
+      "Phù hợp cho thiết kế, dựng video và các tác vụ sáng tạo cần hiệu năng xử lý cao.",
+    tags: ["Design", "Video", "Render"],
+  },
+  {
+    id: "performance",
+    icon: "bi-speedometer2",
+    label: "Hiệu năng cao",
+    title: "PC Workstation",
+    description:
+      "Hướng đến những tác vụ nặng cần CPU, RAM và khả năng xử lý liên tục trong thời gian dài.",
+    tags: ["Workstation", "Render", "Hiệu năng"],
+  },
+];
+
+// ============================================================
+// COMPONENT
+// ============================================================
+
+function SuggestedBuildSection() {
   return (
-    <section className="build-showcase">
-      <SectionTitle title="Cấu hình PC gợi ý" />
+    <section className="client-home-build-suggestions">
+      <SectionTitle
+        eyebrow="GỢI Ý NHU CẦU"
+        title="Bạn đang muốn build PC để làm gì?"
+        description="Chọn nhu cầu gần nhất với bạn rồi sử dụng công cụ Build PC để tự lựa chọn linh kiện và kiểm tra cấu hình."
+        link="/build-pc"
+        linkText="Mở PC Builder"
+      />
 
-      <div className="build-showcase__grid">
-        {builds.map((item, index) => (
-          <article className="build-card" key={index}>
-            <div className="build-card__image">
-              <img src={item.img} alt={item.title} />
+      <div className="client-home-build-suggestions__grid">
+        {buildSuggestions.map((item, index) => (
+          <article className="client-home-build-suggestion-card" key={item.id}>
+            <div className="client-home-build-suggestion-card__top">
+              <span className="client-home-build-suggestion-card__number">
+                {String(index + 1).padStart(2, "0")}
+              </span>
 
-              <span className="build-card__badge">Best Build</span>
+              <span className="client-home-build-suggestion-card__icon">
+                <i className={`bi ${item.icon}`} />
+              </span>
             </div>
 
-            <div className="build-card__content">
-              <h3 className="build-card__title">{item.title}</h3>
+            <div className="client-home-build-suggestion-card__content">
+              <span className="client-home-build-suggestion-card__label">
+                {item.label}
+              </span>
 
-              <p className="build-card__description">{item.desc}</p>
+              <h3>{item.title}</h3>
 
-              <div className="build-card__footer">
-                <div className="build-card__price">{item.price}</div>
+              <p>{item.description}</p>
 
-                <div className="build-card__buttons">
-                  <button className="build-card__button build-card__button--outline">
-                    <i className="bi bi-eye"></i>
-                    Chi tiết
-                  </button>
-
-                  <button className="build-card__button build-card__button--primary">
-                    <i className="bi bi-sliders"></i>
-                    Tùy chỉnh
-                  </button>
-                </div>
+              <div className="client-home-build-suggestion-card__tags">
+                {item.tags.map((tag) => (
+                  <span key={tag}>{tag}</span>
+                ))}
               </div>
             </div>
+
+            <Link
+              to="/build-pc"
+              className="client-home-build-suggestion-card__action"
+              aria-label={`Build ${item.title}`}
+            >
+              <span>Bắt đầu cấu hình</span>
+
+              <i className="bi bi-arrow-up-right" />
+            </Link>
           </article>
         ))}
+      </div>
+
+      <div className="client-home-build-suggestions__notice">
+        <span className="client-home-build-suggestions__notice-icon">
+          <i className="bi bi-info-circle" />
+        </span>
+
+        <p>
+          Các mục phía trên chỉ là định hướng nhu cầu. Giá và linh kiện thực tế
+          chỉ được xác định sau khi bạn lựa chọn trong công cụ Build PC.
+        </p>
       </div>
     </section>
   );
