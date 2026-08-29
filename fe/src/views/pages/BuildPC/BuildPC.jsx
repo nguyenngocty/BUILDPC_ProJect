@@ -1,94 +1,450 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+
+import toast from "react-hot-toast";
+
 import "./BuildPC.css";
+import "./BuildPCActions.css";
+
+import Header from "../../components/Header";
+import Footer from "../../components/Footer";
 
 import buildPcService from "../../../services/buildPcService";
+
+import useAuth from "../../../hooks/useAuth";
+import { useCart } from "../../../context/CartContext";
+
 import BuildPartRow from "./components/BuildPartRow";
 import PartSelectorModal from "./components/PartSelectorModal";
+import AutoBuildModal from "./components/AutoBuildModal";
+import SaveBuildModal from "./components/SaveBuildModal";
+import ResetBuildModal from "./components/ResetBuildModal";
 
-const getListData = (response) => {
-  const data = response?.data?.data ?? [];
+// ============================================================
+// CONSTANTS
+// ============================================================
 
-  if (Array.isArray(data)) {
-    return data;
-  }
+const BUILD_ORDER = [
+  "cpu",
+  "mainboard",
+  "ram",
+  "vga",
+  "cooling",
+  "psu",
+  "storage",
+  "case",
+];
 
-  if (Array.isArray(data?.items)) {
-    return data.items;
-  }
-
-  return [];
+const TYPE_ICONS = {
+  cpu: "bi-cpu",
+  mainboard: "bi-motherboard",
+  ram: "bi-memory",
+  vga: "bi-gpu-card",
+  cooling: "bi-fan",
+  psu: "bi-lightning-charge",
+  storage: "bi-device-ssd",
+  case: "bi-pc-display",
 };
+
+const TYPE_SHORT_DESCRIPTION = {
+  cpu: "Bộ xử lý trung tâm",
+  mainboard: "Bo mạch chủ",
+  ram: "Bộ nhớ hệ thống",
+  vga: "Card đồ họa",
+  cooling: "Tản nhiệt CPU",
+  psu: "Nguồn máy tính",
+  storage: "Thiết bị lưu trữ",
+  case: "Vỏ máy tính",
+};
+
+const MULTI_QUANTITY_TYPES = new Set(["ram", "storage"]);
+
+// ============================================================
+// HELPERS
+// ============================================================
 
 const normalizeTypeCode = (value) =>
   String(value || "")
     .trim()
     .toLowerCase();
 
-const getPartStock = (part) => {
-  const stock = Number(part?.product_quantity);
+const formatPrice = (value) => {
+  const number = Number(value);
 
-  if (!Number.isFinite(stock)) {
-    return 0;
+  if (!Number.isFinite(number)) {
+    return "0đ";
   }
 
-  return Math.max(0, Math.floor(stock));
+  return `${Math.round(number).toLocaleString("vi-VN")}đ`;
 };
 
+const getListData = (response) => {
+  const payload = response?.data?.data ?? response?.data ?? [];
+
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (Array.isArray(payload?.items)) {
+    return payload.items;
+  }
+
+  return [];
+};
+
+const getSingleData = (response) => {
+  return response?.data?.data ?? response?.data ?? null;
+};
+
+const getValidationData = (response) => {
+  return response?.data?.data ?? response?.data ?? null;
+};
+
+const parseSpecifications = (value) => {
+  if (!value) {
+    return {};
+  }
+
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  return {};
+};
+
+const normalizePart = (part, quantity = 1) => {
+  if (!part) {
+    return null;
+  }
+
+  const specifications = parseSpecifications(part.specifications);
+
+  const partId = Number(part.part_id ?? part.pc_part_id ?? part.id ?? 0);
+
+  const productId = Number(part.product_id ?? 0);
+
+  const rawVariantId = part.variant_id;
+
+  const variantId =
+    rawVariantId !== null && rawVariantId !== undefined && rawVariantId !== ""
+      ? Number(rawVariantId)
+      : null;
+
+  const originalPrice = Number(
+    part.variant_price ??
+      part.product_price ??
+      part.regular_price ??
+      part.price ??
+      0,
+  );
+
+  const salePrice = Number(
+    part.variant_sale_price ?? part.product_sale_price ?? part.sale_price ?? 0,
+  );
+
+  const effectivePrice = Number(
+    part.effective_price ??
+      part.current_price ??
+      part.final_price ??
+      (salePrice > 0 && salePrice < originalPrice ? salePrice : originalPrice),
+  );
+
+  const stock = Math.max(
+    0,
+    Number(
+      part.stock_quantity ??
+        part.variant_stock ??
+        part.product_quantity ??
+        part.product_total_stock ??
+        part.stock ??
+        part.quantity ??
+        0,
+    ),
+  );
+
+  const name =
+    part.display_name ||
+    part.variant_display_name ||
+    part.variant_name ||
+    part.product_name ||
+    part.name ||
+    "Linh kiện";
+
+  const sku =
+    part.display_sku || part.variant_sku || part.product_sku || part.sku || "";
+
+  const image =
+    part.display_thumbnail ||
+    part.display_image ||
+    part.variant_thumbnail ||
+    part.product_thumbnail ||
+    part.thumbnail ||
+    part.image ||
+    "";
+
+  const typeCode = normalizeTypeCode(
+    part.type_code ||
+      part.part_type_code ||
+      part.category_code ||
+      part.pc_part_type_code ||
+      part.part_type?.type_code ||
+      "",
+  );
+
+  return {
+    ...part,
+
+    id: partId,
+    part_id: partId,
+
+    product_id: productId,
+
+    variant_id: Number.isInteger(variantId) && variantId > 0 ? variantId : null,
+
+    type_code: typeCode,
+
+    display_name: name,
+    display_sku: sku,
+    display_thumbnail: image,
+
+    original_price: originalPrice,
+    sale_price: salePrice,
+    effective_price: effectivePrice,
+
+    stock_quantity: stock,
+
+    buildQuantity: Math.max(1, Number(quantity || 1)),
+
+    specifications,
+
+    socket: specifications.socket || part.socket || part.product_socket || "",
+
+    ram_type:
+      specifications.ram_type || part.ram_type || part.product_ram_type || "",
+
+    form_factor: specifications.form_factor || part.form_factor || "",
+
+    wattage: specifications.wattage || part.wattage || "",
+
+    power_recommend:
+      specifications.power_recommend || part.power_recommend || "",
+  };
+};
+
+const buildSelectedPayload = (selectedParts) => {
+  return Object.values(selectedParts)
+    .flatMap((items) => (Array.isArray(items) ? items : []))
+    .filter(Boolean)
+    .map((item) => ({
+      part_id: Number(item.part_id || item.id),
+
+      quantity: Number(item.buildQuantity || 1),
+    }))
+    .filter(
+      (item) =>
+        Number.isInteger(item.part_id) &&
+        item.part_id > 0 &&
+        Number.isInteger(item.quantity) &&
+        item.quantity > 0,
+    );
+};
+
+const extractAutoBuildItems = (response) => {
+  const data = getSingleData(response);
+
+  const candidates = [
+    data?.items,
+    data?.parts,
+    data?.components,
+    data?.build?.items,
+    data?.build?.parts,
+    data?.recommendation?.items,
+    data?.configuration?.items,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate;
+    }
+  }
+
+  return [];
+};
+
+const extractAutoBuildOptions = (response) => {
+  const data = getSingleData(response);
+
+  if (Array.isArray(data)) {
+    return data;
+  }
+
+  if (Array.isArray(data?.usages)) {
+    return data.usages;
+  }
+
+  if (Array.isArray(data?.options)) {
+    return data.options;
+  }
+
+  return [];
+};
+
+// ============================================================
+// COMPONENT
+// ============================================================
+
 const BuildPC = () => {
+  const auth = useAuth();
+
+  const { refreshCart } = useCart();
+
+  const isLoggedIn = Boolean(auth?.isAuthenticated || auth?.currentUser);
+
+  // ==========================================================
+  // PART TYPES
+  // ==========================================================
+
   const [partTypes, setPartTypes] = useState([]);
+
   const [partTypesLoading, setPartTypesLoading] = useState(true);
+
   const [partTypesError, setPartTypesError] = useState("");
+
+  // ==========================================================
+  // SELECTED BUILD
+  // ==========================================================
 
   const [selectedParts, setSelectedParts] = useState({});
 
+  // ==========================================================
+  // SELECTOR
+  // ==========================================================
+
   const [selectorOpen, setSelectorOpen] = useState(false);
+
   const [activePartType, setActivePartType] = useState(null);
 
   const [availableParts, setAvailableParts] = useState([]);
+
   const [partsLoading, setPartsLoading] = useState(false);
+
   const [partsError, setPartsError] = useState("");
 
-  const loadPartTypes = async () => {
+  // ==========================================================
+  // VALIDATION
+  // ==========================================================
+
+  const [validation, setValidation] = useState(null);
+
+  const [validating, setValidating] = useState(false);
+
+  const [validationError, setValidationError] = useState("");
+
+  // ==========================================================
+  // AUTO BUILD
+  // ==========================================================
+
+  const [autoBuildOpen, setAutoBuildOpen] = useState(false);
+
+  const [autoBuildOptions, setAutoBuildOptions] = useState([]);
+
+  const [autoOptionsLoading, setAutoOptionsLoading] = useState(false);
+
+  const [autoGenerating, setAutoGenerating] = useState(false);
+
+  // ==========================================================
+  // SAVE
+  // ==========================================================
+
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+
+  const [saving, setSaving] = useState(false);
+
+  // ==========================================================
+  // CART
+  // ==========================================================
+
+  const [addingToCart, setAddingToCart] = useState(false);
+
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+
+  // ==========================================================
+  // LOAD TYPES
+  // ==========================================================
+
+  const loadPartTypes = useCallback(async () => {
     try {
       setPartTypesLoading(true);
       setPartTypesError("");
 
       const response = await buildPcService.getPartTypes();
 
-      const types = getListData(response)
+      const rawTypes = getListData(response);
+
+      const normalizedTypes = rawTypes
         .map((type) => ({
           ...type,
+
+          id: Number(type.id || type.type_id),
+
           type_code: normalizeTypeCode(type.type_code),
+
+          type_name: type.type_name || type.name || type.type_code,
         }))
         .filter((type) => type.id && type.type_code);
 
-      setPartTypes(types);
+      normalizedTypes.sort((a, b) => {
+        const aIndex = BUILD_ORDER.indexOf(a.type_code);
+
+        const bIndex = BUILD_ORDER.indexOf(b.type_code);
+
+        return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+      });
+
+      setPartTypes(normalizedTypes);
 
       setSelectedParts((previous) => {
         const next = {};
 
-        types.forEach((type) => {
+        normalizedTypes.forEach((type) => {
           next[type.type_code] = previous[type.type_code] || [];
         });
 
         return next;
       });
     } catch (error) {
-      console.error("Lỗi lấy loại linh kiện:", error);
+      console.error("Lỗi lấy nhóm linh kiện:", error);
 
       setPartTypes([]);
       setSelectedParts({});
 
       setPartTypesError(
         error?.response?.data?.message ||
-          "Không thể tải danh sách loại linh kiện.",
+          "Không thể tải danh sách nhóm linh kiện Build PC.",
       );
     } finally {
       setPartTypesLoading(false);
     }
-  };
+  }, []);
 
-  const loadPartsByType = async (partType) => {
+  useEffect(() => {
+    loadPartTypes();
+  }, [loadPartTypes]);
+
+  // ==========================================================
+  // LOAD PARTS
+  // ==========================================================
+
+  const loadPartsByType = useCallback(async (partType) => {
     if (!partType?.id) {
       return;
     }
@@ -98,9 +454,21 @@ const BuildPC = () => {
       setPartsError("");
       setAvailableParts([]);
 
-      const response = await buildPcService.getPartsByType(partType.id);
+      const response = await buildPcService.getParts({
+        type_id: partType.id,
 
-      setAvailableParts(getListData(response));
+        in_stock: 1,
+
+        page: 1,
+
+        limit: 100,
+      });
+
+      const parts = getListData(response)
+        .map((part) => normalizePart(part))
+        .filter((part) => part && part.part_id > 0);
+
+      setAvailableParts(parts);
     } catch (error) {
       console.error("Lỗi lấy linh kiện:", error);
 
@@ -112,11 +480,11 @@ const BuildPC = () => {
     } finally {
       setPartsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadPartTypes();
   }, []);
+
+  // ==========================================================
+  // SELECTOR
+  // ==========================================================
 
   const handleOpenSelector = async (partType) => {
     if (!partType?.id) {
@@ -124,6 +492,7 @@ const BuildPC = () => {
     }
 
     setActivePartType(partType);
+
     setSelectorOpen(true);
 
     await loadPartsByType(partType);
@@ -143,22 +512,19 @@ const BuildPC = () => {
 
     const typeCode = normalizeTypeCode(activePartType.type_code);
 
-    if (!typeCode) {
-      return;
-    }
+    const normalized = normalizePart(part);
 
-    const stock = getPartStock(part);
-
-    if (stock <= 0) {
+    if (!typeCode || !normalized || normalized.stock_quantity <= 0) {
       return;
     }
 
     setSelectedParts((previous) => ({
       ...previous,
+
       [typeCode]: [
         {
-          ...part,
-          stock,
+          ...normalized,
+          type_code: typeCode,
           buildQuantity: 1,
         },
       ],
@@ -166,6 +532,10 @@ const BuildPC = () => {
 
     handleCloseSelector();
   };
+
+  // ==========================================================
+  // REMOVE
+  // ==========================================================
 
   const handleRemovePart = (typeCode) => {
     const code = normalizeTypeCode(typeCode);
@@ -176,26 +546,32 @@ const BuildPC = () => {
 
     setSelectedParts((previous) => ({
       ...previous,
+
       [code]: [],
     }));
   };
 
+  // ==========================================================
+  // QUANTITY
+  // ==========================================================
+
   const handleQuantityChange = (typeCode, partIndex, nextQuantity) => {
     const code = normalizeTypeCode(typeCode);
 
-    if (!code) {
+    if (!code || !MULTI_QUANTITY_TYPES.has(code)) {
       return;
     }
 
     setSelectedParts((previous) => {
       const items = [...(previous[code] || [])];
+
       const target = items[partIndex];
 
       if (!target) {
         return previous;
       }
 
-      const stock = getPartStock(target);
+      const stock = Math.max(0, Number(target.stock_quantity || 0));
 
       if (stock <= 0) {
         return previous;
@@ -208,6 +584,7 @@ const BuildPC = () => {
       }
 
       quantity = Math.max(1, Math.floor(quantity));
+
       quantity = Math.min(quantity, stock);
 
       items[partIndex] = {
@@ -222,23 +599,107 @@ const BuildPC = () => {
     });
   };
 
-  const hasSelectedParts = Object.values(selectedParts).some(
-    (items) => Array.isArray(items) && items.length > 0,
+  // ==========================================================
+  // PAYLOAD
+  // ==========================================================
+
+  const buildItems = useMemo(
+    () => buildSelectedPayload(selectedParts),
+    [selectedParts],
   );
+
+  const selectedCount = buildItems.length;
+
+  const hasSelectedParts = selectedCount > 0;
+
+  // ==========================================================
+  // PREVIEW TOTAL
+  // ==========================================================
+
+  const previewTotal = useMemo(() => {
+    return Object.values(selectedParts)
+      .flat()
+      .filter(Boolean)
+      .reduce(
+        (total, item) =>
+          total +
+          Number(item.effective_price || 0) * Number(item.buildQuantity || 1),
+        0,
+      );
+  }, [selectedParts]);
+
+  const displayedTotal =
+    validation?.total_price !== undefined && validation?.total_price !== null
+      ? Number(validation.total_price)
+      : previewTotal;
+
+  // ==========================================================
+  // REALTIME VALIDATE
+  // ==========================================================
+
+  useEffect(() => {
+    if (buildItems.length === 0) {
+      setValidation(null);
+      setValidationError("");
+      setValidating(false);
+
+      return undefined;
+    }
+
+    let active = true;
+
+    const timer = window.setTimeout(async () => {
+      try {
+        setValidating(true);
+        setValidationError("");
+
+        const response = await buildPcService.validateBuild(buildItems);
+
+        if (!active) {
+          return;
+        }
+
+        setValidation(getValidationData(response));
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+
+        console.error("Lỗi validate Build PC:", error);
+
+        setValidation(null);
+
+        setValidationError(
+          error?.response?.data?.message ||
+            "Không thể kiểm tra cấu hình lúc này.",
+        );
+      } finally {
+        if (active) {
+          setValidating(false);
+        }
+      }
+    }, 350);
+
+    return () => {
+      active = false;
+
+      window.clearTimeout(timer);
+    };
+  }, [buildItems]);
+
+  // ==========================================================
+  // RESET
+  // ==========================================================
 
   const handleResetBuild = () => {
     if (!hasSelectedParts) {
       return;
     }
 
-    const confirmed = window.confirm(
-      "Bạn có chắc muốn xóa toàn bộ linh kiện đã chọn?",
-    );
+    setResetModalOpen(true);
+  };
 
-    if (!confirmed) {
-      return;
-    }
-
+  const handleConfirmResetBuild = () => {
     const emptyBuild = {};
 
     partTypes.forEach((type) => {
@@ -246,123 +707,769 @@ const BuildPC = () => {
     });
 
     setSelectedParts(emptyBuild);
+
+    setValidation(null);
+    setValidationError("");
+
+    setResetModalOpen(false);
+
+    toast.success("Đã làm mới cấu hình.", {
+      icon: "✨",
+    });
   };
 
+  // ==========================================================
+  // AUTO BUILD OPTIONS
+  // ==========================================================
+
+  const handleOpenAutoBuild = async () => {
+    setAutoBuildOpen(true);
+
+    if (autoBuildOptions.length > 0) {
+      return;
+    }
+
+    try {
+      setAutoOptionsLoading(true);
+
+      const response = await buildPcService.getAutoBuildOptions();
+
+      setAutoBuildOptions(extractAutoBuildOptions(response));
+    } catch (error) {
+      console.error("Lỗi lấy Auto Build options:", error);
+
+      // Modal vẫn dùng fallback options.
+      setAutoBuildOptions([]);
+    } finally {
+      setAutoOptionsLoading(false);
+    }
+  };
+
+  // ==========================================================
+  // AUTO BUILD GENERATE
+  // ==========================================================
+
+  const handleGenerateAutoBuild = async ({ usage, budget }) => {
+    try {
+      setAutoGenerating(true);
+
+      const response = await buildPcService.autoBuild({
+        usage,
+        budget,
+      });
+
+      let rawItems = extractAutoBuildItems(response);
+
+      if (!rawItems.length) {
+        throw new Error("Hệ thống không trả về linh kiện cho cấu hình.");
+      }
+
+      // ----------------------------------------------------
+      // Nếu một item Auto Build thiếu type_code,
+      // lấy detail PcPart để bổ sung.
+      // ----------------------------------------------------
+
+      rawItems = await Promise.all(
+        rawItems.map(async (item) => {
+          const current = normalizePart(item, item.quantity || 1);
+
+          if (current?.type_code) {
+            return current;
+          }
+
+          const partId = Number(item.part_id || item.id || 0);
+
+          if (!partId) {
+            return current;
+          }
+
+          try {
+            const detailResponse = await buildPcService.getPartById(partId);
+
+            const detail = getSingleData(detailResponse);
+
+            return normalizePart(
+              {
+                ...(detail || {}),
+                ...item,
+              },
+              item.quantity || 1,
+            );
+          } catch {
+            return current;
+          }
+        }),
+      );
+
+      const next = {};
+
+      partTypes.forEach((type) => {
+        next[type.type_code] = [];
+      });
+
+      let mappedCount = 0;
+
+      rawItems.forEach((item) => {
+        if (!item) {
+          return;
+        }
+
+        const code = normalizeTypeCode(item.type_code);
+
+        if (!code || !Object.prototype.hasOwnProperty.call(next, code)) {
+          return;
+        }
+
+        next[code] = [
+          {
+            ...item,
+            type_code: code,
+            buildQuantity: Number(item.buildQuantity || item.quantity || 1),
+          },
+        ];
+
+        mappedCount += 1;
+      });
+
+      if (mappedCount === 0) {
+        throw new Error(
+          "Không thể ánh xạ linh kiện Auto Build vào 8 nhóm Build PC.",
+        );
+      }
+
+      setSelectedParts(next);
+
+      setAutoBuildOpen(false);
+
+      toast.success(
+        `Đã tạo cấu hình tự động với ${mappedCount} nhóm linh kiện.`,
+      );
+
+      window.setTimeout(() => {
+        window.scrollTo({
+          top: Math.max(
+            0,
+            document.querySelector(".client-build-layout")?.offsetTop - 80 || 0,
+          ),
+          behavior: "smooth",
+        });
+      }, 100);
+    } catch (error) {
+      console.error("Lỗi Auto Build:", error);
+
+      toast.error(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Không thể tạo cấu hình tự động.",
+      );
+    } finally {
+      setAutoGenerating(false);
+    }
+  };
+
+  // ==========================================================
+  // SAVE
+  // ==========================================================
+
+  const handleOpenSave = () => {
+    if (!isLoggedIn) {
+      toast.error("Vui lòng đăng nhập trước khi lưu cấu hình.");
+
+      return;
+    }
+
+    if (!hasSelectedParts || !validation?.is_valid) {
+      toast.error("Cấu hình chưa hợp lệ để lưu.");
+
+      return;
+    }
+
+    setSaveModalOpen(true);
+  };
+
+  const handleSaveBuild = async ({ name, description }) => {
+    if (!isLoggedIn) {
+      toast.error("Phiên đăng nhập không còn hợp lệ.");
+
+      setSaveModalOpen(false);
+
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      await buildPcService.saveBuild({
+        name,
+        description: description || null,
+        items: buildItems,
+      });
+
+      setSaveModalOpen(false);
+
+      toast.success("Đã lưu cấu hình vào My Builds.");
+    } catch (error) {
+      console.error("Lỗi lưu Build:", error);
+
+      toast.error(error?.response?.data?.message || "Không thể lưu cấu hình.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ==========================================================
+  // ADD BUILD TO CART
+  // ==========================================================
+
+  const handleAddBuildToCart = async () => {
+    if (!isLoggedIn) {
+      toast.error("Vui lòng đăng nhập trước khi thêm cấu hình vào giỏ hàng.");
+
+      return;
+    }
+
+    if (!hasSelectedParts || !validation?.is_valid) {
+      toast.error("Cấu hình chưa hợp lệ để thêm vào giỏ.");
+
+      return;
+    }
+
+    try {
+      setAddingToCart(true);
+
+      await buildPcService.addBuildToCart(buildItems);
+
+      if (typeof refreshCart === "function") {
+        await refreshCart({
+          silent: true,
+        });
+      }
+
+      toast.success("Đã thêm toàn bộ cấu hình vào giỏ hàng.");
+    } catch (error) {
+      console.error("Lỗi Build → Cart:", error);
+
+      const details = error?.response?.data?.details;
+
+      const message =
+        error?.response?.data?.message ||
+        details?.message ||
+        error?.message ||
+        "Không thể thêm cấu hình vào giỏ hàng.";
+
+      toast.error(message);
+    } finally {
+      setAddingToCart(false);
+    }
+  };
+
+  // ==========================================================
+  // VALIDATION STATUS
+  // ==========================================================
+
+  const isValid = validation?.is_valid === true;
+
+  const isInvalid = validation?.is_valid === false;
+
+  const errors = Array.isArray(validation?.errors) ? validation.errors : [];
+
+  const warnings = Array.isArray(validation?.warnings)
+    ? validation.warnings
+    : [];
+
+  const checks = Array.isArray(validation?.checks) ? validation.checks : [];
+
+  // ==========================================================
+  // RENDER
+  // ==========================================================
+
   return (
-    <main className="build-page">
-      <div className="build-container">
-        <section className="build-hero">
-          <div className="build-hero-content">
-            <div className="build-badge">
-              <span className="build-badge-dot" />
-              BUILD PC
+    <>
+      <Header />
+
+      <main className="client-build-page">
+        <div className="client-build-shell">
+          {/* HERO */}
+
+          <section className="client-build-hero">
+            <div className="client-build-hero-glow client-build-hero-glow--one" />
+            <div className="client-build-hero-glow client-build-hero-glow--two" />
+
+            <div className="client-build-hero-content">
+              <div className="client-build-eyebrow">
+                <span className="client-build-eyebrow-icon">
+                  <i className="bi bi-pc-display-horizontal" />
+                </span>
+
+                <span>PC BUILDER</span>
+              </div>
+
+              <h1>
+                Xây dựng bộ PC
+                <span> dành riêng cho bạn</span>
+              </h1>
+
+              <p>
+                Tự chọn từng linh kiện hoặc để hệ thống gợi ý cấu hình theo ngân
+                sách. Mọi cấu hình đều được kiểm tra tương thích, giá và tồn kho
+                trực tiếp từ Backend.
+              </p>
+
+              <div className="client-build-hero-features">
+                <span>
+                  <i className="bi bi-shield-check" />
+                  Kiểm tra tương thích
+                </span>
+
+                <span>
+                  <i className="bi bi-box-seam" />
+                  Đồng bộ tồn kho
+                </span>
+
+                <span>
+                  <i className="bi bi-tags" />
+                  Giá hiện tại
+                </span>
+              </div>
             </div>
 
-            <h1>
-              Xây dựng chiếc PC
-              <span> của riêng bạn</span>
-            </h1>
+            <div className="client-build-hero-actions">
+              <button
+                type="button"
+                className="client-build-auto-button"
+                onClick={handleOpenAutoBuild}
+                disabled={partTypesLoading}
+              >
+                <i className="bi bi-stars" />
 
-            <p>
-              Lựa chọn từng linh kiện phù hợp với nhu cầu và ngân sách. Bạn có
-              thể thay đổi lựa chọn bất cứ lúc nào.
-            </p>
-          </div>
+                <span>Build tự động</span>
 
-          <button
-            type="button"
-            className="build-reset-button"
-            onClick={handleResetBuild}
-            disabled={!hasSelectedParts}
-          >
-            <span>↻</span>
-            Làm mới cấu hình
-          </button>
-        </section>
+                <small>Theo ngân sách</small>
+              </button>
 
-        <section className="build-guide">
-          <div className="build-guide-number">01</div>
-
-          <div>
-            <strong>Chọn từng nhóm linh kiện</strong>
-            <p>
-              Nhấn “Chọn linh kiện” để xem các sản phẩm có thể sử dụng cho từng
-              vị trí trong cấu hình.
-            </p>
-          </div>
-        </section>
-
-        <section className="build-board">
-          <div className="build-board-header">
-            <div>
-              <span className="build-board-label">CẤU HÌNH CỦA BẠN</span>
-              <h2>Danh sách linh kiện</h2>
-            </div>
-
-            {!partTypesLoading && !partTypesError && (
-              <span className="build-board-count">
-                {partTypes.length} nhóm linh kiện
-              </span>
-            )}
-          </div>
-
-          {partTypesLoading && (
-            <div className="build-state">
-              <div className="build-spinner" />
-              <strong>Đang tải Build PC</strong>
-              <p>Hệ thống đang lấy danh sách linh kiện...</p>
-            </div>
-          )}
-
-          {!partTypesLoading && partTypesError && (
-            <div className="build-state build-state-error">
-              <div className="build-state-icon">!</div>
-
-              <strong>Không thể tải dữ liệu Build PC</strong>
-              <p>{partTypesError}</p>
-
-              <button type="button" onClick={loadPartTypes}>
-                Thử lại
+              <button
+                type="button"
+                className="client-build-reset-button"
+                onClick={handleResetBuild}
+                disabled={!hasSelectedParts}
+              >
+                <i className="bi bi-arrow-counterclockwise" />
+                Làm mới
               </button>
             </div>
-          )}
+          </section>
 
-          {!partTypesLoading && !partTypesError && partTypes.length === 0 && (
-            <div className="build-state">
-              <div className="build-state-icon">—</div>
+          {/* STEPS */}
 
-              <strong>Chưa có loại linh kiện</strong>
-              <p>
-                Hiện chưa có loại linh kiện nào được cấu hình cho chức năng
-                Build PC.
-              </p>
+          <section className="client-build-steps">
+            <div className="client-build-step client-build-step--active">
+              <span>01</span>
+
+              <div>
+                <strong>Chọn linh kiện</strong>
+
+                <small>Manual / Auto</small>
+              </div>
             </div>
-          )}
 
-          {!partTypesLoading && !partTypesError && partTypes.length > 0 && (
-            <div className="build-part-list">
-              {partTypes.map((partType, index) => {
-                const typeCode = normalizeTypeCode(partType.type_code);
+            <div className="client-build-step-line" />
 
-                return (
-                  <BuildPartRow
-                    key={partType.id}
-                    index={index + 1}
-                    partType={partType}
-                    selectedItems={selectedParts[typeCode] || []}
-                    onSelect={() => handleOpenSelector(partType)}
-                    onReplace={() => handleOpenSelector(partType)}
-                    onRemove={() => handleRemovePart(typeCode)}
-                    onQuantityChange={(partIndex, quantity) =>
-                      handleQuantityChange(typeCode, partIndex, quantity)
+            <div
+              className={`client-build-step ${
+                hasSelectedParts ? "client-build-step--active" : ""
+              }`}
+            >
+              <span>02</span>
+
+              <div>
+                <strong>Kiểm tra</strong>
+
+                <small>Compatibility</small>
+              </div>
+            </div>
+
+            <div className="client-build-step-line" />
+
+            <div
+              className={`client-build-step ${
+                isValid ? "client-build-step--active" : ""
+              }`}
+            >
+              <span>03</span>
+
+              <div>
+                <strong>Hoàn tất</strong>
+
+                <small>Lưu / Cart</small>
+              </div>
+            </div>
+          </section>
+
+          {/* MAIN */}
+
+          <div className="client-build-layout">
+            <section className="client-build-board">
+              <div className="client-build-board-header">
+                <div>
+                  <span className="client-build-section-kicker">
+                    CẤU HÌNH CỦA BẠN
+                  </span>
+
+                  <h2>Chọn linh kiện</h2>
+
+                  <p>Bạn có thể thay đổi từng linh kiện bất cứ lúc nào.</p>
+                </div>
+
+                <div className="client-build-board-progress">
+                  <strong>{selectedCount}</strong>
+
+                  <span>/ {partTypes.length || 8} nhóm</span>
+                </div>
+              </div>
+
+              {partTypesLoading && (
+                <div className="client-build-state">
+                  <div className="client-build-spinner" />
+
+                  <strong>Đang chuẩn bị PC Builder</strong>
+
+                  <p>Hệ thống đang tải các nhóm linh kiện...</p>
+                </div>
+              )}
+
+              {!partTypesLoading && partTypesError && (
+                <div className="client-build-state client-build-state--error">
+                  <div className="client-build-state-icon">
+                    <i className="bi bi-exclamation-triangle" />
+                  </div>
+
+                  <strong>Không thể tải Build PC</strong>
+
+                  <p>{partTypesError}</p>
+
+                  <button type="button" onClick={loadPartTypes}>
+                    <i className="bi bi-arrow-clockwise" />
+                    Thử lại
+                  </button>
+                </div>
+              )}
+
+              {!partTypesLoading &&
+                !partTypesError &&
+                partTypes.length === 0 && (
+                  <div className="client-build-state">
+                    <div className="client-build-state-icon">
+                      <i className="bi bi-inbox" />
+                    </div>
+
+                    <strong>Chưa có nhóm linh kiện</strong>
+
+                    <p>Hệ thống chưa cấu hình dữ liệu Build PC.</p>
+                  </div>
+                )}
+
+              {!partTypesLoading && !partTypesError && partTypes.length > 0 && (
+                <div className="client-build-part-list">
+                  {partTypes.map((partType, index) => {
+                    const typeCode = normalizeTypeCode(partType.type_code);
+
+                    return (
+                      <BuildPartRow
+                        key={partType.id}
+                        index={index + 1}
+                        typeCode={typeCode}
+                        icon={TYPE_ICONS[typeCode] || "bi-pc"}
+                        partType={{
+                          ...partType,
+
+                          description:
+                            partType.description ||
+                            partType.type_description ||
+                            TYPE_SHORT_DESCRIPTION[typeCode] ||
+                            "",
+                        }}
+                        selectedItems={selectedParts[typeCode] || []}
+                        allowQuantity={MULTI_QUANTITY_TYPES.has(typeCode)}
+                        onSelect={() => handleOpenSelector(partType)}
+                        onReplace={() => handleOpenSelector(partType)}
+                        onRemove={() => handleRemovePart(typeCode)}
+                        onQuantityChange={(partIndex, quantity) =>
+                          handleQuantityChange(typeCode, partIndex, quantity)
+                        }
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            {/* SUMMARY */}
+
+            <aside className="client-build-summary-wrap">
+              <section className="client-build-summary">
+                <div className="client-build-summary-header">
+                  <div>
+                    <span className="client-build-section-kicker">
+                      TỔNG QUAN
+                    </span>
+
+                    <h2>Cấu hình hiện tại</h2>
+                  </div>
+
+                  <div
+                    className={`client-build-health ${
+                      validating
+                        ? "client-build-health--loading"
+                        : isValid
+                          ? "client-build-health--valid"
+                          : isInvalid
+                            ? "client-build-health--invalid"
+                            : ""
+                    }`}
+                  >
+                    {validating ? (
+                      <i className="bi bi-arrow-repeat" />
+                    ) : isValid ? (
+                      <i className="bi bi-check-lg" />
+                    ) : isInvalid ? (
+                      <i className="bi bi-x-lg" />
+                    ) : (
+                      <i className="bi bi-cpu" />
+                    )}
+                  </div>
+                </div>
+
+                <div className="client-build-summary-stats">
+                  <div>
+                    <span>Đã chọn</span>
+
+                    <strong>
+                      {selectedCount}/{partTypes.length || 8}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Trạng thái</span>
+
+                    <strong
+                      className={
+                        validating
+                          ? "is-checking"
+                          : isValid
+                            ? "is-valid"
+                            : isInvalid
+                              ? "is-invalid"
+                              : ""
+                      }
+                    >
+                      {validating
+                        ? "Đang kiểm tra"
+                        : isValid
+                          ? "Tương thích"
+                          : isInvalid
+                            ? "Cần điều chỉnh"
+                            : "Chưa kiểm tra"}
+                    </strong>
+                  </div>
+                </div>
+
+                <div className="client-build-summary-list">
+                  {partTypes.map((type) => {
+                    const code = normalizeTypeCode(type.type_code);
+
+                    const item = selectedParts[code]?.[0];
+
+                    if (!item) {
+                      return null;
                     }
-                  />
-                );
-              })}
-            </div>
-          )}
-        </section>
-      </div>
+
+                    return (
+                      <div className="client-build-summary-item" key={type.id}>
+                        <div className="client-build-summary-item-icon">
+                          <i className={`bi ${TYPE_ICONS[code] || "bi-pc"}`} />
+                        </div>
+
+                        <div className="client-build-summary-item-info">
+                          <span>{type.type_name}</span>
+
+                          <strong>{item.display_name}</strong>
+                        </div>
+
+                        <span className="client-build-summary-item-price">
+                          {formatPrice(
+                            Number(item.effective_price || 0) *
+                              Number(item.buildQuantity || 1),
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
+
+                  {!hasSelectedParts && (
+                    <div className="client-build-summary-empty">
+                      <span>
+                        <i className="bi bi-box" />
+                      </span>
+
+                      <strong>Chưa có linh kiện</strong>
+
+                      <p>Chọn thủ công hoặc dùng Build tự động để bắt đầu.</p>
+                    </div>
+                  )}
+                </div>
+
+                {hasSelectedParts && (
+                  <div className="client-build-compatibility">
+                    <div className="client-build-compatibility-title">
+                      <span>
+                        <i className="bi bi-diagram-3" />
+                        Kiểm tra tương thích
+                      </span>
+
+                      {validating && <small>Đang xử lý...</small>}
+                    </div>
+
+                    {validationError && (
+                      <div className="client-build-compat-message client-build-compat-message--error">
+                        <i className="bi bi-exclamation-circle" />
+
+                        <span>{validationError}</span>
+                      </div>
+                    )}
+
+                    {!validating && !validationError && isValid && (
+                      <div className="client-build-compat-message client-build-compat-message--success">
+                        <i className="bi bi-shield-check" />
+
+                        <span>
+                          Các linh kiện hiện tại tương thích với nhau.
+                        </span>
+                      </div>
+                    )}
+
+                    {!validating &&
+                      errors.map((error, index) => (
+                        <div
+                          className="client-build-compat-message client-build-compat-message--error"
+                          key={`error-${index}`}
+                        >
+                          <i className="bi bi-x-circle" />
+
+                          <span>
+                            {typeof error === "string"
+                              ? error
+                              : error.message ||
+                                error.code ||
+                                "Linh kiện không tương thích"}
+                          </span>
+                        </div>
+                      ))}
+
+                    {!validating &&
+                      warnings.map((warning, index) => (
+                        <div
+                          className="client-build-compat-message client-build-compat-message--warning"
+                          key={`warning-${index}`}
+                        >
+                          <i className="bi bi-exclamation-triangle" />
+
+                          <span>
+                            {typeof warning === "string"
+                              ? warning
+                              : warning.message ||
+                                warning.code ||
+                                "Thiếu dữ liệu kiểm tra"}
+                          </span>
+                        </div>
+                      ))}
+
+                    {!validating && checks.length > 0 && (
+                      <details className="client-build-check-details">
+                        <summary>Xem {checks.length} kiểm tra kỹ thuật</summary>
+
+                        <div>
+                          {checks.map((check, index) => (
+                            <p key={`check-${index}`}>
+                              <i className="bi bi-check-circle" />
+
+                              <span>
+                                {check.message ||
+                                  check.code ||
+                                  `Kiểm tra ${index + 1}`}
+                              </span>
+                            </p>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                )}
+
+                <div className="client-build-total">
+                  <div>
+                    <span>Tổng giá trị cấu hình</span>
+
+                    <small>Giá được xác minh bởi Backend</small>
+                  </div>
+
+                  <strong>{formatPrice(displayedTotal)}</strong>
+                </div>
+
+                <div className="client-build-summary-actions">
+                  <button
+                    type="button"
+                    className={`client-build-primary-action ${
+                      addingToCart ? "client-build-main-action-loading" : ""
+                    }`}
+                    disabled={
+                      !hasSelectedParts ||
+                      validating ||
+                      !isValid ||
+                      addingToCart ||
+                      saving
+                    }
+                    onClick={handleAddBuildToCart}
+                  >
+                    <i
+                      className={
+                        addingToCart ? "bi bi-arrow-repeat" : "bi bi-cart-plus"
+                      }
+                    />
+
+                    {addingToCart
+                      ? "Đang thêm vào giỏ..."
+                      : "Thêm cấu hình vào giỏ"}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="client-build-secondary-action"
+                    disabled={
+                      !hasSelectedParts ||
+                      validating ||
+                      !isValid ||
+                      saving ||
+                      addingToCart
+                    }
+                    onClick={handleOpenSave}
+                  >
+                    <i className="bi bi-bookmark" />
+                    Lưu cấu hình
+                  </button>
+                </div>
+
+                <p className="client-build-summary-note">
+                  <i className="bi bi-info-circle" />
+                  Giá và tồn kho được Backend xác minh lại khi lưu hoặc thêm vào
+                  giỏ hàng.
+                </p>
+              </section>
+            </aside>
+          </div>
+        </div>
+      </main>
+
+      {/* PART SELECTOR */}
 
       <PartSelectorModal
         open={selectorOpen}
@@ -383,7 +1490,46 @@ const BuildPC = () => {
           }
         }}
       />
-    </main>
+
+      {/* AUTO BUILD */}
+
+      <AutoBuildModal
+        open={autoBuildOpen}
+        options={autoBuildOptions}
+        loadingOptions={autoOptionsLoading}
+        generating={autoGenerating}
+        onClose={() => {
+          if (!autoGenerating) {
+            setAutoBuildOpen(false);
+          }
+        }}
+        onGenerate={handleGenerateAutoBuild}
+      />
+
+      {/* SAVE BUILD */}
+
+      <SaveBuildModal
+        open={saveModalOpen}
+        saving={saving}
+        totalPrice={displayedTotal}
+        itemCount={selectedCount}
+        onClose={() => {
+          if (!saving) {
+            setSaveModalOpen(false);
+          }
+        }}
+        onSave={handleSaveBuild}
+      />
+
+      <ResetBuildModal
+        open={resetModalOpen}
+        itemCount={selectedCount}
+        onClose={() => setResetModalOpen(false)}
+        onConfirm={handleConfirmResetBuild}
+      />
+
+      <Footer />
+    </>
   );
 };
 

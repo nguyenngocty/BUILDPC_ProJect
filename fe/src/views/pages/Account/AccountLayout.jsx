@@ -1,8 +1,4 @@
-import {
-  Link,
-  Outlet,
-  useLocation,
-} from "react-router-dom";
+import { Link, Outlet, useLocation } from "react-router-dom";
 
 import Header from "../../components/Header";
 import Footer from "../../components/Footer";
@@ -10,30 +6,24 @@ import AccountSidebar from "../../components/Account/AccountSidebar";
 
 import "./Account.css";
 
-const getCurrentPageLabel = (
-  pathname
-) => {
-  if (
-    /^\/account\/orders\/\d+\/?$/.test(
-      pathname
-    )
-  ) {
+const getCurrentPageLabel = (pathname) => {
+  if (/^\/account\/builds\/\d+\/?$/.test(pathname)) {
+    return "Chi tiết cấu hình";
+  }
+
+  if (pathname.startsWith("/account/builds")) {
+    return "Cấu hình của tôi";
+  }
+
+  if (/^\/account\/orders\/\d+\/?$/.test(pathname)) {
     return "Chi tiết đơn hàng";
   }
 
-  if (
-    pathname.startsWith(
-      "/account/orders"
-    )
-  ) {
+  if (pathname.startsWith("/account/orders")) {
     return "Đơn hàng của tôi";
   }
 
-  if (
-    pathname.includes(
-      "change-password"
-    )
-  ) {
+  if (pathname.includes("change-password")) {
     return "Đổi mật khẩu";
   }
 
@@ -43,10 +33,7 @@ const getCurrentPageLabel = (
 function AccountLayout() {
   const location = useLocation();
 
-  const currentPageLabel =
-    getCurrentPageLabel(
-      location.pathname
-    );
+  const currentPageLabel = getCurrentPageLabel(location.pathname);
 
   return (
     <>
@@ -54,35 +41,20 @@ function AccountLayout() {
 
       <div className="client-account-breadcrumb-bar">
         <div className="client-account-container">
-          <nav
-            className="client-account-breadcrumb"
-            aria-label="Breadcrumb"
-          >
-            <Link to="/">
-              Trang chủ
-            </Link>
+          <nav className="client-account-breadcrumb" aria-label="Breadcrumb">
+            <Link to="/">Trang chủ</Link>
 
-            <span
-              className="breadcrumb-separator"
-              aria-hidden="true"
-            >
+            <span className="breadcrumb-separator" aria-hidden="true">
               /
             </span>
 
-            <Link to="/account/profile">
-              Tài khoản
-            </Link>
+            <Link to="/account/profile">Tài khoản</Link>
 
-            <span
-              className="breadcrumb-separator"
-              aria-hidden="true"
-            >
+            <span className="breadcrumb-separator" aria-hidden="true">
               /
             </span>
 
-            <strong>
-              {currentPageLabel}
-            </strong>
+            <strong>{currentPageLabel}</strong>
           </nav>
         </div>
       </div>

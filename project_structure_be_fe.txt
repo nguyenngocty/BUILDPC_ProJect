@@ -61,8 +61,11 @@ be/
 │   ├── AdminOrder.js
 │   ├── Banner.js
 │   ├── Build.js
+│   ├── BuildCart.js
+│   ├── BuildRecommender.js
 │   ├── Cart.js
 │   ├── Category.js
+│   ├── ClientBuild.js
 │   ├── Comment.js
 │   ├── Coupon.js
 │   ├── Dashboard.js
@@ -142,7 +145,7 @@ be/
 └── server.js
 
 Backend folders: 13
-Backend files: 117
+Backend files: 120
 
 
 ==========================================================================================
@@ -224,6 +227,7 @@ fe/
 │   │   ├── googleAuthService.js
 │   │   ├── locationService.js
 │   │   ├── orderService.js
+│   │   ├── pcBuildAdminService.js
 │   │   ├── pcPartService.js
 │   │   ├── pcPartTypeService.js
 │   │   ├── postService.js
@@ -428,7 +432,7 @@ fe/
 └── README.md
 
 Frontend folders: 62
-Frontend files: 214
+Frontend files: 215
 
 
 ==========================================================================================
@@ -500,6 +504,7 @@ src/
 │   ├── googleAuthService.js
 │   ├── locationService.js
 │   ├── orderService.js
+│   ├── pcBuildAdminService.js
 │   ├── pcPartService.js
 │   ├── pcPartTypeService.js
 │   ├── postService.js

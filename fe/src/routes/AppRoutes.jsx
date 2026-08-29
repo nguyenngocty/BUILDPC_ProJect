@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router-dom";
 
 import ProtectedAccountRoute from "./ProtectedAccountRoute";
+
 import OrderSuccess from "../views/pages/OrderSuccess/OrderSuccess";
 import Home from "../views/pages/Home/Home";
 import Cart from "../views/pages/Cart/Cart";
@@ -13,12 +14,17 @@ import BlogDetail from "../views/pages/Blog/BlogDetail";
 import Contact from "../views/pages/Contact/Contact";
 import Products from "../views/pages/Product/Product";
 import ProductDetail from "../views/pages/ProductDetail/ProductDetail";
+
 import AccountProfile from "../views/pages/Account/AccountProfile";
 import AccountChangePassword from "../views/pages/Account/AccountChangePassword";
 import AccountLayout from "../views/pages/Account/AccountLayout";
 import AccountOrders from "../views/pages/Account/AccountOrders";
 import AccountOrderDetail from "../views/pages/Account/AccountOrderDetail";
+import AccountBuilds from "../views/pages/Account/AccountBuilds";
+import AccountBuildDetail from "../views/pages/Account/AccountBuildDetail";
+
 import ResetPassword from "../views/pages/Auth/ResetPassword";
+
 import BuildPC from "../views/pages/BuildPC/BuildPC";
 
 function AppRoutes() {
@@ -48,6 +54,10 @@ function AppRoutes() {
 
       <Route path="/reset-password" element={<ResetPassword />} />
 
+      {/* =====================================================
+          PROTECTED CLIENT ACCOUNT
+      ===================================================== */}
+
       <Route element={<ProtectedAccountRoute />}>
         <Route path="/checkout/reorder/:id" element={<ReorderCheckout />} />
 
@@ -62,8 +72,16 @@ function AppRoutes() {
           <Route path="/account/orders" element={<AccountOrders />} />
 
           <Route path="/account/orders/:id" element={<AccountOrderDetail />} />
+
+          <Route path="/account/builds" element={<AccountBuilds />} />
+
+          <Route path="/account/builds/:id" element={<AccountBuildDetail />} />
         </Route>
       </Route>
+
+      {/* =====================================================
+          ADMIN
+      ===================================================== */}
 
       <Route path="/admin/*" element={<AdminRoutes />} />
 
