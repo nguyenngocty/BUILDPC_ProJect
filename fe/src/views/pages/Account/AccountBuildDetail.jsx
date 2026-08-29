@@ -361,6 +361,15 @@ function AccountBuildDetail() {
 
             <button
               type="button"
+              className="account-build-detail-new"
+              onClick={() => navigate(`/build-pc?edit=${build.id}`)}
+            >
+              <i className="bi bi-pencil-square" />
+              Chỉnh sửa
+            </button>
+
+            <button
+              type="button"
               className="account-build-detail-cart"
               disabled={addingToCart || items.length === 0}
               onClick={handleAddToCart}

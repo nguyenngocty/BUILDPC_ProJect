@@ -5,6 +5,12 @@ const SaveBuildModal = ({
   saving = false,
   totalPrice = 0,
   itemCount = 0,
+
+  mode = "create",
+
+  initialName = "",
+  initialDescription = "",
+
   onClose,
   onSave,
 }) => {
@@ -12,15 +18,19 @@ const SaveBuildModal = ({
   const [description, setDescription] = useState("");
   const [error, setError] = useState("");
 
+  const isEditMode = mode === "edit";
+
   useEffect(() => {
     if (!open) {
       return;
     }
 
-    setName("");
-    setDescription("");
+    setName(isEditMode ? initialName || "" : "");
+
+    setDescription(isEditMode ? initialDescription || "" : "");
+
     setError("");
-  }, [open]);
+  }, [open, isEditMode, initialName, initialDescription]);
 
   useEffect(() => {
     if (!open) {
@@ -53,16 +63,19 @@ const SaveBuildModal = ({
 
     if (!normalizedName) {
       setError("Vui lòng nhập tên cấu hình.");
+
       return;
     }
 
     if (normalizedName.length < 3) {
       setError("Tên cấu hình phải có ít nhất 3 ký tự.");
+
       return;
     }
 
     if (normalizedName.length > 150) {
       setError("Tên cấu hình không được vượt quá 150 ký tự.");
+
       return;
     }
 
@@ -70,6 +83,7 @@ const SaveBuildModal = ({
 
     await onSave?.({
       name: normalizedName,
+
       description: description.trim(),
     });
   };
@@ -91,15 +105,21 @@ const SaveBuildModal = ({
         <header className="client-build-action-modal-header">
           <div>
             <span className="client-build-action-kicker">
-              <i className="bi bi-bookmark-heart" />
-              MY BUILDS
+              <i
+                className={
+                  isEditMode ? "bi bi-pencil-square" : "bi bi-bookmark-heart"
+                }
+              />
+
+              {isEditMode ? "EDIT BUILD" : "MY BUILDS"}
             </span>
 
-            <h2>Lưu cấu hình của bạn</h2>
+            <h2>{isEditMode ? "Cập nhật cấu hình" : "Lưu cấu hình của bạn"}</h2>
 
             <p>
-              Cấu hình sẽ được lưu vào tài khoản để bạn có thể xem, chỉnh sửa
-              hoặc thêm lại vào giỏ hàng.
+              {isEditMode
+                ? "Những linh kiện hiện tại sẽ được Backend kiểm tra lại trước khi cập nhật cấu hình đã lưu."
+                : "Cấu hình sẽ được lưu vào tài khoản để bạn có thể xem, chỉnh sửa hoặc thêm lại vào giỏ hàng."}
             </p>
           </div>
 
@@ -123,6 +143,7 @@ const SaveBuildModal = ({
 
               <div>
                 <small>Linh kiện đã chọn</small>
+
                 <strong>{itemCount} nhóm</strong>
               </div>
             </div>
@@ -142,6 +163,21 @@ const SaveBuildModal = ({
             </div>
           </div>
 
+          {isEditMode && (
+            <div className="client-build-save-security">
+              <i className="bi bi-pencil-square" />
+
+              <div>
+                <strong>Đang chỉnh sửa cấu hình đã lưu</strong>
+
+                <p>
+                  Sau khi cập nhật, cấu hình cũ sẽ được thay đổi theo các linh
+                  kiện bạn đang chọn trên PC Builder.
+                </p>
+              </div>
+            </div>
+          )}
+
           <label className="client-build-save-field">
             <span>
               Tên cấu hình
@@ -158,6 +194,7 @@ const SaveBuildModal = ({
                 disabled={saving}
                 onChange={(event) => {
                   setName(event.target.value);
+
                   setError("");
                 }}
                 placeholder="Ví dụ: PC Gaming RTX 5070 của tôi"
@@ -180,22 +217,25 @@ const SaveBuildModal = ({
             />
           </label>
 
-          <div className="client-build-save-security">
-            <i className="bi bi-shield-check" />
+          {!isEditMode && (
+            <div className="client-build-save-security">
+              <i className="bi bi-shield-check" />
 
-            <div>
-              <strong>Dữ liệu được Backend xác minh</strong>
+              <div>
+                <strong>Dữ liệu được Backend xác minh</strong>
 
-              <p>
-                Product, Variant, giá và tổng tiền không lấy trực tiếp từ dữ
-                liệu FE khi lưu cấu hình.
-              </p>
+                <p>
+                  Product, Variant, giá và tổng tiền không lấy trực tiếp từ dữ
+                  liệu FE khi lưu cấu hình.
+                </p>
+              </div>
             </div>
-          </div>
+          )}
 
           {error && (
             <div className="client-build-action-error">
               <i className="bi bi-exclamation-circle" />
+
               {error}
             </div>
           )}
@@ -219,12 +259,18 @@ const SaveBuildModal = ({
             {saving ? (
               <>
                 <span className="client-build-button-spinner" />
-                Đang lưu...
+
+                {isEditMode ? "Đang cập nhật..." : "Đang lưu..."}
               </>
             ) : (
               <>
-                <i className="bi bi-bookmark-check" />
-                Lưu cấu hình
+                <i
+                  className={
+                    isEditMode ? "bi bi-check2-circle" : "bi bi-bookmark-check"
+                  }
+                />
+
+                {isEditMode ? "Cập nhật cấu hình" : "Lưu cấu hình"}
               </>
             )}
           </button>
