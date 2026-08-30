@@ -1,63 +1,92 @@
 const express = require("express");
 
-const router = express.Router();
-
 const categoryController = require("../../controllers/admin/categoryController");
 
 const uploadCategory = require("../../middlewares/uploadCategory");
 
-// Dashboard
+const router = express.Router();
+
+// ============================================================
+// CATEGORY STATISTICS
+// ============================================================
+
 router.get("/statistics", categoryController.getCategoryStatistics);
 
-// Trash
+// ============================================================
+// TRASH
+// ============================================================
+
 router.get("/trash", categoryController.getTrashCategories);
 
-// Bulk Delete
+// ============================================================
+// BULK ACTIONS
+// ============================================================
+
 router.delete("/bulk-delete", categoryController.bulkDeleteCategories);
 
-// Bulk Restore
 router.patch("/bulk-restore", categoryController.bulkRestoreCategories);
-
-// Xoá hàng loạt danh mục
 
 router.delete(
   "/bulk-force-delete",
   categoryController.bulkForceDeleteCategories,
 );
 
-// Danh sách
+router.patch("/bulk-toggle-status", categoryController.bulkToggleStatus);
+
+// ============================================================
+// LIST
+// ============================================================
+
 router.get("/", categoryController.getAllCategories);
 
-// Chi tiết
-router.get("/:id", categoryController.getCategoryById);
+// ============================================================
+// CREATE
+// ============================================================
 
-// Thêm
 router.post(
   "/",
   uploadCategory.single("image"),
   categoryController.createCategory,
 );
 
-// Sửa
+// ============================================================
+// DETAIL
+// ============================================================
+
+router.get("/:id", categoryController.getCategoryById);
+
+// ============================================================
+// UPDATE
+// ============================================================
+
 router.put(
   "/:id",
   uploadCategory.single("image"),
   categoryController.updateCategory,
 );
 
-// Soft Delete
-router.delete("/:id", categoryController.deleteCategory);
+// ============================================================
+// RESTORE
+// ============================================================
 
-// Restore
 router.patch("/:id/restore", categoryController.restoreCategory);
 
-// Force Delete
+// ============================================================
+// TOGGLE STATUS
+// ============================================================
+
+router.patch("/:id/toggle-status", categoryController.toggleCategoryStatus);
+
+// ============================================================
+// FORCE DELETE
+// ============================================================
+
 router.delete("/:id/force", categoryController.forceDeleteCategory);
 
-// Chuyển đổi trạng thái hàng loạt
-router.patch("/bulk-toggle-status", categoryController.bulkToggleStatus);
+// ============================================================
+// SOFT DELETE
+// ============================================================
 
-// Toggle Status
-router.patch("/:id/toggle-status", categoryController.toggleCategoryStatus);
+router.delete("/:id", categoryController.deleteCategory);
 
 module.exports = router;

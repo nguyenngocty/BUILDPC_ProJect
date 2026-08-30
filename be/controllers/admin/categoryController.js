@@ -11,27 +11,150 @@ const {
   validateUpdateCategory,
 } = require("../../validations/categoryValidation");
 
-const getAllCategories = async (req, res) => {
+// ============================================================
+// HELPERS
+// ============================================================
+
+function parseCategoryId(value) {
+  const id = Number(value);
+
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+// ============================================================
+// PARSE IDS
+// ============================================================
+
+function parseCategoryIds(value) {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const ids = [
+    ...new Set(
+      value.map(Number).filter((id) => Number.isInteger(id) && id > 0),
+    ),
+  ];
+
+  return ids.length > 0 ? ids : null;
+}
+
+// ============================================================
+// NORMALIZE SLUG
+// ============================================================
+
+function normalizeSlug(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-+/g, "-");
+}
+
+// ============================================================
+// NORMALIZE CATEGORY PAYLOAD
+// ============================================================
+
+function normalizeCategoryPayload(body = {}) {
+  const name = String(body.name || "").trim();
+
+  return {
+    name,
+
+    slug: normalizeSlug(body.slug || name),
+
+    description: String(body.description || "").trim() || null,
+
+    status: body.status === undefined ? 1 : Number(body.status),
+  };
+}
+
+// ============================================================
+// DELETE FILE SAFELY
+// ============================================================
+
+function safeUnlink(filePath) {
+  if (!filePath) {
+    return;
+  }
+
   try {
-    const page = Number(req.query.page) || 1;
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch (error) {
+    console.warn("[Category] Không thể xóa file:", filePath, error.message);
+  }
+}
 
-    const limit = Number(req.query.limit) || 10;
+// ============================================================
+// DELETE UPLOADED REQUEST FILE
+// ============================================================
 
-    const search = req.query.search || "";
+function cleanupUploadedFile(file) {
+  if (!file?.path) {
+    return;
+  }
 
-    const status = req.query.status || "";
+  safeUnlink(path.resolve(file.path));
+}
 
-    const sort = req.query.sort || "newest";
+// ============================================================
+// DELETE STORED CATEGORY IMAGE
+// ============================================================
+
+function cleanupStoredImage(image) {
+  if (!image) {
+    return;
+  }
+
+  const relativePath = String(image).replace(/^\/+/, "");
+
+  const absolutePath = path.join(__dirname, "../../", relativePath);
+
+  safeUnlink(absolutePath);
+}
+
+// ============================================================
+// GET ALL
+// ============================================================
+
+const getAllCategories = async (req, res, next) => {
+  try {
+    const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
+
+    const limit = Math.min(
+      Math.max(Number.parseInt(req.query.limit, 10) || 10, 1),
+      100,
+    );
+
+    const search = String(req.query.search || "").trim();
+
+    const sort = String(req.query.sort || "newest").trim();
+
+    let status = null;
+
+    if (req.query.status !== undefined && req.query.status !== "") {
+      if (!["0", "1", 0, 1].includes(req.query.status)) {
+        return res.status(422).json({
+          success: false,
+
+          message: "Trạng thái danh mục không hợp lệ.",
+        });
+      }
+
+      status = Number(req.query.status);
+    }
 
     const result = await Category.getAll({
       page,
-
       limit,
-
       search,
-
       status,
-
       sort,
     });
 
@@ -45,21 +168,25 @@ const getAllCategories = async (req, res) => {
       pagination: result.pagination,
     });
   } catch (error) {
-    console.error(error);
-
-    return res.status(500).json({
-      success: false,
-
-      message: "Lỗi máy chủ.",
-
-      error: error.message,
-    });
+    return next(error);
   }
 };
 
-const getCategoryById = async (req, res) => {
+// ============================================================
+// GET BY ID
+// ============================================================
+
+const getCategoryById = async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const id = parseCategoryId(req.params.id);
+
+    if (!id) {
+      return res.status(422).json({
+        success: false,
+
+        message: "Mã danh mục không hợp lệ.",
+      });
+    }
 
     const category = await Category.getById(id);
 
@@ -77,40 +204,54 @@ const getCategoryById = async (req, res) => {
       data: category,
     });
   } catch (error) {
-    console.error(error);
-
-    return res.status(500).json({
-      success: false,
-
-      message: "Lỗi máy chủ.",
-    });
+    return next(error);
   }
 };
 
-const createCategory = async (req, res) => {
-  const connection = await pool.getConnection();
+// ============================================================
+// CREATE
+// ============================================================
+
+const createCategory = async (req, res, next) => {
+  let connection;
 
   try {
-    const errors = await validateCreateCategory(req.body);
+    const payload = normalizeCategoryPayload(req.body);
+
+    const errors = await validateCreateCategory(payload);
+
+    // --------------------------------------------------------
+    // VALIDATION FAIL
+    //
+    // Multer đã lưu file trước controller.
+    // Nếu validation fail phải xóa file vừa upload.
+    // --------------------------------------------------------
 
     if (Object.keys(errors).length) {
+      cleanupUploadedFile(req.file);
+
       return res.status(422).json({
         success: false,
+
+        message: "Dữ liệu danh mục không hợp lệ.",
 
         errors,
       });
     }
-    const image = req.file ? `/uploads/categories/${req.file.filename}` : null;
-    const data = {
-      ...req.body,
 
-      image,
-    };
+    const image = req.file ? `/uploads/categories/${req.file.filename}` : null;
+
+    connection = await pool.getConnection();
+
     await connection.beginTransaction();
 
-    const id = await Category.create(connection, data);
+    const id = await Category.create(connection, {
+      ...payload,
+      image,
+    });
 
     await connection.commit();
+
     const category = await Category.getById(id);
 
     return res.status(201).json({
@@ -121,116 +262,173 @@ const createCategory = async (req, res) => {
       data: category,
     });
   } catch (error) {
-    await connection.rollback();
-    if (req.file) {
-      const filePath = path.join(
-        __dirname,
-
-        "../../",
-
-        req.file.path,
-      );
-
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch (_) {}
     }
-    return res.status(500).json({
-      success: false,
 
-      message: "Lỗi máy chủ.",
+    cleanupUploadedFile(req.file);
 
-      error: error.message,
-    });
+    if (error?.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({
+        success: false,
+
+        message: "Tên hoặc slug danh mục đã tồn tại.",
+      });
+    }
+
+    return next(error);
   } finally {
-    connection.release();
+    if (connection) {
+      connection.release();
+    }
   }
 };
 
-const updateCategory = async (req, res) => {
-  const connection = await pool.getConnection();
+// ============================================================
+// UPDATE
+// ============================================================
+
+const updateCategory = async (req, res, next) => {
+  let connection;
 
   try {
-    const { id } = req.params;
+    const id = parseCategoryId(req.params.id);
+
+    if (!id) {
+      cleanupUploadedFile(req.file);
+
+      return res.status(422).json({
+        success: false,
+
+        message: "Mã danh mục không hợp lệ.",
+      });
+    }
+
     const category = await Category.getById(id);
 
     if (!category) {
+      cleanupUploadedFile(req.file);
+
       return res.status(404).json({
         success: false,
 
         message: "Không tìm thấy danh mục.",
       });
     }
-    const errors = await validateUpdateCategory(req.body, id);
+
+    const payload = normalizeCategoryPayload({
+      name: req.body.name ?? category.name,
+
+      slug: req.body.slug ?? category.slug,
+
+      description: req.body.description ?? category.description,
+
+      status: req.body.status ?? category.status,
+    });
+
+    const errors = await validateUpdateCategory(payload, id);
 
     if (Object.keys(errors).length) {
+      cleanupUploadedFile(req.file);
+
       return res.status(422).json({
         success: false,
+
+        message: "Dữ liệu danh mục không hợp lệ.",
 
         errors,
       });
     }
-    let image = category.image;
-    if (req.file) {
-      image = `/uploads/categories/${req.file.filename}`;
-    }
-    const data = {
-      ...req.body,
 
-      image,
-    };
+    const image = req.file
+      ? `/uploads/categories/${req.file.filename}`
+      : category.image;
+
+    connection = await pool.getConnection();
+
     await connection.beginTransaction();
 
-    await Category.update(connection, id, data);
+    const updated = await Category.update(connection, id, {
+      ...payload,
+      image,
+    });
+
+    if (!updated) {
+      await connection.rollback();
+
+      cleanupUploadedFile(req.file);
+
+      return res.status(404).json({
+        success: false,
+
+        message: "Không tìm thấy danh mục.",
+      });
+    }
 
     await connection.commit();
-    if (req.file && category.image) {
-      const oldImage = path.join(
-        __dirname,
 
-        "../../",
+    // --------------------------------------------------------
+    // DB commit thành công mới xóa ảnh cũ.
+    // --------------------------------------------------------
 
-        category.image.replace(/^\//, ""),
-      );
-
-      if (fs.existsSync(oldImage)) {
-        fs.unlinkSync(oldImage);
-      }
+    if (req.file && category.image && category.image !== image) {
+      cleanupStoredImage(category.image);
     }
+
     const newCategory = await Category.getById(id);
 
     return res.status(200).json({
       success: true,
 
-      message: "Cập nhật thành công.",
+      message: "Cập nhật danh mục thành công.",
 
       data: newCategory,
     });
   } catch (error) {
-    await connection.rollback();
-    if (req.file) {
-      const filePath = path.join(
-        __dirname,
-
-        "../../",
-
-        req.file.path,
-      );
-
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch (_) {}
     }
+
+    cleanupUploadedFile(req.file);
+
+    if (error?.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({
+        success: false,
+
+        message: "Tên hoặc slug danh mục đã tồn tại.",
+      });
+    }
+
+    // BẢN CŨ BỊ THIẾU RESPONSE Ở ĐÂY.
+    return next(error);
   } finally {
-    connection.release();
+    if (connection) {
+      connection.release();
+    }
   }
 };
 
-const deleteCategory = async (req, res) => {
-  const connection = await pool.getConnection();
+// ============================================================
+// SOFT DELETE
+// ============================================================
+
+const deleteCategory = async (req, res, next) => {
+  let connection;
 
   try {
-    const { id } = req.params;
+    const id = parseCategoryId(req.params.id);
+
+    if (!id) {
+      return res.status(422).json({
+        success: false,
+
+        message: "Mã danh mục không hợp lệ.",
+      });
+    }
 
     const category = await Category.getById(id);
 
@@ -247,9 +445,14 @@ const deleteCategory = async (req, res) => {
     if (hasProducts) {
       return res.status(409).json({
         success: false,
-        message: "Danh mục vẫn còn sản phẩm, không thể xóa.",
+
+        message:
+          "Danh mục vẫn còn sản phẩm. Hãy chuyển hoặc xóa các sản phẩm trước.",
       });
     }
+
+    connection = await pool.getConnection();
+
     await connection.beginTransaction();
 
     await Category.softDelete(connection, id);
@@ -259,28 +462,40 @@ const deleteCategory = async (req, res) => {
     return res.status(200).json({
       success: true,
 
-      message: "Xóa thành công.",
+      message: "Đã chuyển danh mục vào thùng rác.",
     });
   } catch (error) {
-    await connection.rollback();
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch (_) {}
+    }
 
-    return res.status(500).json({
-      success: false,
-
-      message: "Lỗi máy chủ.",
-
-      error: error.message,
-    });
+    return next(error);
   } finally {
-    connection.release();
+    if (connection) {
+      connection.release();
+    }
   }
 };
 
-const restoreCategory = async (req, res) => {
-  const connection = await pool.getConnection();
+// ============================================================
+// RESTORE
+// ============================================================
+
+const restoreCategory = async (req, res, next) => {
+  let connection;
 
   try {
-    const { id } = req.params;
+    const id = parseCategoryId(req.params.id);
+
+    if (!id) {
+      return res.status(422).json({
+        success: false,
+
+        message: "Mã danh mục không hợp lệ.",
+      });
+    }
 
     const category = await Category.getDeletedById(id);
 
@@ -288,39 +503,69 @@ const restoreCategory = async (req, res) => {
       return res.status(404).json({
         success: false,
 
-        message: "Không tìm thấy.",
+        message: "Không tìm thấy danh mục trong thùng rác.",
       });
     }
 
+    connection = await pool.getConnection();
+
     await connection.beginTransaction();
 
-    await Category.restore(connection, id);
+    const restored = await Category.restore(connection, id);
+
+    if (!restored) {
+      await connection.rollback();
+
+      return res.status(409).json({
+        success: false,
+
+        message: "Không thể khôi phục danh mục.",
+      });
+    }
 
     await connection.commit();
+
+    const restoredCategory = await Category.getById(id);
 
     return res.status(200).json({
       success: true,
 
-      message: "Khôi phục thành công.",
+      message: "Khôi phục danh mục thành công.",
+
+      data: restoredCategory,
     });
   } catch (error) {
-    await connection.rollback();
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch (_) {}
+    }
 
-    return res.status(500).json({
-      success: false,
-
-      message: "Lỗi máy chủ.",
-    });
+    return next(error);
   } finally {
-    connection.release();
+    if (connection) {
+      connection.release();
+    }
   }
 };
 
-const toggleCategoryStatus = async (req, res) => {
-  const connection = await pool.getConnection();
+// ============================================================
+// TOGGLE STATUS
+// ============================================================
+
+const toggleCategoryStatus = async (req, res, next) => {
+  let connection;
 
   try {
-    const { id } = req.params;
+    const id = parseCategoryId(req.params.id);
+
+    if (!id) {
+      return res.status(422).json({
+        success: false,
+
+        message: "Mã danh mục không hợp lệ.",
+      });
+    }
 
     const category = await Category.getById(id);
 
@@ -328,9 +573,11 @@ const toggleCategoryStatus = async (req, res) => {
       return res.status(404).json({
         success: false,
 
-        message: "Không tìm thấy.",
+        message: "Không tìm thấy danh mục.",
       });
     }
+
+    connection = await pool.getConnection();
 
     await connection.beginTransaction();
 
@@ -338,111 +585,152 @@ const toggleCategoryStatus = async (req, res) => {
 
     await connection.commit();
 
+    const updated = await Category.getById(id);
+
     return res.status(200).json({
       success: true,
 
-      message: "Đổi trạng thái thành công.",
+      message:
+        updated.status === 1 ? "Đã bật hiển thị danh mục." : "Đã ẩn danh mục.",
+
+      data: updated,
     });
   } catch (error) {
-    await connection.rollback();
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch (_) {}
+    }
 
-    return res.status(500).json({
-      success: false,
-
-      message: "Lỗi máy chủ.",
-    });
+    return next(error);
   } finally {
-    connection.release();
+    if (connection) {
+      connection.release();
+    }
   }
 };
 
-const forceDeleteCategory = async (req, res) => {
-  const connection = await pool.getConnection();
+// ============================================================
+// FORCE DELETE
+//
+// Chỉ category nằm trong Trash mới được force delete.
+// ============================================================
+
+const forceDeleteCategory = async (req, res, next) => {
+  let connection;
 
   try {
-    const { id } = req.params;
+    const id = parseCategoryId(req.params.id);
+
+    if (!id) {
+      return res.status(422).json({
+        success: false,
+
+        message: "Mã danh mục không hợp lệ.",
+      });
+    }
 
     const category = await Category.getDeletedById(id);
 
     if (!category) {
       return res.status(404).json({
         success: false,
-        message: "Không tìm thấy danh mục.",
+
+        message: "Không tìm thấy danh mục trong thùng rác.",
       });
     }
 
-    const hasProducts = await Category.hasProducts(id);
+    /*
+      Force delete phải kiểm tra CẢ product soft deleted.
+      Vì các record đó vẫn còn category_id.
+    */
+    const hasAnyProducts = await Category.hasAnyProducts(id);
 
-    if (hasProducts) {
+    if (hasAnyProducts) {
       return res.status(409).json({
         success: false,
-        message: "Danh mục vẫn còn sản phẩm, không thể xóa vĩnh viễn.",
+
+        message:
+          "Danh mục vẫn đang được sản phẩm tham chiếu nên không thể xóa vĩnh viễn.",
       });
     }
+
+    connection = await pool.getConnection();
 
     await connection.beginTransaction();
 
-    await Category.forceDelete(connection, id);
+    const deleted = await Category.forceDelete(connection, id);
+
+    if (!deleted) {
+      await connection.rollback();
+
+      return res.status(404).json({
+        success: false,
+
+        message: "Không tìm thấy danh mục trong thùng rác.",
+      });
+    }
 
     await connection.commit();
 
-    // Xóa ảnh nếu có
-    if (category.image) {
-      const imagePath = path.join(
-        __dirname,
-        "../../",
-        category.image.replace(/^\//, ""),
-      );
-
-      if (fs.existsSync(imagePath)) {
-        fs.unlinkSync(imagePath);
-      }
-    }
+    cleanupStoredImage(category.image);
 
     return res.status(200).json({
       success: true,
-      message: "Xóa vĩnh viễn thành công.",
+
+      message: "Xóa vĩnh viễn danh mục thành công.",
     });
   } catch (error) {
-    await connection.rollback();
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch (_) {}
+    }
 
-    return res.status(500).json({
-      success: false,
-      message: "Lỗi máy chủ.",
-      error: error.message,
-    });
+    return next(error);
   } finally {
-    connection.release();
+    if (connection) {
+      connection.release();
+    }
   }
 };
 
-const getCategoryStatistics = async (req, res) => {
+// ============================================================
+// STATISTICS
+// ============================================================
+
+const getCategoryStatistics = async (req, res, next) => {
   try {
     const data = await Category.getStatistics();
 
     return res.status(200).json({
       success: true,
 
+      message: "Lấy thống kê danh mục thành công.",
+
       data,
     });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-
-      message: error.message,
-    });
+    return next(error);
   }
 };
 
-const getTrashCategories = async (req, res) => {
+// ============================================================
+// TRASH
+// ============================================================
+
+const getTrashCategories = async (req, res, next) => {
   try {
-    const page = Number(req.query.page) || 1;
+    const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
 
-    const limit = Number(req.query.limit) || 10;
+    const limit = Math.min(
+      Math.max(Number.parseInt(req.query.limit, 10) || 10, 1),
+      100,
+    );
 
-    const search = req.query.search || "";
+    const search = String(req.query.search || "").trim();
 
-    const sort = req.query.sort || "newest";
+    const sort = String(req.query.sort || "newest").trim();
 
     const result = await Category.getTrash({
       page,
@@ -461,64 +749,107 @@ const getTrashCategories = async (req, res) => {
       pagination: result.pagination,
     });
   } catch (error) {
-    console.error(error);
-
-    return res.status(500).json({
-      success: false,
-
-      message: "Lỗi máy chủ.",
-
-      error: error.message,
-    });
+    return next(error);
   }
 };
-const bulkDeleteCategories = async (req, res) => {
-  const connection = await pool.getConnection();
+
+// ============================================================
+// BULK DELETE
+// ============================================================
+
+const bulkDeleteCategories = async (req, res, next) => {
+  let connection;
 
   try {
-    const { ids } = req.body;
+    const ids = parseCategoryIds(req.body.ids);
 
-    await connection.beginTransaction();
+    if (!ids) {
+      return res.status(422).json({
+        success: false,
+
+        message: "Danh sách danh mục không hợp lệ.",
+      });
+    }
 
     for (const id of ids) {
-      const hasProducts = await Category.hasProducts(id);
+      const category = await Category.getById(id);
 
-      if (hasProducts) {
-        await connection.rollback();
+      if (!category) {
+        return res.status(404).json({
+          success: false,
 
+          message: `Không tìm thấy danh mục ID ${id}.`,
+        });
+      }
+
+      if (await Category.hasProducts(id)) {
         return res.status(409).json({
           success: false,
+
           message: `Danh mục ID ${id} vẫn còn sản phẩm.`,
         });
       }
     }
 
+    connection = await pool.getConnection();
+
+    await connection.beginTransaction();
+
     await Category.bulkDelete(connection, ids);
 
     await connection.commit();
 
-    return res.json({
+    return res.status(200).json({
       success: true,
 
-      message: "Đã xóa.",
+      message: "Đã chuyển các danh mục vào thùng rác.",
     });
   } catch (error) {
-    await connection.rollback();
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch (_) {}
+    }
 
-    return res.status(500).json({
-      success: false,
-
-      message: error.message,
-    });
+    return next(error);
   } finally {
-    connection.release();
+    if (connection) {
+      connection.release();
+    }
   }
 };
-const bulkRestoreCategories = async (req, res) => {
-  const connection = await pool.getConnection();
+
+// ============================================================
+// BULK RESTORE
+// ============================================================
+
+const bulkRestoreCategories = async (req, res, next) => {
+  let connection;
 
   try {
-    const { ids } = req.body;
+    const ids = parseCategoryIds(req.body.ids);
+
+    if (!ids) {
+      return res.status(422).json({
+        success: false,
+
+        message: "Danh sách danh mục không hợp lệ.",
+      });
+    }
+
+    for (const id of ids) {
+      const category = await Category.getDeletedById(id);
+
+      if (!category) {
+        return res.status(404).json({
+          success: false,
+
+          message: `Danh mục ID ${id} không nằm trong thùng rác.`,
+        });
+      }
+    }
+
+    connection = await pool.getConnection();
 
     await connection.beginTransaction();
 
@@ -526,108 +857,133 @@ const bulkRestoreCategories = async (req, res) => {
 
     await connection.commit();
 
-    return res.json({
+    return res.status(200).json({
       success: true,
 
-      message: "Đã khôi phục.",
+      message: "Khôi phục các danh mục thành công.",
     });
   } catch (error) {
-    await connection.rollback();
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch (_) {}
+    }
 
-    return res.status(500).json({
-      success: false,
-
-      message: error.message,
-    });
+    return next(error);
   } finally {
-    connection.release();
+    if (connection) {
+      connection.release();
+    }
   }
 };
-const bulkForceDeleteCategories = async (req, res) => {
-  const connection = await pool.getConnection();
+
+// ============================================================
+// BULK FORCE DELETE
+// ============================================================
+
+const bulkForceDeleteCategories = async (req, res, next) => {
+  let connection;
 
   try {
-    const { ids } = req.body;
+    const ids = parseCategoryIds(req.body.ids);
 
-    if (!Array.isArray(ids) || ids.length === 0) {
+    if (!ids) {
       return res.status(422).json({
         success: false,
+
         message: "Danh sách danh mục không hợp lệ.",
       });
     }
 
-    const deleteImages = [];
-
-    await connection.beginTransaction();
+    const categories = [];
 
     for (const id of ids) {
       const category = await Category.getDeletedById(id);
 
       if (!category) {
-        throw new Error(`Không tìm thấy danh mục ID ${id}`);
-      }
-
-      if (await Category.hasProducts(id)) {
-        await connection.rollback();
-
-        return res.status(409).json({
+        return res.status(404).json({
           success: false,
-          message: `Danh mục ID ${id} vẫn còn sản phẩm.`,
+
+          message: `Danh mục ID ${id} không nằm trong thùng rác.`,
         });
       }
 
-      deleteImages.push(await Category.getImageForDelete(id));
+      if (await Category.hasAnyProducts(id)) {
+        return res.status(409).json({
+          success: false,
 
-      await Category.forceDelete(connection, id);
+          message: `Danh mục ID ${id} vẫn đang được sản phẩm tham chiếu.`,
+        });
+      }
+
+      categories.push(category);
+    }
+
+    connection = await pool.getConnection();
+
+    await connection.beginTransaction();
+
+    for (const category of categories) {
+      await Category.forceDelete(connection, category.id);
     }
 
     await connection.commit();
 
-    for (const item of deleteImages) {
-      if (!item?.image) continue;
-
-      const imagePath = path.join(
-        __dirname,
-        "../../",
-        item.image.replace(/^\//, ""),
-      );
-
-      if (fs.existsSync(imagePath)) {
-        fs.unlinkSync(imagePath);
-      }
+    for (const category of categories) {
+      cleanupStoredImage(category.image);
     }
 
     return res.status(200).json({
       success: true,
+
       message: "Xóa vĩnh viễn các danh mục thành công.",
     });
   } catch (error) {
-    await connection.rollback();
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch (_) {}
+    }
 
-    return res.status(500).json({
-      success: false,
-      message: "Lỗi máy chủ.",
-      error: error.message,
-    });
+    return next(error);
   } finally {
-    connection.release();
+    if (connection) {
+      connection.release();
+    }
   }
 };
 
+// ============================================================
+// BULK TOGGLE STATUS
+// ============================================================
 
-// Đổi trạng thái hàng loạt
-const bulkToggleStatus = async (req, res) => {
-  const connection = await pool.getConnection();
+const bulkToggleStatus = async (req, res, next) => {
+  let connection;
 
   try {
-    const { ids } = req.body;
+    const ids = parseCategoryIds(req.body.ids);
 
-    if (!Array.isArray(ids) || ids.length === 0) {
+    if (!ids) {
       return res.status(422).json({
         success: false,
+
         message: "Danh sách danh mục không hợp lệ.",
       });
     }
+
+    for (const id of ids) {
+      const category = await Category.getById(id);
+
+      if (!category) {
+        return res.status(404).json({
+          success: false,
+
+          message: `Không tìm thấy danh mục ID ${id}.`,
+        });
+      }
+    }
+
+    connection = await pool.getConnection();
 
     await connection.beginTransaction();
 
@@ -637,34 +993,54 @@ const bulkToggleStatus = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Đổi trạng thái danh mục thành công.",
+
+      message: "Đổi trạng thái các danh mục thành công.",
     });
   } catch (error) {
-    await connection.rollback();
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch (_) {}
+    }
 
-    return res.status(500).json({
-      success: false,
-      message: "Lỗi máy chủ.",
-      error: error.message,
-    });
+    return next(error);
   } finally {
-    connection.release();
+    if (connection) {
+      connection.release();
+    }
   }
 };
 
+// ============================================================
+// EXPORT
+// ============================================================
+
 module.exports = {
   getAllCategories,
+
   getCategoryById,
+
   createCategory,
+
   updateCategory,
+
   deleteCategory,
+
   restoreCategory,
+
   forceDeleteCategory,
+
   toggleCategoryStatus,
+
   getCategoryStatistics,
+
   getTrashCategories,
+
   bulkDeleteCategories,
+
   bulkRestoreCategories,
+
   bulkForceDeleteCategories,
+
   bulkToggleStatus,
 };
