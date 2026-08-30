@@ -1,19 +1,16 @@
-// V3: cập nhật ảnh đại diện cho mọi tài khoản đã đăng nhập.
 const { pool } = require("../config/database");
 
-/*
-  Thống kê đơn hàng theo từng người dùng.
+// ============================================================
+// ORDER STATISTICS
+// Chỉ sử dụng cho màn hình quản lý Users.
+// TUYỆT ĐỐI không dùng query này cho middleware authentication.
+// ============================================================
 
-  order_count:
-  - Tổng số đơn chưa bị xóa mềm.
-
-  total_spent:
-  - Tổng tiền của các đơn COMPLETED.
-*/
 const ORDER_STATISTICS_JOIN = `
   LEFT JOIN (
     SELECT
       o.user_id,
+
       COUNT(*) AS order_count,
 
       COALESCE(
@@ -28,17 +25,20 @@ const ORDER_STATISTICS_JOIN = `
       ) AS total_spent
 
     FROM orders o
+
     WHERE o.deleted_at IS NULL
+
     GROUP BY o.user_id
   ) AS order_stats
     ON order_stats.user_id = u.id
 `;
 
-/*
-  Các cột dùng chung khi lấy danh sách hoặc chi tiết người dùng.
+// ============================================================
+// USER SELECT
+// Dùng cho Admin User Management.
+// Có thống kê đơn hàng nên query tương đối nặng.
+// ============================================================
 
-  Không lấy password để tránh trả password hash ra API.
-*/
 const USER_SELECT = `
   SELECT
     u.id,
@@ -48,15 +48,22 @@ const USER_SELECT = `
     u.phone,
     u.avatar,
     u.address,
+
     u.province_code,
     u.province_name,
+
     u.ward_code,
     u.ward_name,
+
     u.street_address,
+
     u.birth_date,
     u.gender,
+
     u.last_login_at,
+
     u.status,
+
     u.created_at,
     u.updated_at,
 
@@ -84,8 +91,15 @@ const USER_SELECT = `
     r.code AS role_code,
     r.status AS role_status,
 
-    COALESCE(order_stats.order_count, 0) AS order_count,
-    COALESCE(order_stats.total_spent, 0) AS total_spent
+    COALESCE(
+      order_stats.order_count,
+      0
+    ) AS order_count,
+
+    COALESCE(
+      order_stats.total_spent,
+      0
+    ) AS total_spent
 
   FROM users u
 
@@ -95,18 +109,82 @@ const USER_SELECT = `
   ${ORDER_STATISTICS_JOIN}
 `;
 
+// ============================================================
+// AUTH USER SELECT
+//
+// Query nhẹ dành riêng cho:
+// - requireAuth
+// - login
+// - /auth/me
+//
+// Không JOIN orders.
+// Không COUNT.
+// Không GROUP BY.
+// ============================================================
+
+const AUTH_USER_SELECT = `
+  SELECT
+    u.id,
+    u.role_id,
+
+    u.full_name,
+    u.email,
+    u.phone,
+
+    u.avatar,
+
+    u.address,
+
+    u.province_code,
+    u.province_name,
+
+    u.ward_code,
+    u.ward_name,
+
+    u.street_address,
+
+    u.birth_date,
+    u.gender,
+
+    u.last_login_at,
+
+    u.status,
+
+    u.created_at,
+    u.updated_at,
+
+    DATE_FORMAT(
+      u.birth_date,
+      '%Y-%m-%d'
+    ) AS birth_date_value,
+
+    r.name AS role_name,
+    r.code AS role_code,
+    r.status AS role_status
+
+  FROM users u
+
+  INNER JOIN roles r
+    ON r.id = u.role_id
+`;
+
+// ============================================================
+// BUILD USER FILTERS
+// ============================================================
+
 function buildUserFilters({
   search = "",
   searchId = null,
   roleCode = null,
   status = null,
 } = {}) {
-  const conditions = [
-    "u.deleted_at IS NULL",
-    "r.deleted_at IS NULL",
-  ];
+  const conditions = ["u.deleted_at IS NULL", "r.deleted_at IS NULL"];
 
   const params = [];
+
+  // ----------------------------------------------------------
+  // SEARCH
+  // ----------------------------------------------------------
 
   if (search) {
     const keyword = `%${search}%`;
@@ -119,41 +197,46 @@ function buildUserFilters({
 
     params.push(keyword, keyword, keyword);
 
-    /*
-      Khi tìm USR001 hoặc số 1,
-      controller sẽ truyền searchId = 1.
-    */
     if (searchId) {
       searchConditions.push("u.id = ?");
+
       params.push(searchId);
     }
 
     conditions.push(`(${searchConditions.join(" OR ")})`);
   }
 
+  // ----------------------------------------------------------
+  // ROLE
+  // ----------------------------------------------------------
+
   if (roleCode) {
     conditions.push("UPPER(r.code) = ?");
+
     params.push(String(roleCode).toUpperCase());
   }
 
+  // ----------------------------------------------------------
+  // STATUS
+  // ----------------------------------------------------------
+
   if (status !== null && status !== undefined) {
     conditions.push("u.status = ?");
+
     params.push(Number(status));
   }
 
   return {
     whereClause: conditions.join(" AND "),
+
     params,
   };
 }
 
-/*
-  Lấy danh sách người dùng có:
-  - tìm kiếm
-  - lọc role
-  - lọc trạng thái
-  - phân trang
-*/
+// ============================================================
+// GET USERS
+// ============================================================
+
 async function getUsers({
   search = "",
   searchId = null,
@@ -162,7 +245,11 @@ async function getUsers({
   page = 1,
   limit = 5,
 } = {}) {
-  const offset = (page - 1) * limit;
+  const normalizedPage = Math.max(Number(page) || 1, 1);
+
+  const normalizedLimit = Math.min(Math.max(Number(limit) || 5, 1), 100);
+
+  const offset = (normalizedPage - 1) * normalizedLimit;
 
   const { whereClause, params } = buildUserFilters({
     search,
@@ -171,223 +258,313 @@ async function getUsers({
     status,
   });
 
+  // ----------------------------------------------------------
+  // COUNT
+  // ----------------------------------------------------------
+
   const [countRows] = await pool.execute(
     `
-      SELECT COUNT(*) AS total
+        SELECT
+          COUNT(*) AS total
 
-      FROM users u
+        FROM users u
 
-      INNER JOIN roles r
-        ON r.id = u.role_id
+        INNER JOIN roles r
+          ON r.id = u.role_id
 
-      WHERE ${whereClause}
-    `,
-    params
+        WHERE ${whereClause}
+      `,
+    params,
   );
+
+  // ----------------------------------------------------------
+  // DATA
+  // ----------------------------------------------------------
 
   const [rows] = await pool.execute(
     `
-      ${USER_SELECT}
+        ${USER_SELECT}
 
-      WHERE ${whereClause}
+        WHERE ${whereClause}
 
-      ORDER BY u.created_at DESC, u.id DESC
-      LIMIT ? OFFSET ?
-    `,
-    [...params, Number(limit), Number(offset)]
+        ORDER BY
+          u.created_at DESC,
+          u.id DESC
+
+        LIMIT ?
+        OFFSET ?
+      `,
+    [...params, normalizedLimit, offset],
   );
 
   return {
     users: rows,
+
     total: Number(countRows[0]?.total || 0),
   };
 }
 
-/*
-  Thống kê cho 4 ô đầu trang:
-  - Tổng người dùng
-  - Đang hoạt động
-  - Quản trị viên
-  - Đã khóa
-*/
+// ============================================================
+// USER STATISTICS
+// ============================================================
+
 async function getUserStatistics() {
   const [rows] = await pool.query(`
-    SELECT
-      COUNT(*) AS total_users,
-
-      COALESCE(
-        SUM(
-          CASE
-            WHEN u.status = 1 THEN 1
-            ELSE 0
-          END
-        ),
-        0
-      ) AS active_users,
-
-      COALESCE(
-        SUM(
-          CASE
-            WHEN UPPER(r.code) IN ('ADMIN', 'SUPER_ADMIN') THEN 1
-            ELSE 0
-          END
-        ),
-        0
-      ) AS admin_users,
-
-      COALESCE(
-        SUM(
-          CASE
-            WHEN UPPER(r.code) = 'SUPER_ADMIN' THEN 1
-            ELSE 0
-          END
-        ),
-        0
-      ) AS super_admin_users,
-
-      COALESCE(
-        SUM(
-          CASE
-            WHEN u.status = 0 THEN 1
-            ELSE 0
-          END
-        ),
-        0
-      ) AS blocked_users
-
-    FROM users u
-
-    INNER JOIN roles r
-      ON r.id = u.role_id
-
-    WHERE u.deleted_at IS NULL
-      AND r.deleted_at IS NULL
-  `);
-
-  return rows[0] || {};
-}
-
-/*
-  Lấy chi tiết một người dùng.
-*/
-async function findById(userId) {
-  const [rows] = await pool.execute(
-    `
-      ${USER_SELECT}
-
-      WHERE u.id = ?
-        AND u.deleted_at IS NULL
-        AND r.deleted_at IS NULL
-
-      LIMIT 1
-    `,
-    [userId]
-  );
-
-  return rows[0] || null;
-}
-
-/*
-  Kiểm tra email đã tồn tại hay chưa.
-*/
-async function findByEmail(email) {
-  const [rows] = await pool.execute(
-    `
       SELECT
-        id,
-        email
+        COUNT(*) AS total_users,
 
-      FROM users
+        COALESCE(
+          SUM(
+            CASE
+              WHEN u.status = 1
+              THEN 1
+              ELSE 0
+            END
+          ),
+          0
+        ) AS active_users,
 
-      WHERE LOWER(email) = LOWER(?)
-        AND deleted_at IS NULL
+        COALESCE(
+          SUM(
+            CASE
+              WHEN UPPER(r.code)
+                IN ('ADMIN', 'SUPER_ADMIN')
+              THEN 1
+              ELSE 0
+            END
+          ),
+          0
+        ) AS admin_users,
 
-      LIMIT 1
-    `,
-    [email]
-  );
+        COALESCE(
+          SUM(
+            CASE
+              WHEN UPPER(r.code)
+                = 'SUPER_ADMIN'
+              THEN 1
+              ELSE 0
+            END
+          ),
+          0
+        ) AS super_admin_users,
 
-  return rows[0] || null;
-}
-
-/*
-  Dùng cho chức năng đăng nhập sau này.
-
-  Hàm này có lấy password hash.
-*/
-async function findByEmailForLogin(email) {
-  const [rows] = await pool.execute(
-    `
-      SELECT
-        u.id,
-        u.role_id,
-        u.full_name,
-        u.email,
-        u.phone,
-        u.password,
-        u.avatar,
-        u.address,
-        u.province_code,
-        u.province_name,
-        u.ward_code,
-        u.ward_name,
-        u.street_address,
-        u.birth_date,
-        u.gender,
-        u.last_login_at,
-        u.status,
-        u.created_at,
-
-        r.name AS role_name,
-        r.code AS role_code,
-        r.status AS role_status
+        COALESCE(
+          SUM(
+            CASE
+              WHEN u.status = 0
+              THEN 1
+              ELSE 0
+            END
+          ),
+          0
+        ) AS blocked_users
 
       FROM users u
 
       INNER JOIN roles r
         ON r.id = u.role_id
 
-      WHERE LOWER(u.email) = LOWER(?)
-        AND u.deleted_at IS NULL
+      WHERE u.deleted_at IS NULL
         AND r.deleted_at IS NULL
+    `);
 
-      LIMIT 1
-    `,
-    [email]
-  );
-
-  return rows[0] || null;
+  return rows[0] || {};
 }
 
-/*
-  Tìm role theo code: CUSTOMER hoặc ADMIN.
-*/
-async function findRoleByCode(roleCode) {
+// ============================================================
+// FIND USER BY ID
+//
+// Dùng cho User Management.
+// Có order statistics.
+// ============================================================
+
+async function findById(userId) {
   const [rows] = await pool.execute(
     `
-      SELECT
-        id,
-        name,
-        code,
-        status
+        ${USER_SELECT}
 
-      FROM roles
+        WHERE u.id = ?
+          AND u.deleted_at IS NULL
+          AND r.deleted_at IS NULL
 
-      WHERE UPPER(code) = ?
-        AND status = 1
-        AND deleted_at IS NULL
-
-      LIMIT 1
-    `,
-    [String(roleCode).toUpperCase()]
+        LIMIT 1
+      `,
+    [userId],
   );
 
   return rows[0] || null;
 }
 
-/*
-  Admin tạo tài khoản người dùng.
-*/
+// ============================================================
+// FIND USER BY ID FOR AUTH
+//
+// Query nhẹ.
+// Đây là hàm requireAuth PHẢI sử dụng.
+// ============================================================
+
+async function findByIdForAuth(userId) {
+  const [rows] = await pool.execute(
+    `
+        ${AUTH_USER_SELECT}
+
+        WHERE u.id = ?
+          AND u.deleted_at IS NULL
+          AND r.deleted_at IS NULL
+
+        LIMIT 1
+      `,
+    [userId],
+  );
+
+  return rows[0] || null;
+}
+
+// ============================================================
+// FIND BY EMAIL
+// ============================================================
+
+async function findByEmail(email) {
+  const normalizedEmail = String(email || "")
+    .trim()
+    .toLowerCase();
+
+  if (!normalizedEmail) {
+    return null;
+  }
+
+  const [rows] = await pool.execute(
+    `
+        SELECT
+          id,
+          email
+
+        FROM users
+
+        WHERE LOWER(email) = ?
+          AND deleted_at IS NULL
+
+        LIMIT 1
+      `,
+    [normalizedEmail],
+  );
+
+  return rows[0] || null;
+}
+
+// ============================================================
+// FIND BY EMAIL FOR LOGIN
+//
+// Đây là nơi duy nhất trong nhóm Auth cần lấy password hash.
+// ============================================================
+
+async function findByEmailForLogin(email) {
+  const normalizedEmail = String(email || "")
+    .trim()
+    .toLowerCase();
+
+  if (!normalizedEmail) {
+    return null;
+  }
+
+  const [rows] = await pool.execute(
+    `
+        SELECT
+          u.id,
+          u.role_id,
+
+          u.full_name,
+          u.email,
+          u.phone,
+
+          u.password,
+
+          u.avatar,
+
+          u.address,
+
+          u.province_code,
+          u.province_name,
+
+          u.ward_code,
+          u.ward_name,
+
+          u.street_address,
+
+          u.birth_date,
+          u.gender,
+
+          u.last_login_at,
+
+          u.status,
+
+          u.created_at,
+          u.updated_at,
+
+          DATE_FORMAT(
+            u.birth_date,
+            '%Y-%m-%d'
+          ) AS birth_date_value,
+
+          r.name AS role_name,
+          r.code AS role_code,
+          r.status AS role_status
+
+        FROM users u
+
+        INNER JOIN roles r
+          ON r.id = u.role_id
+
+        WHERE LOWER(u.email) = ?
+          AND u.deleted_at IS NULL
+          AND r.deleted_at IS NULL
+
+        LIMIT 1
+      `,
+    [normalizedEmail],
+  );
+
+  return rows[0] || null;
+}
+
+// ============================================================
+// FIND ROLE BY CODE
+// ============================================================
+
+async function findRoleByCode(roleCode) {
+  const normalizedRoleCode = String(roleCode || "")
+    .trim()
+    .toUpperCase();
+
+  if (!normalizedRoleCode) {
+    return null;
+  }
+
+  const [rows] = await pool.execute(
+    `
+        SELECT
+          id,
+          name,
+          code,
+          status
+
+        FROM roles
+
+        WHERE UPPER(code) = ?
+          AND status = 1
+          AND deleted_at IS NULL
+
+        LIMIT 1
+      `,
+    [normalizedRoleCode],
+  );
+
+  return rows[0] || null;
+}
+
+// ============================================================
+// CREATE USER
+// ============================================================
+
 async function createUser({
   roleId,
   fullName,
@@ -402,20 +579,32 @@ async function createUser({
 }) {
   const [result] = await pool.execute(
     `
-      INSERT INTO users (
-        role_id,
-        full_name,
-        email,
-        phone,
-        password,
-        avatar,
-        address,
-        birth_date,
-        gender,
-        status
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `,
+        INSERT INTO users (
+          role_id,
+          full_name,
+          email,
+          phone,
+          password,
+          avatar,
+          address,
+          birth_date,
+          gender,
+          status
+        )
+
+        VALUES (
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?
+        )
+      `,
     [
       roleId,
       fullName,
@@ -427,17 +616,16 @@ async function createUser({
       birthDate || null,
       gender || null,
       status,
-    ]
+    ],
   );
 
   return findById(result.insertId);
 }
 
-/*
-  Cập nhật thông tin cá nhân.
+// ============================================================
+// UPDATE USER PROFILE
+// ============================================================
 
-  Không cập nhật role, status và password tại đây.
-*/
 async function updateUserProfile({
   userId,
   fullName,
@@ -447,16 +635,18 @@ async function updateUserProfile({
   address,
   birthDate,
   gender,
+
   provinceCode,
   provinceName,
+
   wardCode,
   wardName,
+
   streetAddress,
 }) {
-  const genderValue =
-    gender === undefined ? null : gender;
+  const genderValue = gender === undefined ? null : gender;
 
-  const [result] = await pool.execute(
+  await pool.execute(
     `
       UPDATE users
 
@@ -465,14 +655,23 @@ async function updateUserProfile({
         email = ?,
         phone = ?,
         avatar = ?,
+
         address = ?,
+
         province_code = ?,
         province_name = ?,
+
         ward_code = ?,
         ward_name = ?,
+
         street_address = ?,
+
         birth_date = ?,
-        gender = COALESCE(?, gender)
+
+        gender = COALESCE(
+          ?,
+          gender
+        )
 
       WHERE id = ?
         AND deleted_at IS NULL
@@ -480,37 +679,47 @@ async function updateUserProfile({
     [
       fullName,
       email,
+
       phone || null,
+
       avatar || null,
+
       address || null,
+
       provinceCode || null,
       provinceName || null,
+
       wardCode || null,
       wardName || null,
-      streetAddress || null,
-      birthDate || null,
-      genderValue,
-      userId,
-    ]
-  );
 
-  if (result.affectedRows === 0) {
-    return findById(userId);
-  }
+      streetAddress || null,
+
+      birthDate || null,
+
+      genderValue,
+
+      userId,
+    ],
+  );
 
   return findById(userId);
 }
 
-/* Cập nhật riêng ảnh đại diện. */
+// ============================================================
+// UPDATE AVATAR
+// ============================================================
+
 async function updateAvatar(userId, avatar) {
   const [result] = await pool.execute(
     `
-      UPDATE users
-      SET avatar = ?
-      WHERE id = ?
-        AND deleted_at IS NULL
-    `,
-    [avatar, userId]
+        UPDATE users
+
+        SET avatar = ?
+
+        WHERE id = ?
+          AND deleted_at IS NULL
+      `,
+    [avatar, userId],
   );
 
   if (result.affectedRows === 0) {
@@ -520,40 +729,41 @@ async function updateAvatar(userId, avatar) {
   return findById(userId);
 }
 
-/*
-  Cập nhật mật khẩu đã được bcrypt hash.
+// ============================================================
+// UPDATE PASSWORD
+// ============================================================
 
-  Controller chịu trách nhiệm kiểm tra mật khẩu hiện tại
-  và tạo passwordHash trước khi gọi Model.
-*/
 async function updatePassword(userId, passwordHash) {
   const [result] = await pool.execute(
     `
-      UPDATE users
-      SET password = ?
-      WHERE id = ?
-        AND deleted_at IS NULL
-    `,
-    [passwordHash, userId]
+        UPDATE users
+
+        SET password = ?
+
+        WHERE id = ?
+          AND deleted_at IS NULL
+      `,
+    [passwordHash, userId],
   );
 
   return result.affectedRows > 0;
 }
 
-/*
-  Đổi vai trò.
-*/
+// ============================================================
+// UPDATE ROLE
+// ============================================================
+
 async function updateRole(userId, roleId) {
   const [result] = await pool.execute(
     `
-      UPDATE users
+        UPDATE users
 
-      SET role_id = ?
+        SET role_id = ?
 
-      WHERE id = ?
-        AND deleted_at IS NULL
-    `,
-    [roleId, userId]
+        WHERE id = ?
+          AND deleted_at IS NULL
+      `,
+    [roleId, userId],
   );
 
   if (result.affectedRows === 0) {
@@ -563,20 +773,21 @@ async function updateRole(userId, roleId) {
   return findById(userId);
 }
 
-/*
-  Khóa hoặc mở khóa tài khoản.
-*/
+// ============================================================
+// UPDATE STATUS
+// ============================================================
+
 async function updateStatus(userId, status) {
   const [result] = await pool.execute(
     `
-      UPDATE users
+        UPDATE users
 
-      SET status = ?
+        SET status = ?
 
-      WHERE id = ?
-        AND deleted_at IS NULL
-    `,
-    [status, userId]
+        WHERE id = ?
+          AND deleted_at IS NULL
+      `,
+    [status, userId],
   );
 
   if (result.affectedRows === 0) {
@@ -586,101 +797,143 @@ async function updateStatus(userId, status) {
   return findById(userId);
 }
 
-/*
-  Xóa mềm tài khoản.
-*/
+// ============================================================
+// SOFT DELETE
+// ============================================================
+
 async function softDelete(userId) {
   const [result] = await pool.execute(
     `
-      UPDATE users
+        UPDATE users
 
-      SET
-        status = 0,
-        deleted_at = CURRENT_TIMESTAMP
+        SET
+          status = 0,
+          deleted_at =
+            CURRENT_TIMESTAMP
 
-      WHERE id = ?
-        AND deleted_at IS NULL
-    `,
-    [userId]
+        WHERE id = ?
+          AND deleted_at IS NULL
+      `,
+    [userId],
   );
 
   return result.affectedRows > 0;
 }
 
-/*
-  Đếm số Admin đang hoạt động.
+// ============================================================
+// COUNT ACTIVE ADMINS
+//
+// ADMIN + SUPER_ADMIN.
+// ============================================================
 
-  Dùng để không cho khóa, xóa hoặc hạ quyền
-  quản trị viên cuối cùng.
-*/
 async function countActiveAdmins() {
   const [rows] = await pool.query(`
-    SELECT COUNT(*) AS total
+      SELECT
+        COUNT(*) AS total
 
-    FROM users u
+      FROM users u
 
-    INNER JOIN roles r
-      ON r.id = u.role_id
+      INNER JOIN roles r
+        ON r.id = u.role_id
 
-    WHERE u.deleted_at IS NULL
-      AND u.status = 1
-      AND r.deleted_at IS NULL
-      AND r.status = 1
-      AND UPPER(r.code) IN ('ADMIN', 'SUPER_ADMIN')
-  `);
+      WHERE u.deleted_at IS NULL
+        AND u.status = 1
+
+        AND r.deleted_at IS NULL
+        AND r.status = 1
+
+        AND UPPER(r.code)
+          IN (
+            'ADMIN',
+            'SUPER_ADMIN'
+          )
+    `);
 
   return Number(rows[0]?.total || 0);
 }
+
+// ============================================================
+// COUNT ACTIVE SUPER ADMINS
+// ============================================================
 
 async function countActiveSuperAdmins() {
   const [rows] = await pool.query(`
-    SELECT COUNT(*) AS total
-    FROM users u
-    INNER JOIN roles r ON r.id = u.role_id
-    WHERE u.deleted_at IS NULL
-      AND u.status = 1
-      AND r.deleted_at IS NULL
-      AND r.status = 1
-      AND UPPER(r.code) = 'SUPER_ADMIN'
-  `);
+      SELECT
+        COUNT(*) AS total
+
+      FROM users u
+
+      INNER JOIN roles r
+        ON r.id = u.role_id
+
+      WHERE u.deleted_at IS NULL
+        AND u.status = 1
+
+        AND r.deleted_at IS NULL
+        AND r.status = 1
+
+        AND UPPER(r.code)
+          = 'SUPER_ADMIN'
+    `);
 
   return Number(rows[0]?.total || 0);
 }
 
-/*
-  Cập nhật thời gian đăng nhập gần nhất.
+// ============================================================
+// UPDATE LAST LOGIN
+// ============================================================
 
-  Gọi hàm này sau khi kiểm tra mật khẩu thành công.
-*/
 async function updateLastLogin(userId) {
   await pool.execute(
     `
       UPDATE users
 
-      SET last_login_at = CURRENT_TIMESTAMP
+      SET last_login_at =
+        CURRENT_TIMESTAMP
 
       WHERE id = ?
         AND deleted_at IS NULL
     `,
-    [userId]
+    [userId],
   );
 }
 
+// ============================================================
+// EXPORTS
+// ============================================================
+
 module.exports = {
   getUsers,
+
   getUserStatistics,
+
   findById,
+
+  findByIdForAuth,
+
   findByEmail,
+
   findByEmailForLogin,
+
   findRoleByCode,
+
   createUser,
+
   updateUserProfile,
+
   updateAvatar,
+
   updatePassword,
+
   updateRole,
+
   updateStatus,
+
   softDelete,
+
   countActiveAdmins,
+
   countActiveSuperAdmins,
+
   updateLastLogin,
 };
