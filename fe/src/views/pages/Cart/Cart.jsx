@@ -19,8 +19,6 @@ const IMAGE_BASE_URL =
   process.env.REACT_APP_API_URL?.replace(/\/api\/?$/, "") ||
   "http://localhost:5000";
 
-const SHIPPING_FEE = 30000;
-
 // ============================================================
 // IMAGE
 // ============================================================
@@ -43,6 +41,20 @@ const getImageUrl = (imageUrl) => {
 
 const formatPrice = (value) => {
   return `${Number(value || 0).toLocaleString("vi-VN")}đ`;
+};
+
+const formatDate = (value) => {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(`${value}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleDateString("vi-VN");
 };
 
 // ============================================================
@@ -103,6 +115,12 @@ function Cart() {
     removeItem,
 
     clearCart,
+
+    appliedCoupon,
+
+    setAppliedCoupon,
+
+    clearAppliedCoupon,
   } = useCart();
 
   const toastTimerRef = useRef(null);
@@ -117,9 +135,13 @@ function Cart() {
 
   const [couponStatus, setCouponStatus] = useState("");
 
-  const [appliedCoupon, setAppliedCoupon] = useState(null);
-
   const [couponLoading, setCouponLoading] = useState(false);
+
+  const [availableCoupons, setAvailableCoupons] = useState([]);
+
+  const [availableCouponsLoading, setAvailableCouponsLoading] = useState(false);
+
+  const [availableCouponsError, setAvailableCouponsError] = useState("");
 
   // ==========================================================
   // QUANTITY
@@ -166,6 +188,16 @@ function Cart() {
 
     setQuantityInputs(nextValues);
   }, [cartItems]);
+
+  // ==========================================================
+  // SYNC COUPON TỪ CART CONTEXT
+  // ==========================================================
+
+  useEffect(() => {
+    if (appliedCoupon?.code) {
+      setCouponCode(appliedCoupon.code);
+    }
+  }, [appliedCoupon?.code]);
 
   // ==========================================================
   // LOCK BODY WHEN MODAL OPEN
@@ -347,20 +379,66 @@ function Cart() {
   }, [appliedCoupon]);
 
   // ==========================================================
-  // SHIPPING PREVIEW
-  // ==========================================================
-
-  const shipping = cartItems.length > 0 ? SHIPPING_FEE : 0;
-
-  // ==========================================================
   // GRAND TOTAL
+  // Cart chưa có địa chỉ giao hàng nên không tính phí ship tại đây.
   // ==========================================================
 
-  const grandTotal = Math.max(
-    subtotal - discount + shipping,
+  const grandTotal = Math.max(subtotal - discount, 0);
 
-    0,
-  );
+  // ==========================================================
+  // AVAILABLE COUPONS
+  // ==========================================================
+
+  useEffect(() => {
+    if (cartItems.length === 0 || subtotal <= 0) {
+      setAvailableCoupons([]);
+
+      setAvailableCouponsError("");
+
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadAvailableCoupons = async () => {
+      try {
+        setAvailableCouponsLoading(true);
+
+        setAvailableCouponsError("");
+
+        const response = await couponService.getAvailable(subtotal);
+
+        if (cancelled) {
+          return;
+        }
+
+        const data = response?.data?.data;
+
+        setAvailableCoupons(Array.isArray(data) ? data : []);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setAvailableCoupons([]);
+
+        setAvailableCouponsError(
+          error?.response?.data?.message ||
+            "Không thể tải danh sách mã giảm giá.",
+        );
+      } finally {
+        if (!cancelled) {
+          setAvailableCouponsLoading(false);
+        }
+      }
+    };
+
+    loadAvailableCoupons();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [subtotal, cartItems.length]);
 
   // ==========================================================
   // REVALIDATE COUPON
@@ -372,7 +450,7 @@ function Cart() {
     }
 
     if (cartItems.length === 0 || subtotal <= 0) {
-      setAppliedCoupon(null);
+      clearAppliedCoupon();
 
       setCouponStatus("");
 
@@ -405,7 +483,7 @@ function Cart() {
           return;
         }
 
-        setAppliedCoupon(null);
+        clearAppliedCoupon();
 
         setCouponStatus("error");
 
@@ -421,7 +499,13 @@ function Cart() {
     return () => {
       cancelled = true;
     };
-  }, [subtotal, appliedCoupon?.code, cartItems.length]);
+  }, [
+    subtotal,
+    appliedCoupon?.code,
+    cartItems.length,
+    setAppliedCoupon,
+    clearAppliedCoupon,
+  ]);
 
   // ==========================================================
   // RESET COUPON
@@ -766,7 +850,7 @@ function Cart() {
 
           await clearCart();
 
-          setAppliedCoupon(null);
+          clearAppliedCoupon();
 
           resetCoupon();
 
@@ -791,7 +875,7 @@ function Cart() {
       appliedCoupon?.code &&
       value.trim().toUpperCase() !== appliedCoupon.code
     ) {
-      setAppliedCoupon(null);
+      clearAppliedCoupon();
 
       setCouponStatus("");
 
@@ -803,11 +887,13 @@ function Cart() {
   // APPLY COUPON
   // ==========================================================
 
-  const applyCoupon = async () => {
-    const code = couponCode.trim().toUpperCase();
+  const applyCouponByCode = async (rawCode) => {
+    const code = String(rawCode || "")
+      .trim()
+      .toUpperCase();
 
     if (!code) {
-      setAppliedCoupon(null);
+      clearAppliedCoupon();
 
       setCouponStatus("error");
 
@@ -817,7 +903,7 @@ function Cart() {
     }
 
     if (cartItems.length === 0 || subtotal <= 0) {
-      setAppliedCoupon(null);
+      clearAppliedCoupon();
 
       setCouponStatus("error");
 
@@ -865,9 +951,9 @@ function Cart() {
         );
       }
 
-      showToast("success", "Áp mã giảm giá thành công.");
+      showToast("success", `Đã áp dụng mã ${coupon.code}.`);
     } catch (error) {
-      setAppliedCoupon(null);
+      clearAppliedCoupon();
 
       setCouponStatus("error");
 
@@ -881,12 +967,26 @@ function Cart() {
     }
   };
 
+  const applyCoupon = async () => {
+    await applyCouponByCode(couponCode);
+  };
+
+  const handleUseCoupon = async (coupon) => {
+    if (!coupon?.eligible) {
+      return;
+    }
+
+    setCouponCode(coupon.code);
+
+    await applyCouponByCode(coupon.code);
+  };
+
   // ==========================================================
   // REMOVE COUPON
   // ==========================================================
 
   const removeCoupon = () => {
-    setAppliedCoupon(null);
+    clearAppliedCoupon();
 
     resetCoupon();
 
@@ -1418,6 +1518,117 @@ function Cart() {
                 )}
               </div>
 
+              <div className="cart-available-coupons">
+                <div className="cart-available-coupons-head">
+                  <div>
+                    <span>Ưu đãi dành cho bạn</span>
+
+                    <small>Chọn mã phù hợp với giá trị giỏ hàng</small>
+                  </div>
+
+                  <i className="bi bi-gift" />
+                </div>
+
+                {availableCouponsLoading ? (
+                  <div className="cart-available-coupons-state">
+                    <i className="bi bi-arrow-repeat cart-spin" />
+
+                    <span>Đang tải ưu đãi...</span>
+                  </div>
+                ) : availableCouponsError ? (
+                  <div className="cart-available-coupons-state cart-available-coupons-state-error">
+                    <i className="bi bi-exclamation-circle" />
+
+                    <span>{availableCouponsError}</span>
+                  </div>
+                ) : availableCoupons.length === 0 ? (
+                  <div className="cart-available-coupons-state">
+                    <i className="bi bi-ticket-perforated" />
+
+                    <span>Hiện chưa có mã giảm giá khả dụng.</span>
+                  </div>
+                ) : (
+                  <div className="cart-available-coupon-list">
+                    {availableCoupons.map((coupon) => {
+                      const isApplied = appliedCoupon?.code === coupon.code;
+
+                      return (
+                        <div
+                          className={
+                            coupon.eligible
+                              ? "cart-available-coupon-card"
+                              : "cart-available-coupon-card cart-available-coupon-card-disabled"
+                          }
+                          key={coupon.id}
+                        >
+                          <div className="cart-available-coupon-icon">
+                            <i className="bi bi-ticket-perforated-fill" />
+                          </div>
+
+                          <div className="cart-available-coupon-content">
+                            <div className="cart-available-coupon-top">
+                              <strong>{coupon.code}</strong>
+
+                              <span>Còn {coupon.remaining}</span>
+                            </div>
+
+                            <div className="cart-available-coupon-value">
+                              {coupon.type === "percent"
+                                ? `Giảm ${Number(
+                                    coupon.value || 0,
+                                  ).toLocaleString("vi-VN")}%`
+                                : `Giảm ${formatPrice(coupon.value)}`}
+                            </div>
+
+                            <small>
+                              Đơn tối thiểu {formatPrice(coupon.min_order)}
+                            </small>
+
+                            {coupon.end_date && (
+                              <small>HSD: {formatDate(coupon.end_date)}</small>
+                            )}
+
+                            {!coupon.eligible &&
+                              Number(coupon.amount_to_min_order || 0) > 0 && (
+                                <div className="cart-available-coupon-requirement">
+                                  Mua thêm{" "}
+                                  <strong>
+                                    {formatPrice(coupon.amount_to_min_order)}
+                                  </strong>{" "}
+                                  để dùng mã
+                                </div>
+                              )}
+
+                            {coupon.eligible &&
+                              Number(coupon.discount_amount || 0) > 0 && (
+                                <div className="cart-available-coupon-saving">
+                                  Tiết kiệm{" "}
+                                  {formatPrice(coupon.discount_amount)}
+                                </div>
+                              )}
+                          </div>
+
+                          <button
+                            type="button"
+                            className="cart-available-coupon-use"
+                            disabled={
+                              !coupon.eligible || couponLoading || isApplied
+                            }
+                            onClick={() => handleUseCoupon(coupon)}
+                          >
+                            {isApplied
+                              ? "Đang dùng"
+                              : coupon.eligible
+                                ? "Dùng mã"
+                                : "Chưa đủ"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               <div className="cart-summary-lines">
                 <div className="cart-summary-line">
                   <span>Tạm tính</span>
@@ -1437,16 +1648,16 @@ function Cart() {
                   <span>Phí vận chuyển</span>
 
                   <strong>
-                    {cartItems.length === 0 ? "0đ" : formatPrice(shipping)}
+                    {cartItems.length === 0 ? "0đ" : "Tính ở bước thanh toán"}
                   </strong>
                 </div>
               </div>
 
               <div className="cart-summary-total">
                 <div>
-                  <span>Tổng dự kiến</span>
+                  <span>Tạm tính sau giảm giá</span>
 
-                  <small>Đã gồm phí vận chuyển tạm tính</small>
+                  <small>Chưa gồm phí vận chuyển GHN</small>
                 </div>
 
                 <strong>{formatPrice(grandTotal)}</strong>

@@ -12,6 +12,7 @@ const couponRoutes = require("./couponRoutes");
 const shippingRoutes = require("./shippingRoutes");
 const contactRoutes = require("./contactRoutes");
 const aiChatRoutes = require("./aiChatRoutes");
+const ghnShippingRoutes = require("./ghnShippingRoutes");
 
 const router = express.Router();
 
@@ -29,5 +30,6 @@ router.use("/coupons", couponRoutes);
 router.use("/shipping", shippingRoutes);
 router.use("/contact", contactRoutes);
 router.use("/ai", aiChatRoutes);
+router.use("/shipping/ghn", ghnShippingRoutes);
 
 module.exports = router;

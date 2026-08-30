@@ -10,76 +10,60 @@ import Footer from "../../components/Footer";
 import { useCart } from "../../../context/CartContext";
 
 import orderService from "../../../services/orderService";
-import shippingService from "../../../services/shippingService";
-
-// ============================================================
-// IMAGE
-// ============================================================
-
-const IMAGE_BASE_URL =
-  process.env.REACT_APP_API_URL?.replace("/api", "") || "http://localhost:5000";
-
-const getImageUrl = (imageUrl) => {
-  if (!imageUrl) {
-    return "/images/no-image.png";
-  }
-
-  if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
-    return imageUrl;
-  }
-
-  return `${IMAGE_BASE_URL}${imageUrl}`;
-};
-
-// ============================================================
-// FORMAT MONEY
-// ============================================================
+import couponService from "../../../services/couponService";
+import ghnShippingService from "../../../services/ghnShippingService";
 
 const formatMoney = (value) => {
   return `${Number(value || 0).toLocaleString("vi-VN")}đ`;
 };
 
-// ============================================================
-// TEXT
-// ============================================================
-
 const hasMeaningfulText = (value) => {
   return /[\p{L}\p{N}]/u.test(String(value || ""));
 };
 
-// ============================================================
-// CART HELPERS
-// ============================================================
-
-const getItemPrice = (item) => {
-  return Number(item.final_price ?? item.price ?? 0);
-};
-
-const getItemImage = (item) => {
-  return (
-    item.display_image || item.variant_thumbnail || item.product_image || null
-  );
-};
-
-const getItemTotal = (item) => {
-  const saved = Number(item.total_price || 0);
-
-  if (saved > 0) {
-    return saved;
+const formatLeadTime = (value) => {
+  if (!value) {
+    return "";
   }
 
-  return getItemPrice(item) * Number(item.quantity || 0);
-};
+  const numericValue = Number(value);
 
-// ============================================================
-// PAYMENT
-// ============================================================
+  if (Number.isFinite(numericValue)) {
+    const timestamp =
+      numericValue < 1000000000000 ? numericValue * 1000 : numericValue;
+
+    const date = new Date(timestamp);
+
+    if (!Number.isNaN(date.getTime())) {
+      return date.toLocaleDateString("vi-VN", {
+        weekday: "long",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      });
+    }
+  }
+
+  const date = new Date(value);
+
+  if (!Number.isNaN(date.getTime())) {
+    return date.toLocaleDateString("vi-VN", {
+      weekday: "long",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  }
+
+  return String(value);
+};
 
 const PAYMENT_INFO = {
   cod: {
     title: "Thanh toán khi nhận hàng",
 
-    description: "Bạn thanh toán khi nhận sản phẩm tại địa chỉ giao hàng.",
+    description:
+      "Bạn thanh toán bằng tiền mặt khi nhân viên giao hàng giao sản phẩm tới địa chỉ nhận hàng.",
 
     icon: "bi-cash-coin",
 
@@ -92,7 +76,7 @@ const PAYMENT_INFO = {
     title: "Chuyển khoản ngân hàng",
 
     description:
-      "Sau khi đặt hàng, hệ thống hiển thị thông tin chuyển khoản và nội dung theo mã đơn.",
+      "Sau khi đặt hàng, hệ thống sẽ hiển thị thông tin chuyển khoản theo mã đơn hàng.",
 
     icon: "bi-bank",
 
@@ -105,7 +89,7 @@ const PAYMENT_INFO = {
     title: "Thanh toán online MoMo",
 
     description:
-      "Thanh toán trực tuyến qua cổng MoMo và hệ thống tự động cập nhật trạng thái đơn hàng.",
+      "Thanh toán qua thẻ ATM / Napas trên cổng MoMo, hệ thống tự cập nhật trạng thái đơn hàng.",
 
     icon: "bi-credit-card-2-front",
 
@@ -115,54 +99,33 @@ const PAYMENT_INFO = {
   },
 };
 
-// ============================================================
-// CHECKOUT
-// ============================================================
-
 const Checkout = () => {
   const navigate = useNavigate();
 
   const {
     userId,
-
     cartItems,
-
     cartLoading,
-
     cartCount,
-
     cartTotal,
+    clearCart,
 
-    /*
-     * Backend createFromCart đã tự soft-delete cart_items
-     * sau khi tạo order.
-     *
-     * FE chỉ cần refresh lại state.
-     */
-    fetchCart,
+    appliedCoupon,
+    setAppliedCoupon,
+    clearAppliedCoupon,
   } = useCart();
-
-  // ==========================================================
-  // FORM
-  // ==========================================================
 
   const [form, setForm] = useState({
     name: "",
-
     phone: "",
-
     email: "",
 
-    province_code: "",
-
-    district: "",
-
-    ward: "",
+    province_id: "",
+    district_id: "",
+    ward_code: "",
 
     address_detail: "",
-
     note: "",
-
     payment: "cod",
   });
 
@@ -170,169 +133,389 @@ const Checkout = () => {
 
   const [submitting, setSubmitting] = useState(false);
 
-  // ==========================================================
-  // SHIPPING
-  // ==========================================================
+  // =========================
+  // COUPON
+  // =========================
 
-  const [shippingRates, setShippingRates] = useState([]);
+  const [validatedCoupon, setValidatedCoupon] = useState(null);
 
-  const [shippingRatesLoading, setShippingRatesLoading] = useState(false);
+  const [couponValidating, setCouponValidating] = useState(false);
+
+  const [couponError, setCouponError] = useState("");
+
+  // =========================
+  // GHN
+  // =========================
+
+  const [provinces, setProvinces] = useState([]);
+
+  const [districts, setDistricts] = useState([]);
+
+  const [wards, setWards] = useState([]);
+
+  const [provincesLoading, setProvincesLoading] = useState(false);
+
+  const [districtsLoading, setDistrictsLoading] = useState(false);
+
+  const [wardsLoading, setWardsLoading] = useState(false);
 
   const [shippingCalculating, setShippingCalculating] = useState(false);
 
   const [shippingInfo, setShippingInfo] = useState(null);
 
+  const [leadTimeInfo, setLeadTimeInfo] = useState(null);
+
   const [shippingError, setShippingError] = useState("");
 
-  // ==========================================================
+  // =========================
   // SUBTOTAL
-  // ==========================================================
+  // =========================
 
   const subtotal = useMemo(() => {
     if (Number(cartTotal || 0) > 0) {
-      return Number(cartTotal);
+      return Number(cartTotal || 0);
     }
 
-    return cartItems.reduce(
-      (total, item) => total + getItemTotal(item),
+    return cartItems.reduce((total, item) => {
+      const itemPrice = Number(item.final_price || item.price || 0);
 
-      0,
-    );
+      const itemQuantity = Number(item.quantity || 0);
+
+      const itemTotal = Number(item.total_price || 0);
+
+      if (itemTotal > 0) {
+        return total + itemTotal;
+      }
+
+      return total + itemPrice * itemQuantity;
+    }, 0);
   }, [cartItems, cartTotal]);
 
-  // ==========================================================
+  // =========================
   // DISCOUNT
-  // ==========================================================
+  // Chỉ dùng coupon đã validate
+  // tại Checkout.
+  // =========================
 
-  const discount = 0;
+  const discount = useMemo(() => {
+    return Number(validatedCoupon?.discount_amount || 0);
+  }, [validatedCoupon]);
 
-  // ==========================================================
+  // =========================
   // SHIPPING
-  // ==========================================================
+  // =========================
 
-  const shipping =
-    form.province_code && shippingInfo
-      ? Number(shippingInfo.shipping_fee || 0)
-      : 0;
+  const shipping = shippingInfo
+    ? Number(shippingInfo.total || shippingInfo.shipping_fee || 0)
+    : 0;
 
-  // ==========================================================
+  // =========================
   // TOTAL
-  // ==========================================================
+  // =========================
 
-  const total = Math.max(
-    subtotal - discount + shipping,
-
-    0,
-  );
-
-  // ==========================================================
-  // PAYMENT
-  // ==========================================================
+  const total = Math.max(subtotal - discount + shipping, 0);
 
   const selectedPayment = PAYMENT_INFO[form.payment] || PAYMENT_INFO.cod;
 
-  // ==========================================================
-  // PROVINCE
-  // ==========================================================
+  // =========================
+  // SELECTED LOCATION
+  // =========================
 
   const selectedProvince = useMemo(() => {
     return (
-      shippingRates.find((item) => item.province_code === form.province_code) ||
+      provinces.find(
+        (item) => String(item.ProvinceID) === String(form.province_id),
+      ) || null
+    );
+  }, [provinces, form.province_id]);
+
+  const selectedDistrict = useMemo(() => {
+    return (
+      districts.find(
+        (item) => String(item.DistrictID) === String(form.district_id),
+      ) || null
+    );
+  }, [districts, form.district_id]);
+
+  const selectedWard = useMemo(() => {
+    return (
+      wards.find((item) => String(item.WardCode) === String(form.ward_code)) ||
       null
     );
-  }, [shippingRates, form.province_code]);
+  }, [wards, form.ward_code]);
 
-  // ==========================================================
+  const selectedService =
+    shippingInfo?.selected_service || leadTimeInfo?.selected_service || null;
+
+  // =========================
   // ADDRESS PREVIEW
-  // ==========================================================
+  // =========================
 
   const fullAddressPreview = useMemo(() => {
-    return [
+    const parts = [
       form.address_detail.trim(),
 
-      form.ward.trim(),
+      selectedWard?.WardName || "",
 
-      form.district.trim(),
+      selectedDistrict?.DistrictName || "",
 
-      selectedProvince?.province_name || "",
-    ]
-      .filter(Boolean)
-      .join(", ");
-  }, [form.address_detail, form.ward, form.district, selectedProvince]);
+      selectedProvince?.ProvinceName || "",
+    ].filter(Boolean);
 
-  // ==========================================================
-  // ERROR
-  // ==========================================================
+    return parts.join(", ");
+  }, [form.address_detail, selectedWard, selectedDistrict, selectedProvince]);
+
+  // =========================
+  // LEAD TIME
+  // =========================
+
+  const formattedLeadTime = useMemo(() => {
+    const value =
+      leadTimeInfo?.leadtime ||
+      leadTimeInfo?.lead_time ||
+      leadTimeInfo?.expected_delivery_time;
+
+    return formatLeadTime(value);
+  }, [leadTimeInfo]);
 
   const getErrorMessage = (error, fallback) => {
     return error?.response?.data?.message || error?.message || fallback;
   };
 
-  // ==========================================================
-  // LOAD SHIPPING
-  // ==========================================================
+  // =========================
+  // VALIDATE COUPON
+  // CART -> CHECKOUT
+  // =========================
 
   useEffect(() => {
+    if (!appliedCoupon?.code) {
+      setValidatedCoupon(null);
+
+      setCouponError("");
+
+      return;
+    }
+
+    if (subtotal <= 0) {
+      setValidatedCoupon(null);
+
+      return;
+    }
+
     let cancelled = false;
 
-    const loadShippingRates = async () => {
+    const validateCheckoutCoupon = async () => {
       try {
-        setShippingRatesLoading(true);
+        setCouponValidating(true);
 
-        setShippingError("");
+        setCouponError("");
 
-        const response = await shippingService.getActiveRates();
+        const response = await couponService.validate({
+          code: appliedCoupon.code,
+
+          subtotal,
+        });
 
         if (cancelled) {
           return;
         }
 
-        const rates = response?.data?.data;
+        const coupon = response?.data?.data;
 
-        setShippingRates(Array.isArray(rates) ? rates : []);
+        if (!coupon) {
+          throw new Error("Không nhận được thông tin mã giảm giá");
+        }
+
+        setValidatedCoupon(coupon);
+
+        // cập nhật lại coupon
+        // trong CartContext/sessionStorage
+        setAppliedCoupon(coupon);
       } catch (error) {
         if (cancelled) {
           return;
         }
 
-        setShippingRates([]);
+        setValidatedCoupon(null);
 
-        setShippingError(
-          getErrorMessage(
-            error,
+        clearAppliedCoupon();
 
-            "Không thể tải danh sách khu vực vận chuyển.",
-          ),
-        );
+        setCouponError(getErrorMessage(error, "Mã giảm giá không còn hợp lệ."));
       } finally {
         if (!cancelled) {
-          setShippingRatesLoading(false);
+          setCouponValidating(false);
         }
       }
     };
 
-    loadShippingRates();
+    validateCheckoutCoupon();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appliedCoupon?.code, subtotal, setAppliedCoupon, clearAppliedCoupon]);
+
+  // =========================
+  // LOAD PROVINCES
+  // =========================
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadProvinces = async () => {
+      try {
+        setProvincesLoading(true);
+
+        setShippingError("");
+
+        const response = await ghnShippingService.getProvinces();
+
+        if (cancelled) {
+          return;
+        }
+
+        const data = response?.data?.data;
+
+        setProvinces(Array.isArray(data) ? data : []);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setProvinces([]);
+
+        setShippingError(
+          getErrorMessage(error, "Không thể tải danh sách tỉnh/thành."),
+        );
+      } finally {
+        if (!cancelled) {
+          setProvincesLoading(false);
+        }
+      }
+    };
+
+    loadProvinces();
 
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // ==========================================================
-  // CALCULATE SHIPPING
-  // ==========================================================
+  // =========================
+  // LOAD DISTRICTS
+  // =========================
 
   useEffect(() => {
-    if (!form.province_code) {
-      setShippingInfo(null);
-
-      setShippingError("");
+    if (!form.province_id) {
+      setDistricts([]);
 
       return;
     }
 
-    if (subtotal <= 0) {
+    let cancelled = false;
+
+    const loadDistricts = async () => {
+      try {
+        setDistrictsLoading(true);
+
+        setShippingError("");
+
+        const response = await ghnShippingService.getDistricts(
+          form.province_id,
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        const data = response?.data?.data;
+
+        setDistricts(Array.isArray(data) ? data : []);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setDistricts([]);
+
+        setShippingError(
+          getErrorMessage(error, "Không thể tải danh sách quận/huyện."),
+        );
+      } finally {
+        if (!cancelled) {
+          setDistrictsLoading(false);
+        }
+      }
+    };
+
+    loadDistricts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [form.province_id]);
+
+  // =========================
+  // LOAD WARDS
+  // =========================
+
+  useEffect(() => {
+    if (!form.district_id) {
+      setWards([]);
+
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadWards = async () => {
+      try {
+        setWardsLoading(true);
+
+        setShippingError("");
+
+        const response = await ghnShippingService.getWards(form.district_id);
+
+        if (cancelled) {
+          return;
+        }
+
+        const data = response?.data?.data;
+
+        setWards(Array.isArray(data) ? data : []);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setWards([]);
+
+        setShippingError(
+          getErrorMessage(error, "Không thể tải danh sách phường/xã."),
+        );
+      } finally {
+        if (!cancelled) {
+          setWardsLoading(false);
+        }
+      }
+    };
+
+    loadWards();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [form.district_id]);
+
+  // =========================
+  // GHN FEE + LEAD TIME
+  // =========================
+
+  useEffect(() => {
+    if (!form.district_id || !form.ward_code || subtotal <= 0) {
       setShippingInfo(null);
+
+      setLeadTimeInfo(null);
 
       return;
     }
@@ -345,23 +528,44 @@ const Checkout = () => {
 
         setShippingError("");
 
-        const response = await shippingService.calculate({
-          province_code: form.province_code,
+        const insuranceValue = Math.max(subtotal - discount, 0);
 
-          subtotal,
-        });
+        const codValue =
+          form.payment === "cod" ? Math.max(subtotal - discount, 0) : 0;
+
+        const [feeResponse, leadTimeResponse] = await Promise.all([
+          ghnShippingService.calculateFee({
+            toDistrictId: form.district_id,
+
+            toWardCode: form.ward_code,
+
+            insuranceValue,
+
+            codValue,
+          }),
+
+          ghnShippingService.calculateLeadTime({
+            toDistrictId: form.district_id,
+
+            toWardCode: form.ward_code,
+          }),
+        ]);
 
         if (cancelled) {
           return;
         }
 
-        const data = response?.data?.data;
+        const feeData = feeResponse?.data?.data;
 
-        if (!data) {
-          throw new Error("Không nhận được thông tin phí vận chuyển.");
+        const leadTimeData = leadTimeResponse?.data?.data;
+
+        if (!feeData) {
+          throw new Error("Không nhận được phí vận chuyển từ GHN");
         }
 
-        setShippingInfo(data);
+        setShippingInfo(feeData);
+
+        setLeadTimeInfo(leadTimeData || null);
       } catch (error) {
         if (cancelled) {
           return;
@@ -369,12 +573,10 @@ const Checkout = () => {
 
         setShippingInfo(null);
 
-        setShippingError(
-          getErrorMessage(
-            error,
+        setLeadTimeInfo(null);
 
-            "Không thể tính phí vận chuyển.",
-          ),
+        setShippingError(
+          getErrorMessage(error, "Không thể tính phí vận chuyển GHN."),
         );
       } finally {
         if (!cancelled) {
@@ -388,43 +590,82 @@ const Checkout = () => {
     return () => {
       cancelled = true;
     };
-  }, [form.province_code, subtotal]);
+  }, [form.district_id, form.ward_code, form.payment, subtotal, discount]);
 
-  // ==========================================================
+  // =========================
   // HANDLE CHANGE
-  // ==========================================================
+  // =========================
 
   const handleChange = (event) => {
     const { name, value } = event.target;
 
-    setForm((previous) => ({
-      ...previous,
+    if (name === "province_id") {
+      setForm((previous) => ({
+        ...previous,
 
-      [name]: value,
-    }));
+        province_id: value,
+
+        district_id: "",
+
+        ward_code: "",
+      }));
+
+      setDistricts([]);
+      setWards([]);
+
+      setShippingInfo(null);
+
+      setLeadTimeInfo(null);
+
+      setShippingError("");
+    } else if (name === "district_id") {
+      setForm((previous) => ({
+        ...previous,
+
+        district_id: value,
+
+        ward_code: "",
+      }));
+
+      setWards([]);
+
+      setShippingInfo(null);
+
+      setLeadTimeInfo(null);
+
+      setShippingError("");
+    } else if (name === "ward_code") {
+      setForm((previous) => ({
+        ...previous,
+
+        ward_code: value,
+      }));
+
+      setShippingInfo(null);
+
+      setLeadTimeInfo(null);
+
+      setShippingError("");
+    } else {
+      setForm((previous) => ({
+        ...previous,
+
+        [name]: value,
+      }));
+    }
 
     setErrors((previous) => ({
       ...previous,
 
       [name]: "",
 
-      ...(name === "province_code"
-        ? {
-            shipping: "",
-          }
-        : {}),
+      shipping: "",
     }));
-
-    if (name === "province_code") {
-      setShippingInfo(null);
-
-      setShippingError("");
-    }
   };
 
-  // ==========================================================
-  // VALIDATE
-  // ==========================================================
+  // =========================
+  // VALIDATE FORM
+  // =========================
 
   const validateForm = () => {
     const newErrors = {};
@@ -444,31 +685,39 @@ const Checkout = () => {
     }
 
     if (!form.email.trim()) {
-      newErrors.email = "Vui lòng nhập email";
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
-      newErrors.email = "Email không hợp lệ";
+      newErrors.email = "Vui lòng nhập email nhận thông báo đơn hàng";
+    } else {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      if (!emailRegex.test(form.email.trim())) {
+        newErrors.email = "Email không hợp lệ";
+      }
     }
 
-    if (!form.province_code) {
-      newErrors.province_code = "Vui lòng chọn tỉnh / thành phố";
+    if (!form.province_id) {
+      newErrors.province_id = "Vui lòng chọn tỉnh / thành phố";
     }
 
-    if (!form.district.trim()) {
-      newErrors.district = "Vui lòng nhập quận / huyện";
-    } else if (!hasMeaningfulText(form.district)) {
-      newErrors.district = "Quận / huyện không hợp lệ";
+    if (!form.district_id) {
+      newErrors.district_id = "Vui lòng chọn quận / huyện";
     }
 
-    if (!form.ward.trim()) {
-      newErrors.ward = "Vui lòng nhập phường / xã";
-    } else if (!hasMeaningfulText(form.ward)) {
-      newErrors.ward = "Phường / xã không hợp lệ";
+    if (!form.ward_code) {
+      newErrors.ward_code = "Vui lòng chọn phường / xã";
     }
 
-    if (!form.address_detail.trim()) {
+    const addressDetail = form.address_detail.trim();
+
+    if (!addressDetail) {
       newErrors.address_detail = "Vui lòng nhập số nhà, tên đường";
-    } else if (form.address_detail.trim().length < 5) {
+    } else if (addressDetail.length < 5) {
       newErrors.address_detail = "Địa chỉ cụ thể quá ngắn";
+    } else if (!hasMeaningfulText(addressDetail)) {
+      newErrors.address_detail = "Địa chỉ cụ thể không hợp lệ";
+    }
+
+    if (!form.payment) {
+      newErrors.payment = "Vui lòng chọn phương thức thanh toán";
     }
 
     if (!["cod", "bank", "momo"].includes(form.payment)) {
@@ -479,7 +728,7 @@ const Checkout = () => {
       newErrors.cart = "Giỏ hàng đang trống";
     }
 
-    if (form.province_code && !shippingInfo) {
+    if (form.ward_code && !shippingInfo) {
       newErrors.shipping = shippingError || "Chưa xác định được phí vận chuyển";
     }
 
@@ -488,9 +737,21 @@ const Checkout = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  // ==========================================================
+  // =========================
+  // CLEAR CART
+  // =========================
+
+  const syncClearCartAfterOrder = async () => {
+    try {
+      await clearCart();
+    } catch (error) {
+      console.warn("Không thể đồng bộ xóa giỏ hàng sau đặt hàng:", error);
+    }
+  };
+
+  // =========================
   // CHECKOUT
-  // ==========================================================
+  // =========================
 
   const handleCheckout = async () => {
     if (!userId) {
@@ -508,54 +769,86 @@ const Checkout = () => {
     try {
       setSubmitting(true);
 
-      // ====================================================
-      // SERVER CALCULATES SHIPPING AGAIN
-      // ====================================================
+      // =========================
+      // VALIDATE COUPON LẦN CUỐI
+      // =========================
 
-      const shippingResponse = await shippingService.calculate({
-        province_code: form.province_code,
+      let finalDiscount = 0;
 
-        subtotal,
+      if (appliedCoupon?.code) {
+        const couponResponse = await couponService.validate({
+          code: appliedCoupon.code,
+
+          subtotal,
+        });
+
+        const latestCoupon = couponResponse?.data?.data;
+
+        if (!latestCoupon) {
+          throw new Error("Không thể xác nhận mã giảm giá");
+        }
+
+        finalDiscount = Number(latestCoupon.discount_amount || 0);
+
+        setValidatedCoupon(latestCoupon);
+
+        setAppliedCoupon(latestCoupon);
+      }
+
+      // =========================
+      // GHN FEE LẦN CUỐI
+      // =========================
+
+      const insuranceValue = Math.max(subtotal - finalDiscount, 0);
+
+      const codValue =
+        form.payment === "cod" ? Math.max(subtotal - finalDiscount, 0) : 0;
+
+      const shippingResponse = await ghnShippingService.calculateFee({
+        toDistrictId: form.district_id,
+
+        toWardCode: form.ward_code,
+
+        insuranceValue,
+
+        codValue,
       });
 
       const latestShipping = shippingResponse?.data?.data;
 
       if (!latestShipping) {
-        throw new Error("Không thể xác định phí vận chuyển.");
+        throw new Error("Không thể xác định phí vận chuyển GHN");
       }
 
-      const finalShippingFee = Number(latestShipping.shipping_fee || 0);
+      const finalShippingFee = Number(
+        latestShipping.total || latestShipping.shipping_fee || 0,
+      );
 
-      // ====================================================
-      // SHIPPING ADDRESS
-      // ====================================================
+      const finalTotal = Math.max(
+        subtotal - finalDiscount + finalShippingFee,
+        0,
+      );
+
+      // =========================
+      // ADDRESS
+      // =========================
 
       const fullShippingAddress = [
         form.address_detail.trim(),
 
-        form.ward.trim(),
+        selectedWard?.WardName,
 
-        form.district.trim(),
+        selectedDistrict?.DistrictName,
 
-        latestShipping.province_name,
+        selectedProvince?.ProvinceName,
       ]
         .filter(Boolean)
         .join(", ");
 
-      /*
-       * QUAN TRỌNG:
-       *
-       * Không gửi product_id / variant_id từ FE.
-       *
-       * Backend Order.createFromCart()
-       * sẽ đọc trực tiếp cart_items và khóa:
-       *
-       * product_id
-       * variant_id
-       * quantity
-       *
-       * Đây là kiến trúc an toàn hơn.
-       */
+      // =========================
+      // ORDER PAYLOAD
+      // =========================
+
       const payload = {
         user_id: userId,
 
@@ -567,9 +860,11 @@ const Checkout = () => {
 
         shipping_address: fullShippingAddress,
 
-        shipping_province_code: latestShipping.province_code,
+        shipping_province_code: String(
+          selectedProvince?.ProvinceID || form.province_id,
+        ),
 
-        shipping_province_name: latestShipping.province_name,
+        shipping_province_name: selectedProvince?.ProvinceName || "",
 
         shipping_fee: finalShippingFee,
 
@@ -577,20 +872,22 @@ const Checkout = () => {
 
         payment_method: form.payment,
 
-        discount_amount: discount,
+        discount_amount: finalDiscount,
+
+        total_amount: finalTotal,
       };
 
       const res = await orderService.createOrder(payload);
 
-      const responseData = res?.data?.data;
+      const responseData = res.data?.data;
 
       const order = responseData?.order || responseData;
 
       const orderId = order?.id;
 
-      // ====================================================
+      // =========================
       // MOMO
-      // ====================================================
+      // =========================
 
       if (form.payment === "momo" && responseData?.payment_url) {
         window.location.href = responseData.payment_url;
@@ -598,23 +895,13 @@ const Checkout = () => {
         return;
       }
 
-      /*
-       * Backend createFromCart đã clear cart_items.
-       * FE chỉ refresh state.
-       *
-       * Không gọi DELETE /cart/clear thêm lần nữa.
-       */
-      try {
-        await fetchCart({
-          silent: true,
-        });
-      } catch (error) {
-        console.warn("Không thể refresh giỏ hàng sau khi đặt hàng:", error);
-      }
+      // clearCart trong
+      // CartContext cũng xóa coupon
+      await syncClearCartAfterOrder();
 
-      // ====================================================
+      // =========================
       // BANK
-      // ====================================================
+      // =========================
 
       if (form.payment === "bank") {
         navigate(`/order-success?order_id=${orderId || ""}&payment=bank`);
@@ -622,16 +909,16 @@ const Checkout = () => {
         return;
       }
 
-      // ====================================================
+      // =========================
       // COD
-      // ====================================================
+      // =========================
 
       navigate(`/order-success?order_id=${orderId || ""}&payment=cod`);
     } catch (error) {
       console.error("Lỗi đặt hàng:", error);
 
       alert(
-        error?.response?.data?.message ||
+        error.response?.data?.message ||
           error.message ||
           "Đặt hàng thất bại. Vui lòng kiểm tra lại.",
       );
@@ -640,9 +927,9 @@ const Checkout = () => {
     }
   };
 
-  // ==========================================================
+  // =========================
   // RENDER
-  // ==========================================================
+  // =========================
 
   return (
     <div className="ck-page">
@@ -661,16 +948,16 @@ const Checkout = () => {
           <span>Thanh toán</span>
         </div>
 
-        <header className="ck-title">
+        <div className="ck-title">
           <span className="ck-kicker">Thanh toán</span>
 
           <h1>Xác nhận đơn hàng</h1>
 
           <p>
-            Kiểm tra phiên bản sản phẩm, thông tin nhận hàng và phương thức
-            thanh toán trước khi đặt hàng.
+            Kiểm tra thông tin nhận hàng và phương thức thanh toán trước khi đặt
+            hàng.
           </p>
-        </header>
+        </div>
 
         {cartLoading && cartItems.length === 0 ? (
           <div className="ck-loading">
@@ -692,12 +979,12 @@ const Checkout = () => {
           </div>
         ) : (
           <div className="ck-grid">
-            <section className="ck-form">
+            <div className="ck-form">
               <div className="ck-section-head">
                 <div>
                   <h2>Thông tin nhận hàng</h2>
 
-                  <p>Nhập chính xác thông tin để shop liên hệ và giao hàng.</p>
+                  <p>Nhập thông tin chính xác để shop liên hệ và giao hàng.</p>
                 </div>
 
                 <span>1</span>
@@ -753,59 +1040,89 @@ const Checkout = () => {
                 <label>Tỉnh / Thành phố</label>
 
                 <select
-                  name="province_code"
+                  name="province_id"
                   className="ck-select"
-                  value={form.province_code}
+                  value={form.province_id}
                   onChange={handleChange}
-                  disabled={shippingRatesLoading}
+                  disabled={provincesLoading}
                 >
                   <option value="">
-                    {shippingRatesLoading
+                    {provincesLoading
                       ? "Đang tải tỉnh/thành..."
                       : "-- Chọn tỉnh / thành phố --"}
                   </option>
 
-                  {shippingRates.map((rate) => (
-                    <option key={rate.id} value={rate.province_code}>
-                      {rate.province_name}
+                  {provinces.map((province) => (
+                    <option
+                      key={province.ProvinceID}
+                      value={province.ProvinceID}
+                    >
+                      {province.ProvinceName}
                     </option>
                   ))}
                 </select>
 
-                {errors.province_code && <small>{errors.province_code}</small>}
-
-                {shippingError && form.province_code && (
-                  <small>{shippingError}</small>
-                )}
+                {errors.province_id && <small>{errors.province_id}</small>}
               </div>
 
               <div className="ck-field-grid">
                 <div className="ck-field">
                   <label>Quận / Huyện</label>
 
-                  <input
-                    name="district"
-                    placeholder="VD: Ninh Kiều"
-                    value={form.district}
+                  <select
+                    name="district_id"
+                    className="ck-select"
+                    value={form.district_id}
                     onChange={handleChange}
-                    maxLength={100}
-                  />
+                    disabled={!form.province_id || districtsLoading}
+                  >
+                    <option value="">
+                      {districtsLoading
+                        ? "Đang tải quận/huyện..."
+                        : !form.province_id
+                          ? "Chọn tỉnh/thành trước"
+                          : "-- Chọn quận / huyện --"}
+                    </option>
 
-                  {errors.district && <small>{errors.district}</small>}
+                    {districts.map((district) => (
+                      <option
+                        key={district.DistrictID}
+                        value={district.DistrictID}
+                      >
+                        {district.DistrictName}
+                      </option>
+                    ))}
+                  </select>
+
+                  {errors.district_id && <small>{errors.district_id}</small>}
                 </div>
 
                 <div className="ck-field">
                   <label>Phường / Xã</label>
 
-                  <input
-                    name="ward"
-                    placeholder="VD: An Khánh"
-                    value={form.ward}
+                  <select
+                    name="ward_code"
+                    className="ck-select"
+                    value={form.ward_code}
                     onChange={handleChange}
-                    maxLength={100}
-                  />
+                    disabled={!form.district_id || wardsLoading}
+                  >
+                    <option value="">
+                      {wardsLoading
+                        ? "Đang tải phường/xã..."
+                        : !form.district_id
+                          ? "Chọn quận/huyện trước"
+                          : "-- Chọn phường / xã --"}
+                    </option>
 
-                  {errors.ward && <small>{errors.ward}</small>}
+                    {wards.map((ward) => (
+                      <option key={ward.WardCode} value={ward.WardCode}>
+                        {ward.WardName}
+                      </option>
+                    ))}
+                  </select>
+
+                  {errors.ward_code && <small>{errors.ward_code}</small>}
                 </div>
               </div>
 
@@ -839,65 +1156,68 @@ const Checkout = () => {
                 </div>
               )}
 
-              {form.province_code && (
+              {form.ward_code && (
                 <div className="ck-shipping-info">
                   {shippingCalculating ? (
                     <div className="ck-shipping-loading">
                       <i className="bi bi-arrow-repeat ck-btn-spin" />
 
-                      <span>Đang tính phí vận chuyển...</span>
+                      <span>Đang tính phí vận chuyển GHN...</span>
                     </div>
                   ) : shippingInfo ? (
                     <>
                       <div className="ck-shipping-info-row">
                         <div>
-                          <i className="bi bi-geo-alt" />
+                          <i className="bi bi-truck" />
 
-                          <span>Khu vực giao hàng</span>
+                          <span>Đơn vị vận chuyển</span>
                         </div>
 
-                        <strong>{shippingInfo.province_name}</strong>
+                        <strong>
+                          GHN
+                          {selectedService?.short_name
+                            ? ` - ${selectedService.short_name}`
+                            : ""}
+                        </strong>
                       </div>
 
                       <div className="ck-shipping-info-row">
                         <div>
-                          <i className="bi bi-truck" />
+                          <i className="bi bi-cash-stack" />
 
                           <span>Phí vận chuyển</span>
                         </div>
 
-                        <strong>
-                          {shippingInfo.is_free_shipping
-                            ? "Miễn phí"
-                            : formatMoney(shippingInfo.shipping_fee)}
-                        </strong>
+                        <strong>{formatMoney(shipping)}</strong>
                       </div>
 
-                      {shippingInfo.is_free_shipping ? (
-                        <div className="ck-shipping-free">
-                          <i className="bi bi-gift-fill" />
+                      {formattedLeadTime && (
+                        <div className="ck-shipping-info-row">
+                          <div>
+                            <i className="bi bi-clock-history" />
 
-                          <span>Đơn hàng được miễn phí vận chuyển.</span>
-                        </div>
-                      ) : Number(shippingInfo.amount_to_free_shipping || 0) >
-                        0 ? (
-                        <div className="ck-shipping-more">
-                          <i className="bi bi-info-circle" />
+                            <span>Dự kiến giao</span>
+                          </div>
 
-                          <span>
-                            Mua thêm{" "}
-                            <strong>
-                              {formatMoney(
-                                shippingInfo.amount_to_free_shipping,
-                              )}
-                            </strong>{" "}
-                            để được miễn phí vận chuyển.
-                          </span>
+                          <strong>{formattedLeadTime}</strong>
                         </div>
-                      ) : null}
+                      )}
+
+                      <div className="ck-shipping-more">
+                        <i className="bi bi-info-circle" />
+
+                        <span>
+                          Dịch vụ, phí và thời gian giao hàng được hệ thống tự
+                          động xác định qua GHN.
+                        </span>
+                      </div>
                     </>
                   ) : null}
                 </div>
+              )}
+
+              {shippingError && (
+                <div className="ck-error-box">{shippingError}</div>
               )}
 
               {errors.shipping && (
@@ -927,47 +1247,109 @@ const Checkout = () => {
               </div>
 
               <div className="ck-payment">
-                {Object.entries(PAYMENT_INFO).map(([value, payment]) => (
-                  <label className="ck-pay-option" key={value}>
-                    <input
-                      type="radio"
-                      name="payment"
-                      value={value}
-                      checked={form.payment === value}
-                      onChange={handleChange}
-                    />
+                <label className="ck-pay-option">
+                  <input
+                    type="radio"
+                    name="payment"
+                    value="cod"
+                    checked={form.payment === "cod"}
+                    onChange={handleChange}
+                  />
 
-                    <div className="ck-pay-card">
-                      <div className={`ck-pay-icon ${payment.className}`}>
-                        <i className={`bi ${payment.icon}`} />
+                  <div className="ck-pay-card">
+                    <div className="ck-pay-icon cod">
+                      <i className="bi bi-cash-coin" />
+                    </div>
+
+                    <div className="ck-pay-content">
+                      <div className="ck-pay-top">
+                        <span className="ck-pay-title">
+                          Thanh toán khi nhận hàng
+                        </span>
+
+                        <span className="ck-pay-tag">COD</span>
                       </div>
 
-                      <div className="ck-pay-content">
-                        <div className="ck-pay-top">
-                          <span className="ck-pay-title">{payment.title}</span>
+                      <span className="ck-pay-sub">
+                        Trả tiền mặt khi nhận sản phẩm tại địa chỉ giao hàng.
+                      </span>
+                    </div>
 
-                          <span
-                            className={
-                              value === "momo"
-                                ? "ck-pay-tag recommended"
-                                : "ck-pay-tag"
-                            }
-                          >
-                            {payment.tag}
-                          </span>
-                        </div>
+                    <span className="ck-pay-check">
+                      <i className="bi bi-check-lg" />
+                    </span>
+                  </div>
+                </label>
 
-                        <span className="ck-pay-sub">
-                          {payment.description}
+                <label className="ck-pay-option">
+                  <input
+                    type="radio"
+                    name="payment"
+                    value="bank"
+                    checked={form.payment === "bank"}
+                    onChange={handleChange}
+                  />
+
+                  <div className="ck-pay-card">
+                    <div className="ck-pay-icon bank">
+                      <i className="bi bi-bank" />
+                    </div>
+
+                    <div className="ck-pay-content">
+                      <div className="ck-pay-top">
+                        <span className="ck-pay-title">
+                          Chuyển khoản ngân hàng
+                        </span>
+
+                        <span className="ck-pay-tag">QR Bank</span>
+                      </div>
+
+                      <span className="ck-pay-sub">
+                        Quét QR hoặc chuyển khoản theo mã đơn hàng.
+                      </span>
+                    </div>
+
+                    <span className="ck-pay-check">
+                      <i className="bi bi-check-lg" />
+                    </span>
+                  </div>
+                </label>
+
+                <label className="ck-pay-option">
+                  <input
+                    type="radio"
+                    name="payment"
+                    value="momo"
+                    checked={form.payment === "momo"}
+                    onChange={handleChange}
+                  />
+
+                  <div className="ck-pay-card">
+                    <div className="ck-pay-icon momo">
+                      <i className="bi bi-credit-card-2-front" />
+                    </div>
+
+                    <div className="ck-pay-content">
+                      <div className="ck-pay-top">
+                        <span className="ck-pay-title">
+                          Thanh toán online MoMo
+                        </span>
+
+                        <span className="ck-pay-tag recommended">
+                          Khuyên dùng
                         </span>
                       </div>
 
-                      <span className="ck-pay-check">
-                        <i className="bi bi-check-lg" />
+                      <span className="ck-pay-sub">
+                        Thanh toán qua thẻ ATM / Napas trên cổng MoMo.
                       </span>
                     </div>
-                  </label>
-                ))}
+
+                    <span className="ck-pay-check">
+                      <i className="bi bi-check-lg" />
+                    </span>
+                  </div>
+                </label>
               </div>
 
               <div className={`ck-payment-helper ${selectedPayment.className}`}>
@@ -992,7 +1374,7 @@ const Checkout = () => {
                 className="ck-btn-primary"
                 type="button"
                 onClick={handleCheckout}
-                disabled={submitting || shippingCalculating}
+                disabled={submitting || shippingCalculating || couponValidating}
               >
                 {submitting ? (
                   <>
@@ -1000,20 +1382,18 @@ const Checkout = () => {
                     Đang đặt hàng...
                   </>
                 ) : form.payment === "momo" ? (
-                  <>
-                    <i className="bi bi-credit-card-2-front" />
-                    Tiếp tục thanh toán MoMo
-                  </>
+                  "Tiếp tục thanh toán MoMo"
                 ) : (
-                  <>
-                    <i className="bi bi-bag-check" />
-                    Đặt hàng
-                  </>
+                  "Đặt hàng"
                 )}
               </button>
-            </section>
+            </div>
 
-            <aside className="ck-summary">
+            {/* =========================
+                ORDER SUMMARY
+            ========================= */}
+
+            <div className="ck-summary">
               <h2>Đơn hàng</h2>
 
               <div className="ck-summary-count">
@@ -1022,66 +1402,27 @@ const Checkout = () => {
 
               <div className="ck-summary-items">
                 {cartItems.map((item) => {
-                  const itemPrice = getItemPrice(item);
+                  const itemPrice = Number(item.final_price || item.price || 0);
 
-                  const itemTotal = getItemTotal(item);
+                  const itemQuantity = Number(item.quantity || 0);
 
-                  const itemImage = getItemImage(item);
-
-                  const variantOptions = Array.isArray(item.variant_options)
-                    ? item.variant_options
-                    : [];
+                  const itemTotal =
+                    Number(item.total_price || 0) || itemPrice * itemQuantity;
 
                   return (
-                    <article className="ck-item" key={item.id}>
-                      <div className="ck-item-image">
-                        <img
-                          src={getImageUrl(itemImage)}
-                          alt={item.product_name}
-                          onError={(event) => {
-                            event.currentTarget.onerror = null;
-
-                            event.currentTarget.src = "/images/no-image.png";
-                          }}
-                        />
-                      </div>
-
-                      <div className="ck-item-content">
+                    <div className="ck-item" key={item.id}>
+                      <div>
                         <span className="ck-item-name">
                           {item.product_name}
                         </span>
-
-                        {item.variant_name && (
-                          <span className="ck-item-variant-name">
-                            {item.variant_name}
-                          </span>
-                        )}
-
-                        {variantOptions.length > 0 && (
-                          <div className="ck-item-variant-options">
-                            {variantOptions.map((option) => (
-                              <span
-                                key={`${option.option_id}-${option.option_value_id}`}
-                              >
-                                {option.label || option.value}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-
-                        <small>
-                          {item.variant_sku || item.product_sku || ""}
-                        </small>
 
                         <small>
                           SL: {item.quantity} × {formatMoney(itemPrice)}
                         </small>
                       </div>
 
-                      <strong className="ck-item-total-price">
-                        {formatMoney(itemTotal)}
-                      </strong>
-                    </article>
+                      <strong>{formatMoney(itemTotal)}</strong>
+                    </div>
                   );
                 })}
               </div>
@@ -1094,24 +1435,44 @@ const Checkout = () => {
                 <span>{formatMoney(subtotal)}</span>
               </div>
 
+              {/* COUPON */}
+
+              {appliedCoupon?.code && (
+                <div className="ck-row">
+                  <span>Mã giảm giá</span>
+
+                  <span>
+                    {couponValidating
+                      ? "Đang kiểm tra..."
+                      : validatedCoupon
+                        ? validatedCoupon.code
+                        : appliedCoupon.code}
+                  </span>
+                </div>
+              )}
+
               <div className="ck-row">
                 <span>Giảm giá</span>
 
-                <span>-{formatMoney(discount)}</span>
+                <span>
+                  {couponValidating
+                    ? "Đang kiểm tra..."
+                    : `-${formatMoney(discount)}`}
+                </span>
               </div>
+
+              {couponError && <div className="ck-error-box">{couponError}</div>}
 
               <div className="ck-row">
                 <span>Vận chuyển</span>
 
                 <span>
-                  {!form.province_code
-                    ? "Chọn tỉnh/thành"
+                  {!form.ward_code
+                    ? "Chọn địa chỉ"
                     : shippingCalculating
                       ? "Đang tính..."
                       : shippingInfo
-                        ? shippingInfo.is_free_shipping
-                          ? "Miễn phí"
-                          : formatMoney(shipping)
+                        ? formatMoney(shipping)
                         : "--"}
                 </span>
               </div>
@@ -1120,14 +1481,37 @@ const Checkout = () => {
                 <div className="ck-row">
                   <span>Giao đến</span>
 
-                  <span>{selectedProvince.province_name}</span>
+                  <span>{selectedProvince.ProvinceName}</span>
+                </div>
+              )}
+
+              {selectedService && (
+                <div className="ck-row">
+                  <span>Vận chuyển</span>
+
+                  <span>
+                    GHN
+                    {selectedService?.short_name
+                      ? ` - ${selectedService.short_name}`
+                      : ""}
+                  </span>
+                </div>
+              )}
+
+              {formattedLeadTime && (
+                <div className="ck-row">
+                  <span>Dự kiến giao</span>
+
+                  <span>{formattedLeadTime}</span>
                 </div>
               )}
 
               <div className="ck-total">
                 <span>Tổng thanh toán</span>
 
-                <span>{formatMoney(total)}</span>
+                <span>
+                  {couponValidating ? "Đang tính..." : formatMoney(total)}
+                </span>
               </div>
 
               <div className="ck-trust-box">
@@ -1138,25 +1522,22 @@ const Checkout = () => {
                 </div>
 
                 <div>
-                  <i className="bi bi-boxes" />
+                  <i className="bi bi-tools" />
 
-                  <span>Đơn hàng giữ nguyên phiên bản đã chọn</span>
+                  <span>Hỗ trợ kiểm tra tương thích khi Build PC</span>
                 </div>
 
                 <div>
-                  <i className="bi bi-lock" />
+                  <i className="bi bi-truck" />
 
-                  <span>
-                    Giá và tồn kho được Backend kiểm tra lại khi đặt hàng
-                  </span>
+                  <span>Giao hàng toàn quốc, đóng gói an toàn</span>
                 </div>
               </div>
 
               <Link to="/cart" className="ck-btn-outline">
-                <i className="bi bi-arrow-left" />
-                Quay lại giỏ hàng
+                Xem giỏ hàng
               </Link>
-            </aside>
+            </div>
           </div>
         )}
       </div>

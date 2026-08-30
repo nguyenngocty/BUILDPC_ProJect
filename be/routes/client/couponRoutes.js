@@ -1,10 +1,24 @@
-const express = require("express");
+const express = require(
+    "express",
+);
 
-const controller = require("../../controllers/client/couponController");
+const controller = require(
+    "../../controllers/client/couponController",
+);
 
-const router = express.Router();
+const router =
+    express.Router();
 
-// POST /coupons/validate
-router.post("/validate", controller.validateCoupon);
+// Danh sách coupon để user xem
+router.get(
+    "/available",
+    controller.getAvailableCoupons,
+);
+
+// Kiểm tra và áp dụng coupon
+router.post(
+    "/validate",
+    controller.validateCoupon,
+);
 
 module.exports = router;

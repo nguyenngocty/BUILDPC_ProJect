@@ -12,30 +12,57 @@ const couponService = {
   },
 
   getById: (id) => {
-    return api.get(`/admin/coupons/${id}`);
+    return api.get(
+      `/admin/coupons/${id}`
+    );
   },
 
   create: (data) => {
-    return api.post("/admin/coupons", data);
+    return api.post(
+      "/admin/coupons",
+      data
+    );
   },
 
   update: (id, data) => {
-    return api.patch(`/admin/coupons/${id}`, data);
+    return api.patch(
+      `/admin/coupons/${id}`,
+      data
+    );
   },
 
   remove: (id) => {
-    return api.delete(`/admin/coupons/${id}`);
+    return api.delete(
+      `/admin/coupons/${id}`
+    );
   },
 
   // =========================
   // CLIENT
   // =========================
 
-  validate: ({ code, subtotal }) => {
-    return api.post("/client/coupons/validate", {
-      code,
-      subtotal,
-    });
+  getAvailable: (subtotal = 0) => {
+    return api.get(
+      "/client/coupons/available",
+      {
+        params: {
+          subtotal,
+        },
+      }
+    );
+  },
+
+  validate: ({
+    code,
+    subtotal,
+  }) => {
+    return api.post(
+      "/client/coupons/validate",
+      {
+        code,
+        subtotal,
+      }
+    );
   },
 };
 
