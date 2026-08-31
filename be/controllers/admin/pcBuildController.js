@@ -292,6 +292,28 @@ exports.validateBuild = async (req, res, next) => {
 // CREATE
 // ============================================================
 
+exports.uploadImage = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "Chưa chọn ảnh",
+      });
+    }
+
+    const location = "/uploads/builds/" + req.file.filename;
+    const fullUrl = process.env.BASE_URL || "http://localhost:5000";
+
+    return res.status(200).json({
+      success: true,
+      location: fullUrl + location,
+      image: fullUrl + location,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 exports.createBuild = async (req, res, next) => {
   try {
     const { name, description, image, status, items } = req.body;

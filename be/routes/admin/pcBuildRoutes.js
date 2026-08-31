@@ -1,6 +1,7 @@
 const express = require("express");
 
 const pcBuildController = require("../../controllers/admin/pcBuildController");
+const uploadBuildImage = require("../../middlewares/uploadBuildImage");
 
 const router = express.Router();
 
@@ -31,6 +32,8 @@ router.get("/trash", pcBuildController.getTrashBuilds);
 // ============================================================
 // CREATE
 // ============================================================
+
+router.post("/upload-image", uploadBuildImage.single("image"), pcBuildController.uploadImage);
 
 router.post("/", pcBuildController.createBuild);
 

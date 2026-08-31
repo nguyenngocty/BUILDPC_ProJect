@@ -616,6 +616,67 @@
   font-weight: 700;
 }
 
+.adm-build-image-upload__row {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.adm-build-image-upload__input {
+  flex: 1;
+}
+
+.adm-build-image-upload__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 120px;
+  white-space: nowrap;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 9px;
+  background: linear-gradient(135deg, #f8fafc, #eef2ff);
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.adm-build-image-upload__button:hover:not(:disabled) {
+  border-color: rgba(99, 102, 241, 0.35);
+  background: linear-gradient(135deg, #eef2ff, #e0e7ff);
+  box-shadow: 0 6px 14px rgba(99, 102, 241, 0.1);
+}
+
+.adm-build-image-upload__button:disabled {
+  cursor: not-allowed;
+}
+
+.adm-build-image-upload__error {
+  margin-bottom: 8px;
+}
+
+.adm-build-image-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 240px;
+  height: 132px;
+  overflow: hidden;
+  border: 1px dashed rgba(148, 163, 184, 0.7);
+  border-radius: 14px;
+  background: linear-gradient(135deg, #f8fafc, #eef2ff);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.adm-build-image-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 /* SEARCH */
 
 .adm-build-search-input {
@@ -1408,7 +1469,8 @@
 
   padding: 20px;
 
-  background: var(--bg);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 252, 0.98));
 }
 
 .adm-build-dialog__footer {
@@ -1433,14 +1495,14 @@
 .adm-build-auto-card {
   margin-bottom: 16px;
 
-  padding: 16px;
+  padding: 16px 16px 18px;
 
-  border: 1px solid var(--border);
-  border-radius: 13px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 14px;
 
-  background: #fff;
+  background: rgba(255, 255, 255, 0.98);
 
-  box-shadow: 0 5px 16px rgba(15, 23, 42, 0.03);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.04);
 }
 
 .adm-build-auto-card {
@@ -1471,7 +1533,7 @@
 
   grid-template-columns: repeat(12, minmax(0, 1fr));
 
-  gap: 11px;
+  gap: 14px 12px;
 }
 
 .adm-build-span-3 {

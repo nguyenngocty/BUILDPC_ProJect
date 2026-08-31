@@ -669,9 +669,15 @@ export default function PCBuilderAdmin() {
 
   const [formImage, setFormImage] = useState("");
 
+  const [imagePreview, setImagePreview] = useState("");
+
+  const [imageError, setImageError] = useState("");
+
   const [formStatus, setFormStatus] = useState(1);
 
   const [formFeatured, setFormFeatured] = useState(0);
+
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   const [selectedItems, setSelectedItems] = useState({});
 
@@ -948,6 +954,10 @@ export default function PCBuilderAdmin() {
 
     setFormImage("");
 
+    setImagePreview("");
+
+    setImageError("");
+
     setFormStatus(1);
 
     setFormFeatured(0);
@@ -983,6 +993,10 @@ export default function PCBuilderAdmin() {
     setFormDesc(build.description || "");
 
     setFormImage(build.image || "");
+
+    setImagePreview(build.image ? getImageUrl(build.image) : "");
+
+    setImageError("");
 
     setFormStatus(Number(build.status ?? 1));
 
@@ -1232,6 +1246,84 @@ export default function PCBuilderAdmin() {
     compatibility?.total_price !== null
       ? Number(compatibility.total_price)
       : previewTotal;
+
+  const previewImage =
+    imagePreview || (formImage ? getImageUrl(formImage) : FALLBACK_IMAGE);
+
+  const validateImageFile = (file) => {
+    if (!file) {
+      return "";
+    }
+
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+
+    if (!allowedTypes.includes(file.type)) {
+      return "Chỉ cho phép file ảnh JPG, JPEG, PNG hoặc WEBP.";
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      return "Ảnh không được vượt quá 5MB.";
+    }
+
+    return "";
+  };
+
+  const handleImageUpload = async (event) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    const validationMessage = validateImageFile(file);
+
+    if (validationMessage) {
+      setImageError(validationMessage);
+      toast.error(validationMessage);
+      event.target.value = "";
+      return;
+    }
+
+    setImageError("");
+    setImagePreview(URL.createObjectURL(file));
+
+    const toastId = toast.loading("Đang upload ảnh...");
+
+    try {
+      setIsUploadingImage(true);
+
+      const formData = new FormData();
+      formData.append("image", file);
+
+      const response = await axiosClient.post("/admin/pc-builds/upload-image", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
+      const uploadedUrl = response?.data?.image || response?.data?.location;
+
+      if (!uploadedUrl) {
+        throw new Error("Không nhận được đường dẫn ảnh sau khi upload.");
+      }
+
+      setFormImage(uploadedUrl);
+      setImagePreview(uploadedUrl);
+      toast.success("Upload ảnh thành công.", { id: toastId });
+    } catch (error) {
+      console.error("Build PC image upload failed:", error);
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Không thể upload ảnh. Vui lòng thử lại.";
+
+      setImageError(message);
+      toast.error(message, { id: toastId, duration: 5000 });
+    } finally {
+      setIsUploadingImage(false);
+      event.target.value = "";
+    }
+  };
 
   // =========================================================
   // SAVE
@@ -2645,13 +2737,47 @@ export default function PCBuilderAdmin() {
                       <div className="adm-build-field adm-build-span-4">
                         <label>Ảnh đại diện</label>
 
-                        <input
-                          disabled={modalMode === "view"}
-                          className="adm-build-control"
-                          value={formImage}
-                          placeholder="/uploads/products/..."
-                          onChange={(event) => setFormImage(event.target.value)}
-                        />
+                        <div className="adm-build-image-upload__row">
+                      
+
+                          <input
+                            id="adm-build-image-upload"
+                            type="file"
+                            accept="image/*"
+                            hidden
+                            onChange={handleImageUpload}
+                            disabled={modalMode === "view" || isUploadingImage}
+                          />
+
+                          <button
+                            type="button"
+                            className="adm-build-control adm-build-image-upload__button"
+                            onClick={() =>
+                              document.getElementById("adm-build-image-upload")?.click()
+                            }
+                            disabled={modalMode === "view" || isUploadingImage}
+                          >
+                            {isUploadingImage ? "Đang tải..." : "Tải ảnh"}
+                          </button>
+                        </div>
+
+                        {imageError && (
+                          <small className="adm-build-error adm-build-image-upload__error">
+                            {imageError}
+                          </small>
+                        )}
+
+                        {previewImage && (
+                          <div className="adm-build-image-preview">
+                            <img
+                              src={previewImage}
+                              alt="Xem trước ảnh build PC"
+                              onError={() => {
+                                setImageError("Ảnh không hợp lệ hoặc chưa có sẵn.");
+                              }}
+                            />
+                          </div>
+                        )}
                       </div>
 
                       <div className="adm-build-field adm-build-span-3">
