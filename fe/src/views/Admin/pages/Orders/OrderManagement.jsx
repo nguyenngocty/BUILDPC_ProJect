@@ -13,33 +13,37 @@ const STATUS_OPTIONS = {
   PROCESSING: "Đang xử lý",
   SHIPPING: "Đang giao",
   COMPLETED: "Hoàn thành",
-  CANCELLED: "Hủy",
+  CANCELLED: "Đã hủy",
 };
 
 const STATUS_FLOW = {
   PENDING: ["PROCESSING", "CANCELLED"],
-
   PROCESSING: ["SHIPPING", "CANCELLED"],
-
   SHIPPING: ["COMPLETED"],
-
   COMPLETED: [],
-
   CANCELLED: [],
 };
 
-const IMAGE_BASE_URL = "http://localhost:5000";
+const IMAGE_BASE_URL =
+  process.env.REACT_APP_API_URL?.replace("/api", "") || "http://localhost:5000";
 
 // =========================================================
 // HELPERS
 // =========================================================
 
-const getNextStatusOptions = (currentStatus) => {
-  const nextStatuses = STATUS_FLOW[currentStatus] || [];
+const getNextStatusOptions = (order) => {
+  const backendStatuses = Array.isArray(order?.allowed_next_statuses)
+    ? order.allowed_next_statuses
+    : null;
+
+  const nextStatuses =
+    backendStatuses !== null
+      ? backendStatuses
+      : STATUS_FLOW[order?.status] || [];
 
   return nextStatuses.map((status) => ({
     value: status,
-    label: STATUS_OPTIONS[status],
+    label: STATUS_OPTIONS[status] || status,
   }));
 };
 
@@ -192,7 +196,7 @@ const formatDateTime = (value) => {
 };
 
 const getProductCode = (item) => {
-  return item?.product_sku || item?.sku || item?.product_id || "N/A";
+  return item?.sku || item?.product_sku || item?.product_id || "N/A";
 };
 
 const getImageUrl = (imageUrl) => {
@@ -212,7 +216,17 @@ const getImageUrl = (imageUrl) => {
 // =========================================================
 
 const OrderManagement = () => {
+  // =======================================================
+  // DATA
+  // =======================================================
+
   const [orders, setOrders] = useState([]);
+
+  const [selectedOrder, setSelectedOrder] = useState(null);
+
+  // =======================================================
+  // FILTER
+  // =======================================================
 
   const [keyword, setKeyword] = useState("");
 
@@ -222,9 +236,17 @@ const OrderManagement = () => {
 
   const [toDate, setToDate] = useState("");
 
+  // =======================================================
+  // LOADING
+  // =======================================================
+
   const [loading, setLoading] = useState(false);
 
-  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [statusUpdating, setStatusUpdating] = useState(false);
+
+  // =======================================================
+  // PAGINATION
+  // =======================================================
 
   const [page, setPage] = useState(1);
 
@@ -238,6 +260,71 @@ const OrderManagement = () => {
   });
 
   // =======================================================
+  // STATUS CONFIRM MODAL
+  // =======================================================
+
+  const [statusConfirm, setStatusConfirm] = useState({
+    open: false,
+    order: null,
+    nextStatus: "",
+  });
+
+  // =======================================================
+  // TOAST
+  // =======================================================
+
+  const [toast, setToast] = useState(null);
+
+  const showToast = (type, title, message = "") => {
+    setToast({
+      id: Date.now(),
+      type,
+      title,
+      message,
+    });
+  };
+
+  useEffect(() => {
+    if (!toast) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      setToast(null);
+    }, 4200);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [toast]);
+
+  // =======================================================
+  // ESC CLOSE MODAL
+  // =======================================================
+
+  useEffect(() => {
+    const handleEscape = (event) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      if (statusConfirm.open && !statusUpdating) {
+        setStatusConfirm({
+          open: false,
+          order: null,
+          nextStatus: "",
+        });
+      }
+    };
+
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [statusConfirm.open, statusUpdating]);
+
+  // =======================================================
   // PAGINATION FALLBACK
   // =======================================================
 
@@ -246,7 +333,7 @@ const OrderManagement = () => {
 
     const total = Number(resData.total ?? dataLength);
 
-    const totalPages = Math.max(Math.ceil(total / nextLimit), 1);
+    const totalPages = total > 0 ? Math.ceil(total / nextLimit) : 0;
 
     return {
       page: nextPage,
@@ -284,6 +371,7 @@ const OrderManagement = () => {
           customFilters.to_date !== undefined ? customFilters.to_date : toDate,
 
         page: nextPage,
+
         limit: nextLimit,
       };
 
@@ -291,7 +379,7 @@ const OrderManagement = () => {
 
       const resData = res.data || {};
 
-      setOrders(resData.data || []);
+      setOrders(Array.isArray(resData.data) ? resData.data : []);
 
       const nextPagination =
         resData.pagination ||
@@ -304,15 +392,21 @@ const OrderManagement = () => {
 
         total: Number(nextPagination.total || 0),
 
-        totalPages: Math.max(Number(nextPagination.totalPages || 1), 1),
+        totalPages: Number(nextPagination.totalPages || 0),
       });
 
-      setPage(nextPage);
+      setPage(Number(nextPagination.page || nextPage));
+
       setLimit(nextLimit);
     } catch (error) {
-      console.error(error);
+      console.error("[OrderManagement.fetchOrders]", error);
 
-      alert(error.response?.data?.message || "Lỗi lấy danh sách đơn hàng");
+      showToast(
+        "error",
+        "Không thể tải đơn hàng",
+        error.response?.data?.message ||
+          "Đã xảy ra lỗi khi tải danh sách đơn hàng.",
+      );
     } finally {
       setLoading(false);
     }
@@ -340,6 +434,16 @@ const OrderManagement = () => {
   // =======================================================
 
   const handleFilter = () => {
+    if (fromDate && toDate && fromDate > toDate) {
+      showToast(
+        "warning",
+        "Khoảng thời gian không hợp lệ",
+        'Ngày "Từ ngày" không được lớn hơn ngày "Đến ngày".',
+      );
+
+      return;
+    }
+
     setSelectedOrder(null);
 
     fetchOrders({
@@ -366,6 +470,12 @@ const OrderManagement = () => {
       page: 1,
       limit,
     });
+
+    showToast(
+      "info",
+      "Đã làm mới bộ lọc",
+      "Danh sách đơn hàng đã được tải lại.",
+    );
   };
 
   // =======================================================
@@ -400,9 +510,13 @@ const OrderManagement = () => {
   // =======================================================
 
   const renderPageNumbers = () => {
-    const totalPages = pagination.totalPages || 1;
+    const totalPages = pagination.totalPages || 0;
 
     const currentPage = pagination.page || page;
+
+    if (totalPages <= 0) {
+      return [];
+    }
 
     if (totalPages <= 7) {
       return Array.from(
@@ -446,74 +560,128 @@ const OrderManagement = () => {
 
       setSelectedOrder(res.data.data);
 
-      setTimeout(() => {
+      window.setTimeout(() => {
         const detailElement = document.querySelector(".adm-order-detail-card");
 
         if (detailElement) {
           detailElement.scrollIntoView({
             behavior: "smooth",
-
             block: "start",
           });
         }
       }, 100);
     } catch (error) {
-      console.error(error);
+      console.error("[OrderManagement.handleViewDetail]", error);
 
-      alert(error.response?.data?.message || "Lỗi lấy chi tiết đơn hàng");
+      showToast(
+        "error",
+        "Không thể mở chi tiết",
+        error.response?.data?.message ||
+          "Không thể lấy thông tin chi tiết đơn hàng.",
+      );
     }
   };
 
   // =======================================================
-  // UPDATE STATUS
+  // OPEN STATUS CONFIRM
   // =======================================================
 
-  const handleUpdateStatus = async (id, newStatus) => {
-    if (!newStatus) {
+  const handleRequestStatusChange = (order, newStatus) => {
+    if (!order || !newStatus) {
       return;
     }
 
-    const confirmChange = window.confirm(
-      `Bạn có chắc muốn chuyển đơn hàng sang trạng thái "${STATUS_OPTIONS[newStatus]}" không?`,
-    );
+    setStatusConfirm({
+      open: true,
+      order,
+      nextStatus: newStatus,
+    });
+  };
 
-    if (!confirmChange) {
+  // =======================================================
+  // CLOSE STATUS CONFIRM
+  // =======================================================
+
+  const closeStatusConfirm = () => {
+    if (statusUpdating) {
+      return;
+    }
+
+    setStatusConfirm({
+      open: false,
+      order: null,
+      nextStatus: "",
+    });
+  };
+
+  // =======================================================
+  // CONFIRM UPDATE STATUS
+  // =======================================================
+
+  const confirmUpdateStatus = async () => {
+    const targetOrder = statusConfirm.order;
+
+    const newStatus = statusConfirm.nextStatus;
+
+    if (!targetOrder?.id || !newStatus) {
       return;
     }
 
     try {
-      setLoading(true);
+      setStatusUpdating(true);
 
-      await orderService.updateStatus(id, newStatus);
+      const response = await orderService.updateStatus(
+        targetOrder.id,
+        newStatus,
+      );
 
-      if (selectedOrder?.id === id) {
-        try {
-          const detailRes = await orderService.getById(id);
+      const updatedOrder = response.data?.data || null;
 
-          setSelectedOrder(detailRes.data.data);
-        } catch (detailError) {
-          console.error("Lỗi tải lại chi tiết đơn hàng:", detailError);
+      setStatusConfirm({
+        open: false,
+        order: null,
+        nextStatus: "",
+      });
+
+      if (selectedOrder?.id === targetOrder.id) {
+        if (updatedOrder) {
+          setSelectedOrder(updatedOrder);
+        } else {
+          try {
+            const detailRes = await orderService.getById(targetOrder.id);
+
+            setSelectedOrder(detailRes.data.data);
+          } catch (detailError) {
+            console.error("[OrderManagement.reloadDetail]", detailError);
+          }
         }
       }
-
-      setPage(1);
 
       await fetchOrders({
         keyword,
         status,
         from_date: fromDate,
         to_date: toDate,
-        page: 1,
+        page,
         limit,
       });
 
-      alert("Cập nhật trạng thái thành công");
+      showToast(
+        "success",
+        "Cập nhật trạng thái thành công",
+        `Đơn ${targetOrder.order_code} đã chuyển sang "${STATUS_OPTIONS[newStatus] || newStatus}".`,
+      );
     } catch (error) {
-      console.error(error);
+      console.error("[OrderManagement.confirmUpdateStatus]", error);
 
-      alert(error.response?.data?.message || "Lỗi cập nhật trạng thái");
+      showToast(
+        "error",
+        "Không thể cập nhật trạng thái",
+        error.response?.data?.message ||
+          "Đã xảy ra lỗi khi cập nhật trạng thái đơn hàng.",
+      );
     } finally {
-      setLoading(false);
+      setStatusUpdating(false);
     }
   };
 
@@ -532,8 +700,10 @@ const OrderManagement = () => {
       const printWindow = window.open("", "_blank");
 
       if (!printWindow) {
-        alert(
-          "Trình duyệt đang chặn popup. Vui lòng cho phép popup để in hóa đơn.",
+        showToast(
+          "warning",
+          "Trình duyệt đang chặn cửa sổ in",
+          "Vui lòng cho phép popup cho website rồi thử xuất hóa đơn lại.",
         );
 
         return;
@@ -542,6 +712,8 @@ const OrderManagement = () => {
       const html = `
           <html>
             <head>
+              <meta charset="UTF-8" />
+
               <title>
                 Hóa đơn ${invoice.invoice_code}
               </title>
@@ -553,15 +725,24 @@ const OrderManagement = () => {
 
                 body {
                   margin: 0;
-                  padding: 30px;
-                  color: #334155;
+                  padding: 34px;
+                  color: #1f2937;
                   background: #ffffff;
                   font-family: Arial, sans-serif;
                 }
 
+                .invoice-brand {
+                  margin-bottom: 4px;
+                  color: #ef233c;
+                  font-size: 14px;
+                  font-weight: 800;
+                  text-align: center;
+                  text-transform: uppercase;
+                }
+
                 h1 {
                   margin: 0 0 6px;
-                  color: #ef233c;
+                  color: #0f172a;
                   font-size: 28px;
                   text-align: center;
                 }
@@ -588,6 +769,7 @@ const OrderManagement = () => {
                   padding: 10px;
                   border: 1px solid #e2e8f0;
                   text-align: left;
+                  vertical-align: top;
                 }
 
                 .invoice-table th {
@@ -597,12 +779,45 @@ const OrderManagement = () => {
                   text-transform: uppercase;
                 }
 
-                .invoice-total {
-                  margin-top: 22px;
+                .variant-name {
+                  display: block;
+                  margin-top: 4px;
+                  color: #64748b;
+                  font-size: 12px;
+                }
+
+                .variant-option {
+                  display: inline-block;
+                  margin-top: 4px;
+                  margin-right: 6px;
+                  padding: 3px 6px;
+                  border-radius: 4px;
+                  background: #f1f5f9;
+                  color: #475569;
+                  font-size: 11px;
+                }
+
+                .invoice-summary {
+                  width: 360px;
+                  max-width: 100%;
+                  margin-top: 24px;
+                  margin-left: auto;
+                }
+
+                .invoice-summary-row {
+                  display: flex;
+                  justify-content: space-between;
+                  gap: 20px;
+                  padding: 6px 0;
+                }
+
+                .invoice-summary-total {
+                  margin-top: 7px;
+                  padding-top: 12px;
+                  border-top: 1px solid #e2e8f0;
                   color: #ef233c;
                   font-size: 20px;
-                  font-weight: 700;
-                  text-align: right;
+                  font-weight: 800;
                 }
 
                 .invoice-footer {
@@ -615,6 +830,10 @@ const OrderManagement = () => {
             </head>
 
             <body>
+              <div class="invoice-brand">
+                TechYouth BuildPC
+              </div>
+
               <h1>
                 HÓA ĐƠN BÁN HÀNG
               </h1>
@@ -625,69 +844,56 @@ const OrderManagement = () => {
 
               <div class="invoice-info">
                 <div>
-                  <strong>
-                    Mã đơn hàng:
-                  </strong>
-
+                  <strong>Mã đơn hàng:</strong>
                   ${order.order_code}
                 </div>
 
                 <div>
-                  <strong>
-                    Ngày xuất:
-                  </strong>
-
+                  <strong>Ngày xuất:</strong>
                   ${new Date(invoice.exported_at).toLocaleString("vi-VN")}
                 </div>
 
                 <div>
-                  <strong>
-                    Khách hàng:
-                  </strong>
-
-                  ${invoice.customer.name}
+                  <strong>Khách hàng:</strong>
+                  ${invoice.customer?.name || "Không có"}
                 </div>
 
                 <div>
-                  <strong>
-                    Số điện thoại:
-                  </strong>
-
-                  ${invoice.customer.phone}
-                </div>
-
-                <div>
-                  <strong>
-                    Địa chỉ:
-                  </strong>
-
-                  ${invoice.customer.address}
-                </div>
-
-                <div>
-                  <strong>
-                    Phương thức thanh toán:
-                  </strong>
-
-                  ${invoice.summary.payment_method}
-                </div>
-
-                <div>
-                  <strong>
-                    Trạng thái thanh toán:
-                  </strong>
-
-                  ${invoice.summary.payment_status}
+                  <strong>Số điện thoại:</strong>
+                  ${invoice.customer?.phone || "Không có"}
                 </div>
 
                 ${
-                  invoice.summary.transaction_code
+                  invoice.customer?.email
                     ? `
                       <div>
-                        <strong>
-                          Mã giao dịch:
-                        </strong>
+                        <strong>Email:</strong>
+                        ${invoice.customer.email}
+                      </div>
+                    `
+                    : ""
+                }
 
+                <div>
+                  <strong>Địa chỉ:</strong>
+                  ${invoice.customer?.address || "Không có"}
+                </div>
+
+                <div>
+                  <strong>Phương thức thanh toán:</strong>
+                  ${invoice.summary?.payment_method || "Không xác định"}
+                </div>
+
+                <div>
+                  <strong>Trạng thái thanh toán:</strong>
+                  ${invoice.summary?.payment_status || "Không xác định"}
+                </div>
+
+                ${
+                  invoice.summary?.transaction_code
+                    ? `
+                      <div>
+                        <strong>Mã giao dịch:</strong>
                         ${invoice.summary.transaction_code}
                       </div>
                     `
@@ -695,13 +901,10 @@ const OrderManagement = () => {
                 }
 
                 ${
-                  invoice.summary.paid_at
+                  invoice.summary?.paid_at
                     ? `
                       <div>
-                        <strong>
-                          Thời gian thanh toán:
-                        </strong>
-
+                        <strong>Thời gian thanh toán:</strong>
                         ${new Date(invoice.summary.paid_at).toLocaleString(
                           "vi-VN",
                         )}
@@ -715,16 +918,16 @@ const OrderManagement = () => {
                 <thead>
                   <tr>
                     <th>STT</th>
-                    <th>Mã SP</th>
+                    <th>SKU</th>
                     <th>Sản phẩm</th>
                     <th>Giá</th>
-                    <th>Số lượng</th>
+                    <th>SL</th>
                     <th>Thành tiền</th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  ${invoice.items
+                  ${(invoice.items || [])
                     .map(
                       (item, index) => `
                         <tr>
@@ -737,19 +940,50 @@ const OrderManagement = () => {
                           </td>
 
                           <td>
-                            ${item.product_name}
+                            <strong>
+                              ${item.product_name || "Sản phẩm"}
+                            </strong>
+
+                            ${
+                              item.variant_name
+                                ? `
+                                  <span class="variant-name">
+                                    Biến thể: ${item.variant_name}
+                                  </span>
+                                `
+                                : ""
+                            }
+
+                            ${
+                              Array.isArray(item.variant_options)
+                                ? item.variant_options
+                                    .map(
+                                      (option) => `
+                                        <span class="variant-option">
+                                          ${
+                                            option.option_name ||
+                                            option.option_code ||
+                                            "Thuộc tính"
+                                          }:
+                                          ${option.label || option.value || ""}
+                                        </span>
+                                      `,
+                                    )
+                                    .join("")
+                                : ""
+                            }
                           </td>
 
                           <td>
-                            ${Number(item.price).toLocaleString("vi-VN")} đ
+                            ${Number(item.price || 0).toLocaleString("vi-VN")} đ
                           </td>
 
                           <td>
-                            ${item.quantity}
+                            ${item.quantity || 0}
                           </td>
 
                           <td>
-                            ${Number(item.total_price).toLocaleString(
+                            ${Number(item.total_price || 0).toLocaleString(
                               "vi-VN",
                             )} đ
                           </td>
@@ -760,15 +994,50 @@ const OrderManagement = () => {
                 </tbody>
               </table>
 
-              <div class="invoice-total">
-                Tổng tiền:
-                ${Number(invoice.summary.total_amount).toLocaleString(
-                  "vi-VN",
-                )} đ
+              <div class="invoice-summary">
+                <div class="invoice-summary-row">
+                  <span>Tạm tính</span>
+
+                  <strong>
+                    ${Number(
+                      invoice.summary?.subtotal || order.subtotal || 0,
+                    ).toLocaleString("vi-VN")} đ
+                  </strong>
+                </div>
+
+                <div class="invoice-summary-row">
+                  <span>Phí vận chuyển</span>
+
+                  <strong>
+                    ${Number(invoice.summary?.shipping_fee || 0).toLocaleString(
+                      "vi-VN",
+                    )} đ
+                  </strong>
+                </div>
+
+                <div class="invoice-summary-row">
+                  <span>Giảm giá</span>
+
+                  <strong>
+                    -${Number(
+                      invoice.summary?.discount_amount || 0,
+                    ).toLocaleString("vi-VN")} đ
+                  </strong>
+                </div>
+
+                <div class="invoice-summary-row invoice-summary-total">
+                  <span>Tổng thanh toán</span>
+
+                  <span>
+                    ${Number(
+                      invoice.summary?.total_amount || order.total_amount || 0,
+                    ).toLocaleString("vi-VN")} đ
+                  </span>
+                </div>
               </div>
 
               <div class="invoice-footer">
-                Cảm ơn quý khách đã mua hàng!
+                Cảm ơn quý khách đã mua hàng tại TechYouth BuildPC!
               </div>
 
               <script>
@@ -780,15 +1049,34 @@ const OrderManagement = () => {
           </html>
         `;
 
+      printWindow.document.open();
+
       printWindow.document.write(html);
 
       printWindow.document.close();
     } catch (error) {
-      console.error(error);
+      console.error("[OrderManagement.handleExportInvoice]", error);
 
-      alert(error.response?.data?.message || "Lỗi xuất hóa đơn");
+      showToast(
+        "error",
+        "Không thể xuất hóa đơn",
+        error.response?.data?.message ||
+          "Đã xảy ra lỗi khi tải dữ liệu hóa đơn.",
+      );
     }
   };
+
+  // =======================================================
+  // MODAL STATUS META
+  // =======================================================
+
+  const currentStatusMeta = statusConfirm.order
+    ? getStatusMeta(statusConfirm.order.status)
+    : null;
+
+  const nextStatusMeta = statusConfirm.nextStatus
+    ? getStatusMeta(statusConfirm.nextStatus)
+    : null;
 
   // =======================================================
   // RENDER
@@ -796,6 +1084,48 @@ const OrderManagement = () => {
 
   return (
     <div className="adm-order-page">
+      {/* ===================================================
+          TOAST
+          =================================================== */}
+
+      {toast && (
+        <div
+          className={`adm-order-toast adm-order-toast--${toast.type}`}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="adm-order-toast__icon">
+            <i
+              className={[
+                "bi",
+                toast.type === "success"
+                  ? "bi-check-circle-fill"
+                  : toast.type === "error"
+                    ? "bi-x-circle-fill"
+                    : toast.type === "warning"
+                      ? "bi-exclamation-triangle-fill"
+                      : "bi-info-circle-fill",
+              ].join(" ")}
+            />
+          </span>
+
+          <div className="adm-order-toast__content">
+            <strong>{toast.title}</strong>
+
+            {toast.message && <p>{toast.message}</p>}
+          </div>
+
+          <button
+            type="button"
+            className="adm-order-toast__close"
+            onClick={() => setToast(null)}
+            aria-label="Đóng thông báo"
+          >
+            <i className="bi bi-x-lg" />
+          </button>
+        </div>
+      )}
+
       {/* ===================================================
           PAGE HEADER
           =================================================== */}
@@ -860,7 +1190,7 @@ const OrderManagement = () => {
                 <input
                   type="text"
                   className="adm-order-input"
-                  placeholder="Mã đơn, tên khách, SĐT, mã SP..."
+                  placeholder="Mã đơn, tên khách, SĐT, SKU..."
                   value={keyword}
                   onChange={(event) => setKeyword(event.target.value)}
                   onKeyDown={(event) => {
@@ -993,6 +1323,8 @@ const OrderManagement = () => {
 
                       <th>Tổng tiền</th>
 
+                      <th>Thanh toán</th>
+
                       <th>Trạng thái</th>
 
                       <th>Ngày tạo</th>
@@ -1004,7 +1336,7 @@ const OrderManagement = () => {
                   <tbody>
                     {orders.length === 0 ? (
                       <tr>
-                        <td colSpan="8" className="adm-order-table__empty">
+                        <td colSpan="9" className="adm-order-table__empty">
                           <div className="adm-order-empty">
                             <span className="adm-order-empty__icon">
                               <i className="bi bi-inbox" />
@@ -1020,6 +1352,13 @@ const OrderManagement = () => {
                       orders.map((order) => {
                         const statusMeta = getStatusMeta(order.status);
 
+                        const paymentMeta = getPaymentStatusMeta(
+                          order.payment_status,
+                          order.payment_method,
+                        );
+
+                        const nextOptions = getNextStatusOptions(order);
+
                         return (
                           <tr key={order.id}>
                             <td>
@@ -1029,7 +1368,10 @@ const OrderManagement = () => {
                             </td>
 
                             <td>
-                              <span className="adm-order-table__code">
+                              <span
+                                className="adm-order-table__code"
+                                title={order.order_code}
+                              >
                                 {order.order_code}
                               </span>
                             </td>
@@ -1058,6 +1400,19 @@ const OrderManagement = () => {
                               <strong className="adm-order-money">
                                 {formatMoney(order.total_amount)}
                               </strong>
+                            </td>
+
+                            <td>
+                              <span
+                                className={`adm-order-payment-status adm-order-payment-status--${paymentMeta.type}`}
+                              >
+                                <i className={`bi ${paymentMeta.icon}`} />
+
+                                <span>
+                                  {order.payment_status_label ||
+                                    paymentMeta.label}
+                                </span>
+                              </span>
                             </td>
 
                             <td>
@@ -1103,34 +1458,35 @@ const OrderManagement = () => {
                                 <select
                                   className="adm-order-status-select"
                                   value=""
-                                  disabled={isFinalStatus(order.status)}
+                                  disabled={
+                                    isFinalStatus(order.status) ||
+                                    nextOptions.length === 0
+                                  }
                                   onChange={(event) => {
-                                    if (!event.target.value) {
+                                    const nextStatus = event.target.value;
+
+                                    if (!nextStatus) {
                                       return;
                                     }
 
-                                    handleUpdateStatus(
-                                      order.id,
-                                      event.target.value,
+                                    handleRequestStatusChange(
+                                      order,
+                                      nextStatus,
                                     );
                                   }}
                                 >
                                   <option value="">
-                                    {isFinalStatus(order.status)
+                                    {isFinalStatus(order.status) ||
+                                    nextOptions.length === 0
                                       ? "Đã khóa"
                                       : "Chuyển trạng thái"}
                                   </option>
 
-                                  {getNextStatusOptions(order.status).map(
-                                    (item) => (
-                                      <option
-                                        key={item.value}
-                                        value={item.value}
-                                      >
-                                        {item.label}
-                                      </option>
-                                    ),
-                                  )}
+                                  {nextOptions.map((item) => (
+                                    <option key={item.value} value={item.value}>
+                                      {item.label}
+                                    </option>
+                                  ))}
                                 </select>
                               </div>
                             </td>
@@ -1141,10 +1497,6 @@ const OrderManagement = () => {
                   </tbody>
                 </table>
               </div>
-
-              {/* =================================================
-                  PAGINATION
-                  ================================================= */}
 
               {pagination.total > 0 && (
                 <div className="adm-order-pagination">
@@ -1202,6 +1554,7 @@ const OrderManagement = () => {
                             type="button"
                             className={[
                               "adm-order-pagination__number",
+
                               pageNumber === pagination.page &&
                                 "adm-order-pagination__number--current",
                             ]
@@ -1234,7 +1587,7 @@ const OrderManagement = () => {
       </section>
 
       {/* ===================================================
-          ORDER DETAIL
+          DETAIL
           =================================================== */}
 
       {selectedOrder && (
@@ -1267,8 +1620,6 @@ const OrderManagement = () => {
 
           <div className="adm-order-panel__body">
             <div className="adm-order-detail-grid">
-              {/* CUSTOMER */}
-
               <article className="adm-order-detail-item">
                 <span className="adm-order-detail-item__icon">
                   <i className="bi bi-person" />
@@ -1284,8 +1635,6 @@ const OrderManagement = () => {
                   </strong>
                 </div>
               </article>
-
-              {/* PHONE */}
 
               <article className="adm-order-detail-item">
                 <span className="adm-order-detail-item__icon">
@@ -1303,7 +1652,19 @@ const OrderManagement = () => {
                 </div>
               </article>
 
-              {/* ADDRESS */}
+              <article className="adm-order-detail-item">
+                <span className="adm-order-detail-item__icon">
+                  <i className="bi bi-envelope" />
+                </span>
+
+                <div>
+                  <span className="adm-order-detail-item__label">Email</span>
+
+                  <strong className="adm-order-detail-item__value">
+                    {selectedOrder.shipping_email || "Không có"}
+                  </strong>
+                </div>
+              </article>
 
               <article className="adm-order-detail-item">
                 <span className="adm-order-detail-item__icon">
@@ -1321,8 +1682,6 @@ const OrderManagement = () => {
                 </div>
               </article>
 
-              {/* ORDER STATUS */}
-
               <article className="adm-order-detail-item">
                 <span className="adm-order-detail-item__icon">
                   <i className="bi bi-box-seam" />
@@ -1335,16 +1694,16 @@ const OrderManagement = () => {
 
                   <div className="adm-order-detail-item__value">
                     {(() => {
-                      const statusMeta = getStatusMeta(selectedOrder.status);
+                      const meta = getStatusMeta(selectedOrder.status);
 
                       return (
                         <span
-                          className={`adm-order-status adm-order-status--${statusMeta.type}`}
+                          className={`adm-order-status adm-order-status--${meta.type}`}
                         >
-                          <i className={`bi ${statusMeta.icon}`} />
+                          <i className={`bi ${meta.icon}`} />
 
                           <span>
-                            {selectedOrder.status_label || statusMeta.label}
+                            {selectedOrder.status_label || meta.label}
                           </span>
                         </span>
                       );
@@ -1352,8 +1711,6 @@ const OrderManagement = () => {
                   </div>
                 </div>
               </article>
-
-              {/* PAYMENT METHOD */}
 
               <article className="adm-order-detail-item">
                 <span className="adm-order-detail-item__icon">
@@ -1388,8 +1745,6 @@ const OrderManagement = () => {
                 </div>
               </article>
 
-              {/* PAYMENT STATUS */}
-
               <article className="adm-order-detail-item">
                 <span className="adm-order-detail-item__icon">
                   <i className="bi bi-wallet2" />
@@ -1413,7 +1768,10 @@ const OrderManagement = () => {
                         >
                           <i className={`bi ${paymentStatus.icon}`} />
 
-                          <span>{paymentStatus.label}</span>
+                          <span>
+                            {selectedOrder.payment_status_label ||
+                              paymentStatus.label}
+                          </span>
                         </span>
                       );
                     })()}
@@ -1443,7 +1801,21 @@ const OrderManagement = () => {
                 </div>
               </article>
 
-              {/* NOTE */}
+              <article className="adm-order-detail-item">
+                <span className="adm-order-detail-item__icon">
+                  <i className="bi bi-ticket-perforated" />
+                </span>
+
+                <div>
+                  <span className="adm-order-detail-item__label">
+                    Mã giảm giá
+                  </span>
+
+                  <strong className="adm-order-detail-item__value">
+                    {selectedOrder.coupon_code || "Không sử dụng"}
+                  </strong>
+                </div>
+              </article>
 
               <article className="adm-order-detail-item">
                 <span className="adm-order-detail-item__icon">
@@ -1459,8 +1831,6 @@ const OrderManagement = () => {
                 </div>
               </article>
 
-              {/* CREATED */}
-
               <article className="adm-order-detail-item">
                 <span className="adm-order-detail-item__icon">
                   <i className="bi bi-calendar3" />
@@ -1474,11 +1844,35 @@ const OrderManagement = () => {
                   </strong>
                 </div>
               </article>
-            </div>
 
-            {/* =================================================
-                PRODUCTS
-                ================================================= */}
+              {selectedOrder.cancel_reason && (
+                <article className="adm-order-detail-item adm-order-detail-item--danger">
+                  <span className="adm-order-detail-item__icon">
+                    <i className="bi bi-x-octagon" />
+                  </span>
+
+                  <div>
+                    <span className="adm-order-detail-item__label">
+                      Lý do hủy
+                    </span>
+
+                    <strong className="adm-order-detail-item__value">
+                      {selectedOrder.cancel_reason}
+                    </strong>
+
+                    {selectedOrder.cancelled_at && (
+                      <div className="adm-order-payment-note">
+                        <i className="bi bi-clock-history" />
+
+                        <span>
+                          Hủy lúc: {formatDateTime(selectedOrder.cancelled_at)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </article>
+              )}
+            </div>
 
             <div className="adm-order-section-heading">
               <span className="adm-order-section-heading__icon">
@@ -1488,7 +1882,7 @@ const OrderManagement = () => {
               <div>
                 <h3>Sản phẩm trong đơn</h3>
 
-                <p>Danh sách sản phẩm thuộc đơn hàng này.</p>
+                <p>Danh sách sản phẩm và biến thể tại thời điểm đặt hàng.</p>
               </div>
             </div>
 
@@ -1496,7 +1890,7 @@ const OrderManagement = () => {
               <table className="adm-order-table adm-order-table--detail">
                 <thead>
                   <tr>
-                    <th>Mã SP</th>
+                    <th>SKU</th>
 
                     <th>Sản phẩm</th>
 
@@ -1504,7 +1898,7 @@ const OrderManagement = () => {
 
                     <th>Giá</th>
 
-                    <th>Số lượng</th>
+                    <th>SL</th>
 
                     <th>Thành tiền</th>
                   </tr>
@@ -1521,9 +1915,39 @@ const OrderManagement = () => {
                         </td>
 
                         <td>
-                          <span className="adm-order-product-name">
-                            {item.product_name}
-                          </span>
+                          <div className="adm-order-product-info">
+                            <span className="adm-order-product-name">
+                              {item.product_name}
+                            </span>
+
+                            {item.variant_name && (
+                              <span className="adm-order-product-variant">
+                                <i className="bi bi-diagram-2" />
+
+                                {item.variant_name}
+                              </span>
+                            )}
+
+                            {Array.isArray(item.variant_options) &&
+                              item.variant_options.length > 0 && (
+                                <div className="adm-order-product-options">
+                                  {item.variant_options.map((option, index) => (
+                                    <span
+                                      key={`${option.option_id || index}-${option.option_value_id || index}`}
+                                      className="adm-order-product-option"
+                                    >
+                                      <strong>
+                                        {option.option_name ||
+                                          option.option_code ||
+                                          "Thuộc tính"}
+                                        :
+                                      </strong>{" "}
+                                      {option.label || option.value || ""}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                          </div>
                         </td>
 
                         <td>
@@ -1577,18 +2001,199 @@ const OrderManagement = () => {
               </table>
             </div>
 
-            {/* TOTAL */}
+            <div className="adm-order-summary-box">
+              <div className="adm-order-summary-row">
+                <span>Tạm tính</span>
 
-            <div className="adm-order-total">
-              <span className="adm-order-total__label">Tổng thanh toán</span>
+                <strong>{formatMoney(selectedOrder.subtotal)}</strong>
+              </div>
 
-              <strong className="adm-order-total__value">
-                {formatMoney(selectedOrder.total_amount)}
-              </strong>
+              <div className="adm-order-summary-row">
+                <span>Phí vận chuyển</span>
+
+                <strong>{formatMoney(selectedOrder.shipping_fee)}</strong>
+              </div>
+
+              <div className="adm-order-summary-row">
+                <span>Giảm giá</span>
+
+                <strong>-{formatMoney(selectedOrder.discount_amount)}</strong>
+              </div>
+
+              <div className="adm-order-summary-row adm-order-summary-row--total">
+                <span>Tổng thanh toán</span>
+
+                <strong>{formatMoney(selectedOrder.total_amount)}</strong>
+              </div>
             </div>
           </div>
         </section>
       )}
+
+      {/* ===================================================
+          STATUS CONFIRM MODAL
+          =================================================== */}
+
+      {statusConfirm.open &&
+        statusConfirm.order &&
+        currentStatusMeta &&
+        nextStatusMeta && (
+          <div
+            className="adm-order-modal-backdrop"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget && !statusUpdating) {
+                closeStatusConfirm();
+              }
+            }}
+          >
+            <div
+              className="adm-order-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="adm-order-status-modal-title"
+            >
+              <div className="adm-order-modal__header">
+                <div className="adm-order-modal__heading">
+                  <span className="adm-order-modal__heading-icon">
+                    <i className="bi bi-arrow-left-right" />
+                  </span>
+
+                  <div>
+                    <h3 id="adm-order-status-modal-title">
+                      Xác nhận cập nhật trạng thái
+                    </h3>
+
+                    <p>Kiểm tra thông tin trước khi tiếp tục.</p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="adm-order-modal__close"
+                  disabled={statusUpdating}
+                  onClick={closeStatusConfirm}
+                  aria-label="Đóng"
+                >
+                  <i className="bi bi-x-lg" />
+                </button>
+              </div>
+
+              <div className="adm-order-modal__body">
+                <div className="adm-order-modal__order">
+                  <span className="adm-order-modal__order-icon">
+                    <i className="bi bi-receipt" />
+                  </span>
+
+                  <div>
+                    <span>Đơn hàng</span>
+
+                    <strong>{statusConfirm.order.order_code}</strong>
+                  </div>
+                </div>
+
+                <div className="adm-order-status-transition">
+                  <div className="adm-order-status-transition__item">
+                    <span className="adm-order-status-transition__label">
+                      Hiện tại
+                    </span>
+
+                    <span
+                      className={`adm-order-status adm-order-status--${currentStatusMeta.type}`}
+                    >
+                      <i className={`bi ${currentStatusMeta.icon}`} />
+
+                      <span>{currentStatusMeta.label}</span>
+                    </span>
+                  </div>
+
+                  <span className="adm-order-status-transition__arrow">
+                    <i className="bi bi-arrow-right" />
+                  </span>
+
+                  <div className="adm-order-status-transition__item">
+                    <span className="adm-order-status-transition__label">
+                      Chuyển sang
+                    </span>
+
+                    <span
+                      className={`adm-order-status adm-order-status--${nextStatusMeta.type}`}
+                    >
+                      <i className={`bi ${nextStatusMeta.icon}`} />
+
+                      <span>{nextStatusMeta.label}</span>
+                    </span>
+                  </div>
+                </div>
+
+                <div
+                  className={[
+                    "adm-order-modal__notice",
+                    statusConfirm.nextStatus === "CANCELLED"
+                      ? "adm-order-modal__notice--danger"
+                      : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
+                  <i
+                    className={`bi ${
+                      statusConfirm.nextStatus === "CANCELLED"
+                        ? "bi-exclamation-triangle-fill"
+                        : "bi-info-circle-fill"
+                    }`}
+                  />
+
+                  <p>
+                    {statusConfirm.nextStatus === "CANCELLED"
+                      ? "Đơn hàng sẽ được hủy. Backend sẽ xử lý hoàn kho và hoàn coupon nếu đơn đủ điều kiện."
+                      : "Sau khi xác nhận, trạng thái đơn hàng sẽ được cập nhật và hệ thống sẽ gửi email thông báo đến khách hàng nếu có email."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="adm-order-modal__footer">
+                <button
+                  type="button"
+                  className="adm-order-button adm-order-button--secondary"
+                  disabled={statusUpdating}
+                  onClick={closeStatusConfirm}
+                >
+                  <i className="bi bi-x" />
+
+                  <span>Hủy</span>
+                </button>
+
+                <button
+                  type="button"
+                  className={[
+                    "adm-order-button",
+
+                    statusConfirm.nextStatus === "CANCELLED"
+                      ? "adm-order-button--danger"
+                      : "adm-order-button--primary",
+                  ].join(" ")}
+                  disabled={statusUpdating}
+                  onClick={confirmUpdateStatus}
+                >
+                  {statusUpdating ? (
+                    <>
+                      <i className="bi bi-arrow-repeat adm-order-button__spinner" />
+
+                      <span>Đang cập nhật...</span>
+                    </>
+                  ) : (
+                    <>
+                      <i className="bi bi-check-lg" />
+
+                      <span>Xác nhận cập nhật</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   );
 };
