@@ -9,10 +9,9 @@ import Footer from "../../components/Footer";
 
 import contactService from "../../../services/contactService";
 
-// ======================================================
-// FALLBACK OPTIONS
-// Nếu API options lỗi thì form vẫn sử dụng được.
-// ======================================================
+/* =========================================================
+   FALLBACK OPTIONS
+========================================================= */
 
 const DEFAULT_CATEGORIES = [
   {
@@ -72,9 +71,9 @@ const DEFAULT_NEEDS = [
   },
 ];
 
-// ======================================================
-// QUICK CONTACT CARDS
-// ======================================================
+/* =========================================================
+   QUICK SUPPORT
+========================================================= */
 
 const QUICK_SUPPORTS = [
   {
@@ -97,9 +96,9 @@ const QUICK_SUPPORTS = [
   },
 ];
 
-// ======================================================
-// HELPERS
-// ======================================================
+/* =========================================================
+   HELPERS
+========================================================= */
 
 const formatMoney = (value) => {
   if (value === "" || value === null || value === undefined) {
@@ -121,29 +120,21 @@ const isValidPhone = (phone) => {
   );
 };
 
-const Contact = () => {
-  // ====================================================
-  // FORM
-  // ====================================================
+/* =========================================================
+   CONTACT
+========================================================= */
 
+const Contact = () => {
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     phone: "",
-
     category: "BUILD_PC",
-
     subject: "",
-
     order_code: "",
-
     budget: "",
-
     needs: [],
-
     message: "",
-
-    // Honeypot chống bot.
     website: "",
   });
 
@@ -153,19 +144,11 @@ const Contact = () => {
 
   const [submittedRequest, setSubmittedRequest] = useState(null);
 
-  // ====================================================
-  // OPTIONS
-  // ====================================================
-
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
 
   const [consultationNeeds, setConsultationNeeds] = useState(DEFAULT_NEEDS);
 
   const [optionsLoading, setOptionsLoading] = useState(false);
-
-  // ====================================================
-  // CATEGORY FLAGS
-  // ====================================================
 
   const isConsultation =
     formData.category === "BUILD_PC" ||
@@ -178,17 +161,13 @@ const Contact = () => {
 
   const showOrderCode = isOrderSupport || isWarranty;
 
-  // ====================================================
-  // SELECTED CATEGORY
-  // ====================================================
-
   const selectedCategory = useMemo(() => {
     return categories.find((item) => item.value === formData.category) || null;
   }, [categories, formData.category]);
 
-  // ====================================================
-  // LOAD OPTIONS
-  // ====================================================
+  /* =========================================================
+     LOAD OPTIONS
+  ========================================================= */
 
   useEffect(() => {
     let cancelled = false;
@@ -234,12 +213,12 @@ const Contact = () => {
     };
   }, []);
 
-  // ====================================================
-  // HANDLE NORMAL INPUT
-  // ====================================================
+  /* =========================================================
+     INPUT
+  ========================================================= */
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
+  const handleChange = (event) => {
+    const { name, value } = event.target;
 
     setFormData((previous) => ({
       ...previous,
@@ -252,18 +231,12 @@ const Contact = () => {
     }));
   };
 
-  // ====================================================
-  // CATEGORY CHANGE
-  // ====================================================
-
   const handleCategoryChange = (value) => {
     setFormData((previous) => ({
       ...previous,
 
       category: value,
 
-      // Chuyển sang loại không phải tư vấn
-      // thì bỏ ngân sách + nhu cầu cũ.
       budget: ["BUILD_PC", "UPGRADE", "PRODUCT"].includes(value)
         ? previous.budget
         : "",
@@ -272,8 +245,6 @@ const Contact = () => {
         ? previous.needs
         : [],
 
-      // Chỉ giữ mã đơn nếu chuyển giữa
-      // ORDER và WARRANTY.
       order_code: ["ORDER", "WARRANTY"].includes(value)
         ? previous.order_code
         : "",
@@ -282,13 +253,8 @@ const Contact = () => {
     setErrors({});
   };
 
-  // ====================================================
-  // BUDGET
-  // Chỉ cho nhập số.
-  // ====================================================
-
-  const handleBudgetChange = (e) => {
-    const rawValue = e.target.value.replace(/\D/g, "");
+  const handleBudgetChange = (event) => {
+    const rawValue = event.target.value.replace(/\D/g, "");
 
     setFormData((previous) => ({
       ...previous,
@@ -300,10 +266,6 @@ const Contact = () => {
       budget: "",
     }));
   };
-
-  // ====================================================
-  // NEED CHECKBOX
-  // ====================================================
 
   const handleNeedToggle = (value) => {
     setFormData((previous) => {
@@ -324,9 +286,9 @@ const Contact = () => {
     }));
   };
 
-  // ====================================================
-  // QUICK SUPPORT
-  // ====================================================
+  /* =========================================================
+     QUICK SUPPORT
+  ========================================================= */
 
   const handleQuickSupport = (category) => {
     handleCategoryChange(category);
@@ -334,20 +296,16 @@ const Contact = () => {
     setSubmittedRequest(null);
 
     setTimeout(() => {
-      const formElement = document.querySelector("#contact-request-form");
-
-      if (formElement) {
-        formElement.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      }
+      document.querySelector("#contact-request-form")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
     }, 50);
   };
 
-  // ====================================================
-  // VALIDATE
-  // ====================================================
+  /* =========================================================
+     VALIDATE
+  ========================================================= */
 
   const validateForm = () => {
     const newErrors = {};
@@ -364,10 +322,6 @@ const Contact = () => {
 
     const orderCode = formData.order_code.trim();
 
-    // -----------------------------
-    // NAME
-    // -----------------------------
-
     if (!name) {
       newErrors.name = "Vui lòng nhập họ và tên";
     } else if (name.length < 2) {
@@ -376,19 +330,11 @@ const Contact = () => {
       newErrors.name = "Họ và tên tối đa 100 ký tự";
     }
 
-    // -----------------------------
-    // EMAIL
-    // -----------------------------
-
     if (!email) {
       newErrors.email = "Vui lòng nhập email";
     } else if (!isValidEmail(email)) {
       newErrors.email = "Email không hợp lệ";
     }
-
-    // -----------------------------
-    // PHONE
-    // -----------------------------
 
     if (!phone) {
       newErrors.phone = "Vui lòng nhập số điện thoại";
@@ -396,17 +342,9 @@ const Contact = () => {
       newErrors.phone = "Số điện thoại không hợp lệ";
     }
 
-    // -----------------------------
-    // CATEGORY
-    // -----------------------------
-
     if (!formData.category) {
       newErrors.category = "Vui lòng chọn loại yêu cầu";
     }
-
-    // -----------------------------
-    // SUBJECT
-    // -----------------------------
 
     if (!subject) {
       newErrors.subject = "Vui lòng nhập tiêu đề";
@@ -416,18 +354,9 @@ const Contact = () => {
       newErrors.subject = "Tiêu đề tối đa 200 ký tự";
     }
 
-    // -----------------------------
-    // ORDER CODE
-    // -----------------------------
-
     if (isOrderSupport && !orderCode) {
       newErrors.order_code = "Vui lòng nhập mã đơn hàng cần hỗ trợ";
     }
-
-    // -----------------------------
-    // BUDGET
-    // Không bắt buộc.
-    // -----------------------------
 
     if (isConsultation && formData.budget) {
       const budget = Number(formData.budget);
@@ -436,10 +365,6 @@ const Contact = () => {
         newErrors.budget = "Ngân sách không hợp lệ";
       }
     }
-
-    // -----------------------------
-    // MESSAGE
-    // -----------------------------
 
     if (!message) {
       newErrors.message = "Vui lòng nhập nội dung cần hỗ trợ";
@@ -454,12 +379,12 @@ const Contact = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  // ====================================================
-  // SUBMIT
-  // ====================================================
+  /* =========================================================
+     SUBMIT
+  ========================================================= */
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
 
     if (submitting || !validateForm()) {
       return;
@@ -488,7 +413,6 @@ const Contact = () => {
 
         needs: isConsultation ? formData.needs : [],
 
-        // Honeypot
         website: formData.website,
       };
 
@@ -506,8 +430,6 @@ const Contact = () => {
         confirmation_mail_sent: result?.confirmation_mail_sent,
       });
 
-      // Reset form nhưng giữ loại
-      // để UX tự nhiên hơn.
       setFormData({
         name: "",
         email: "",
@@ -524,14 +446,10 @@ const Contact = () => {
       setErrors({});
 
       setTimeout(() => {
-        const successElement = document.querySelector("#contact-success");
-
-        if (successElement) {
-          successElement.scrollIntoView({
-            behavior: "smooth",
-            block: "center",
-          });
-        }
+        document.querySelector("#contact-success")?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
       }, 100);
     } catch (error) {
       console.error("Lỗi gửi liên hệ:", error);
@@ -550,51 +468,41 @@ const Contact = () => {
     }
   };
 
-  // ====================================================
-  // SEND ANOTHER REQUEST
-  // ====================================================
-
   const handleSendAnother = () => {
     setSubmittedRequest(null);
 
     setTimeout(() => {
-      const formElement = document.querySelector("#contact-request-form");
-
-      formElement?.scrollIntoView({
+      document.querySelector("#contact-request-form")?.scrollIntoView({
         behavior: "smooth",
         block: "start",
       });
     }, 50);
   };
 
-  // ====================================================
-  // RENDER
-  // ====================================================
+  /* =========================================================
+     RENDER
+  ========================================================= */
 
   return (
     <div className="contact-page">
       <Header />
 
-      {/* =================================================
-          BREADCRUMB
-      ================================================= */}
+      {/* BREADCRUMB */}
 
       <div className="contact-breadcrumb">
-        <div className="container">
+        <div className="contact-breadcrumb__shell">
           <Link to="/">Trang chủ</Link>
 
-          <span>/</span>
+          <i className="bi bi-chevron-right" />
 
           <span>Liên hệ & Tư vấn</span>
         </div>
       </div>
 
-      {/* =================================================
-          HERO
-      ================================================= */}
+      {/* HERO */}
 
       <section className="contact-hero-section">
-        <div className="container contact-hero-inner">
+        <div className="contact-shell contact-hero-inner">
           <span className="contact-hero-badge">
             <i className="bi bi-headset" />
             KẾT NỐI VỚI BUILDPC
@@ -632,12 +540,10 @@ const Contact = () => {
         </div>
       </section>
 
-      {/* =================================================
-          QUICK SUPPORT
-      ================================================= */}
+      {/* QUICK SUPPORT */}
 
       <section className="contact-quick-section">
-        <div className="container">
+        <div className="contact-shell">
           <div className="contact-section-heading">
             <span>HỖ TRỢ NHANH</span>
 
@@ -654,7 +560,7 @@ const Contact = () => {
                 type="button"
                 key={item.category}
                 className={`contact-quick-card ${
-                  formData.category === item.category ? "active" : ""
+                  formData.category === item.category ? "is-selected" : ""
                 }`}
                 onClick={() => handleQuickSupport(item.category)}
               >
@@ -676,16 +582,12 @@ const Contact = () => {
         </div>
       </section>
 
-      {/* =================================================
-          MAIN
-      ================================================= */}
+      {/* MAIN */}
 
       <section className="contact-main-section">
-        <div className="container">
+        <div className="contact-shell">
           <div className="contact-grid">
-            {/* =============================================
-                STORE INFO
-            ============================================= */}
+            {/* INFO */}
 
             <aside className="contact-info-card">
               <div className="contact-info-header">
@@ -699,8 +601,6 @@ const Contact = () => {
                 </p>
               </div>
 
-              {/* ADDRESS */}
-
               <div className="contact-info-item">
                 <div className="contact-info-icon">
                   <i className="bi bi-geo-alt-fill" />
@@ -712,8 +612,6 @@ const Contact = () => {
                   <span>Số 1, Đường Công Nghệ, Quận IT, TP.HCM</span>
                 </div>
               </div>
-
-              {/* PHONE */}
 
               <div className="contact-info-item">
                 <div className="contact-info-icon">
@@ -729,8 +627,6 @@ const Contact = () => {
                 </div>
               </div>
 
-              {/* EMAIL */}
-
               <div className="contact-info-item">
                 <div className="contact-info-icon">
                   <i className="bi bi-envelope-fill" />
@@ -742,8 +638,6 @@ const Contact = () => {
                   <a href="mailto:support@buildpc.com">support@buildpc.com</a>
                 </div>
               </div>
-
-              {/* WORKING TIME */}
 
               <div className="contact-info-item">
                 <div className="contact-info-icon">
@@ -758,8 +652,6 @@ const Contact = () => {
                   <small>Thứ 2 - Chủ Nhật</small>
                 </div>
               </div>
-
-              {/* FEATURES */}
 
               <div className="contact-support-box">
                 <div>
@@ -782,9 +674,7 @@ const Contact = () => {
               </div>
             </aside>
 
-            {/* =============================================
-                FORM WRAPPER
-            ============================================= */}
+            {/* FORM */}
 
             <div className="contact-form-wrapper" id="contact-request-form">
               <div className="contact-form-header">
@@ -803,10 +693,6 @@ const Contact = () => {
                   <i className="bi bi-chat-square-text-fill" />
                 </div>
               </div>
-
-              {/* ===========================================
-                  SUCCESS
-              =========================================== */}
 
               {submittedRequest && (
                 <div className="contact-success" id="contact-success">
@@ -851,15 +737,7 @@ const Contact = () => {
                 </div>
               )}
 
-              {/* ===========================================
-                  FORM
-              =========================================== */}
-
               <form onSubmit={handleSubmit} className="contact-form" noValidate>
-                {/* =========================================
-                    HONEYPOT
-                ========================================= */}
-
                 <div className="contact-honeypot" aria-hidden="true">
                   <label htmlFor="website">Website</label>
 
@@ -874,9 +752,7 @@ const Contact = () => {
                   />
                 </div>
 
-                {/* =========================================
-                    CATEGORY
-                ========================================= */}
+                {/* CATEGORY */}
 
                 <div className="contact-form-section">
                   <div className="contact-form-section-title">
@@ -899,7 +775,9 @@ const Contact = () => {
                       name="category"
                       className="contact-input contact-select"
                       value={formData.category}
-                      onChange={(e) => handleCategoryChange(e.target.value)}
+                      onChange={(event) =>
+                        handleCategoryChange(event.target.value)
+                      }
                       disabled={optionsLoading}
                     >
                       {categories.map((item) => (
@@ -915,9 +793,7 @@ const Contact = () => {
                   </div>
                 </div>
 
-                {/* =========================================
-                    CUSTOMER INFO
-                ========================================= */}
+                {/* CUSTOMER INFO */}
 
                 <div className="contact-form-section">
                   <div className="contact-form-section-title">
@@ -934,8 +810,6 @@ const Contact = () => {
                   </div>
 
                   <div className="contact-field-grid">
-                    {/* NAME */}
-
                     <div className="contact-field">
                       <label htmlFor="name">
                         Họ và tên <span>*</span>
@@ -956,8 +830,6 @@ const Contact = () => {
                         <small className="contact-error">{errors.name}</small>
                       )}
                     </div>
-
-                    {/* PHONE */}
 
                     <div className="contact-field">
                       <label htmlFor="phone">
@@ -980,8 +852,6 @@ const Contact = () => {
                       )}
                     </div>
                   </div>
-
-                  {/* EMAIL */}
 
                   <div className="contact-field">
                     <label htmlFor="email">
@@ -1010,9 +880,7 @@ const Contact = () => {
                   </div>
                 </div>
 
-                {/* =========================================
-                    CONSULTATION INFO
-                ========================================= */}
+                {/* CONSULTATION */}
 
                 {isConsultation && (
                   <div className="contact-form-section contact-consultation-section">
@@ -1028,8 +896,6 @@ const Contact = () => {
                         </small>
                       </div>
                     </div>
-
-                    {/* BUDGET */}
 
                     <div className="contact-field">
                       <label htmlFor="budget">Ngân sách dự kiến</label>
@@ -1060,8 +926,6 @@ const Contact = () => {
                       )}
                     </div>
 
-                    {/* NEEDS */}
-
                     <div className="contact-field">
                       <label>Nhu cầu sử dụng</label>
 
@@ -1073,7 +937,7 @@ const Contact = () => {
                             <label
                               key={item.value}
                               className={`contact-need-option ${
-                                checked ? "active" : ""
+                                checked ? "is-selected" : ""
                               }`}
                             >
                               <input
@@ -1095,9 +959,7 @@ const Contact = () => {
                   </div>
                 )}
 
-                {/* =========================================
-                    ORDER CODE
-                ========================================= */}
+                {/* ORDER CODE */}
 
                 {showOrderCode && (
                   <div className="contact-form-section">
@@ -1144,9 +1006,7 @@ const Contact = () => {
                   </div>
                 )}
 
-                {/* =========================================
-                    REQUEST CONTENT
-                ========================================= */}
+                {/* CONTENT */}
 
                 <div className="contact-form-section">
                   <div className="contact-form-section-title">
@@ -1160,8 +1020,6 @@ const Contact = () => {
                       </small>
                     </div>
                   </div>
-
-                  {/* SUBJECT */}
 
                   <div className="contact-field">
                     <label htmlFor="subject">
@@ -1197,8 +1055,6 @@ const Contact = () => {
                     )}
                   </div>
 
-                  {/* MESSAGE */}
-
                   <div className="contact-field">
                     <label htmlFor="message">
                       Nội dung cần hỗ trợ <span>*</span>
@@ -1231,10 +1087,6 @@ const Contact = () => {
                   </div>
                 </div>
 
-                {/* =========================================
-                    SUBMIT ERROR
-                ========================================= */}
-
                 {errors.submit && (
                   <div className="contact-submit-error">
                     <i className="bi bi-exclamation-circle-fill" />
@@ -1242,10 +1094,6 @@ const Contact = () => {
                     <span>{errors.submit}</span>
                   </div>
                 )}
-
-                {/* =========================================
-                    SUBMIT
-                ========================================= */}
 
                 <button
                   type="submit"
@@ -1280,12 +1128,10 @@ const Contact = () => {
         </div>
       </section>
 
-      {/* =================================================
-          EXTRA CTA
-      ================================================= */}
+      {/* CTA */}
 
       <section className="contact-bottom-section">
-        <div className="container">
+        <div className="contact-shell">
           <div className="contact-bottom-card">
             <div>
               <span>MUỐN TỰ CHỌN LINH KIỆN?</span>

@@ -5,25 +5,37 @@ function CategorySidebar({
   counts = {},
 }) {
   return (
-    <div className="blog-widget">
-      <h3>Danh mục</h3>
+    <section className="blog-widget">
+      <div className="blog-widget__heading">
+        <span className="blog-widget__heading-icon">
+          <i className="bi bi-grid" />
+        </span>
+
+        <div>
+          <h3>Danh mục</h3>
+
+          <p>Khám phá theo chủ đề</p>
+        </div>
+      </div>
 
       <ul className="category-list">
         {categories.map((item) => (
-          <li
-            key={item}
-            className={category === item ? "active" : ""}
-            onClick={() => setCategory(item)}
-          >
-            <span>{item}</span>
+          <li key={item}>
+            <button
+              type="button"
+              className={`category-list__button ${
+                category === item ? "is-selected" : ""
+              }`}
+              onClick={() => setCategory(item)}
+            >
+              <span>{item}</span>
 
-            {item !== "Tất cả" && (
-              <small>{counts[item] || 0}</small>
-            )}
+              {item !== "Tất cả" && <small>{counts[item] || 0}</small>}
+            </button>
           </li>
         ))}
       </ul>
-    </div>
+    </section>
   );
 }
 

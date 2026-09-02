@@ -1,41 +1,55 @@
-
 function BlogHero() {
   return (
     <section className="blog-hero">
-      <div className="blog-hero-overlay"></div>
+      <div className="blog-hero-overlay" />
 
-      <div className="container">
+      <div className="blog-hero-shell">
         <div className="blog-hero-content">
-          <span className="blog-hero-tag">BUILDPC KNOWLEDGE CENTER</span>
+          <span className="blog-hero-tag">
+            <i className="bi bi-stars" />
+            BUILDPC KNOWLEDGE CENTER
+          </span>
 
           <h1>
-            Blog Công Nghệ
-            <span> BuildPC</span>
+            Kiến thức công nghệ
           </h1>
 
           <p>
-            Cập nhật tin tức phần cứng mới nhất, review linh kiện, hướng dẫn
-            Build PC, kinh nghiệm chọn cấu hình Gaming, Đồ họa và Workstation.
+            Cập nhật tin tức phần cứng, review linh kiện, hướng dẫn Build PC và
+            kinh nghiệm lựa chọn cấu hình Gaming, Đồ họa, Văn phòng và
+            Workstation.
           </p>
 
           <div className="hero-info">
             <div className="hero-item">
-              <i className="bi bi-cpu"></i>
+              <span className="hero-item__icon">
+                <i className="bi bi-cpu" />
+              </span>
+
               <span>CPU</span>
             </div>
 
             <div className="hero-item">
-              <i className="bi bi-gpu-card"></i>
+              <span className="hero-item__icon">
+                <i className="bi bi-gpu-card" />
+              </span>
+
               <span>GPU</span>
             </div>
 
             <div className="hero-item">
-              <i className="bi bi-memory"></i>
+              <span className="hero-item__icon">
+                <i className="bi bi-memory" />
+              </span>
+
               <span>RAM</span>
             </div>
 
             <div className="hero-item">
-              <i className="bi bi-pc-display"></i>
+              <span className="hero-item__icon">
+                <i className="bi bi-pc-display" />
+              </span>
+
               <span>Build PC</span>
             </div>
           </div>
