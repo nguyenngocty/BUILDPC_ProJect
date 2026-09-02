@@ -38,26 +38,6 @@ const normalizeCode = (value = "") => {
 
 // ============================================================
 // GET VARIANT VALUE MAP
-//
-// variant.values:
-//
-// [
-//   {
-//     option_code: "capacity",
-//     value: "64GB"
-//   },
-//   {
-//     option_code: "bus",
-//     value: "5200MHz"
-//   }
-// ]
-//
-// =>
-//
-// {
-//   capacity: "64GB",
-//   bus: "5200MHz"
-// }
 // ============================================================
 
 const getVariantValueMap = (variant) => {
@@ -175,7 +155,7 @@ function ProductDetail() {
 
   const activeVariants = useMemo(() => {
     return (Array.isArray(variants) ? variants : []).filter(
-      (variant) => Number(variant?.status) === 1,
+      (variant) => Number(variant?.status) === 1 && !variant?.deleted_at,
     );
   }, [variants]);
 
@@ -206,11 +186,11 @@ function ProductDetail() {
       return;
     }
 
-    const initialValues = getVariantValueMap(initialVariant);
-
-    setSelectedValues(initialValues);
+    setSelectedValues(getVariantValueMap(initialVariant));
 
     setSelectedVariantId(Number(initialVariant.id));
+
+    setActionMessage("");
   }, [product?.id, defaultVariant?.id, activeVariants]);
 
   // ==========================================================
@@ -218,6 +198,9 @@ function ProductDetail() {
   // ==========================================================
 
   const selectedVariant = useMemo(() => {
+    /*
+     * Ưu tiên variant được chọn trực tiếp.
+     */
     if (selectedVariantId) {
       const byId = activeVariants.find(
         (variant) => Number(variant.id) === Number(selectedVariantId),
@@ -228,6 +211,9 @@ function ProductDetail() {
       }
     }
 
+    /*
+     * Product sử dụng options.
+     */
     if (optionCodes.length > 0) {
       const matched = activeVariants.find((variant) =>
         isVariantMatch(variant, selectedValues, optionCodes),
@@ -239,8 +225,7 @@ function ProductDetail() {
     }
 
     /*
-     * Product đơn:
-     * vẫn sử dụng default variant kỹ thuật.
+     * Product đơn.
      */
     if (!hasVariants) {
       return defaultVariant || activeVariants[0] || null;
@@ -258,9 +243,6 @@ function ProductDetail() {
 
   // ==========================================================
   // EFFECTIVE PRODUCT
-  //
-  // Toàn bộ giá / SKU / stock trên UI
-  // dùng selectedVariant.
   // ==========================================================
 
   const displayProduct = useMemo(() => {
@@ -272,36 +254,64 @@ function ProductDetail() {
       return product;
     }
 
+    const variantPrice = Number(selectedVariant.price ?? product.price ?? 0);
+
+    const variantSalePrice =
+      selectedVariant.sale_price !== null &&
+      selectedVariant.sale_price !== undefined
+        ? Number(selectedVariant.sale_price)
+        : null;
+
+    const validSale =
+      variantSalePrice !== null &&
+      variantSalePrice > 0 &&
+      variantSalePrice < variantPrice;
+
+    const finalPrice = validSale ? variantSalePrice : variantPrice;
+
+    const quantity = Math.max(Number(selectedVariant.quantity ?? 0), 0);
+
     return {
       ...product,
 
       sku: selectedVariant.sku || product.sku,
 
-      price: Number(selectedVariant.price ?? product.price ?? 0),
+      price: variantPrice,
 
-      sale_price:
-        selectedVariant.sale_price !== null &&
-        selectedVariant.sale_price !== undefined
-          ? Number(selectedVariant.sale_price)
-          : null,
+      sale_price: variantSalePrice,
 
-      final_price: Number(
-        selectedVariant.final_price ??
-          selectedVariant.sale_price ??
-          selectedVariant.price ??
-          product.final_price ??
-          0,
-      ),
+      final_price: Number(selectedVariant.final_price ?? finalPrice),
 
-      discount_percent: Number(selectedVariant.discount_percent ?? 0),
+      is_sale:
+        selectedVariant.is_sale !== undefined
+          ? Boolean(selectedVariant.is_sale)
+          : validSale,
 
-      quantity: Number(selectedVariant.quantity ?? 0),
+      discount_percent:
+        selectedVariant.discount_percent !== undefined
+          ? Number(selectedVariant.discount_percent || 0)
+          : validSale && variantPrice > 0
+            ? Math.round(
+                ((variantPrice - variantSalePrice) / variantPrice) * 100,
+              )
+            : 0,
 
-      in_stock: Boolean(
-        selectedVariant.in_stock ?? Number(selectedVariant.quantity ?? 0) > 0,
-      ),
+      quantity,
 
-      stock_status: selectedVariant.stock_status || product.stock_status,
+      in_stock:
+        selectedVariant.in_stock !== undefined
+          ? Boolean(selectedVariant.in_stock)
+          : quantity > 0,
+
+      stock_status:
+        selectedVariant.stock_status ||
+        (quantity <= 0
+          ? "out_of_stock"
+          : quantity <= 5
+            ? "low_stock"
+            : "in_stock"),
+
+      thumbnail: selectedVariant.thumbnail || product.thumbnail,
 
       variant_id: Number(selectedVariant.id),
 
@@ -311,11 +321,6 @@ function ProductDetail() {
 
   // ==========================================================
   // DISPLAY GALLERY
-  //
-  // Nếu Variant có hình:
-  // ưu tiên ảnh Variant.
-  //
-  // Vẫn giữ gallery chung phía sau.
   // ==========================================================
 
   const displayGallery = useMemo(() => {
@@ -343,9 +348,10 @@ function ProductDetail() {
       );
     };
 
-    /*
-     * Variant thumbnail.
-     */
+    // ========================================================
+    // VARIANT THUMBNAIL
+    // ========================================================
+
     if (selectedVariant?.thumbnail) {
       addImage({
         id: null,
@@ -358,9 +364,10 @@ function ProductDetail() {
       });
     }
 
-    /*
-     * Variant images.
-     */
+    // ========================================================
+    // VARIANT IMAGES
+    // ========================================================
+
     if (Array.isArray(selectedVariant?.images)) {
       [...selectedVariant.images]
         .sort((a, b) => {
@@ -373,25 +380,32 @@ function ProductDetail() {
         .forEach(addImage);
     }
 
-    /*
-     * Gallery Product.
-     */
+    // ========================================================
+    // PRODUCT GALLERY
+    // ========================================================
+
     (Array.isArray(gallery) ? gallery : []).forEach(addImage);
 
+    /*
+     * Fallback thumbnail Product.
+     */
+    if (output.length === 0 && product?.thumbnail) {
+      addImage({
+        id: null,
+
+        image_url: product.thumbnail,
+
+        sort_order: 0,
+
+        is_thumbnail: true,
+      });
+    }
+
     return output;
-  }, [gallery, selectedVariant]);
+  }, [gallery, selectedVariant, product?.thumbnail]);
 
   // ==========================================================
   // CHECK OPTION VALUE AVAILABLE
-  //
-  // Ví dụ:
-  //
-  // selected capacity = 32GB
-  //
-  // bus 5200MHz sẽ disabled
-  // nếu không tồn tại Variant:
-  //
-  // 32GB + 5200MHz
   // ==========================================================
 
   const isOptionValueAvailable = (optionCode, candidateValue) => {
@@ -404,10 +418,6 @@ function ProductDetail() {
     return activeVariants.some((variant) => {
       const valueMap = getVariantValueMap(variant);
 
-      /*
-       * Candidate của option
-       * đang kiểm tra.
-       */
       if (
         String(valueMap[normalizedOptionCode] ?? "")
           .trim()
@@ -419,10 +429,6 @@ function ProductDetail() {
         return false;
       }
 
-      /*
-       * Các option khác đã chọn
-       * phải tương thích.
-       */
       for (const code of optionCodes) {
         if (code === normalizedOptionCode) {
           continue;
@@ -464,27 +470,10 @@ function ProductDetail() {
       [normalizedOptionCode]: value,
     };
 
-    /*
-     * Nếu lựa chọn mới làm option khác
-     * không còn hợp lệ,
-     * tìm Variant đầu tiên phù hợp với lựa chọn mới.
-     */
-    const compatibleVariant = activeVariants.find((variant) => {
-      const map = getVariantValueMap(variant);
+    // ========================================================
+    // EXACT MATCH
+    // ========================================================
 
-      return (
-        String(map[normalizedOptionCode] ?? "")
-          .trim()
-          .toLowerCase() ===
-        String(value ?? "")
-          .trim()
-          .toLowerCase()
-      );
-    });
-
-    /*
-     * Ưu tiên exact match trước.
-     */
     const exactMatch = activeVariants.find((variant) =>
       isVariantMatch(variant, nextValues, optionCodes),
     );
@@ -499,12 +488,23 @@ function ProductDetail() {
       return;
     }
 
-    /*
-     * Không có exact combination.
-     *
-     * Tự chuyển các option còn lại
-     * sang Variant hợp lệ gần nhất.
-     */
+    // ========================================================
+    // COMPATIBLE VARIANT
+    // ========================================================
+
+    const compatibleVariant = activeVariants.find((variant) => {
+      const map = getVariantValueMap(variant);
+
+      return (
+        String(map[normalizedOptionCode] ?? "")
+          .trim()
+          .toLowerCase() ===
+        String(value ?? "")
+          .trim()
+          .toLowerCase()
+      );
+    });
+
     if (compatibleVariant) {
       setSelectedValues(getVariantValueMap(compatibleVariant));
 
@@ -515,9 +515,41 @@ function ProductDetail() {
       return;
     }
 
+    // ========================================================
+    // NO MATCH
+    // ========================================================
+
     setSelectedValues(nextValues);
 
     setSelectedVariantId(null);
+
+    setActionMessage("Tổ hợp phiên bản này hiện không tồn tại.");
+  };
+
+  // ==========================================================
+  // SELECT VARIANT DIRECTLY
+  //
+  // Trường hợp Product có nhiều variant nhưng không có options.
+  // ==========================================================
+
+  const handleSelectVariant = (variant) => {
+    if (!variant?.id) {
+      return;
+    }
+
+    const exists = activeVariants.some(
+      (item) => Number(item.id) === Number(variant.id),
+    );
+
+    if (!exists) {
+      return;
+    }
+
+    setSelectedVariantId(Number(variant.id));
+
+    setSelectedValues(getVariantValueMap(variant));
+
+    setActionMessage("");
   };
 
   // ==========================================================
@@ -541,12 +573,8 @@ function ProductDetail() {
       return false;
     }
 
-    /*
-     * Product thực sự có nhiều biến thể
-     * nhưng chưa tìm được Variant hợp lệ.
-     */
     if (hasVariants && !selectedVariant) {
-      setActionMessage("Vui lòng chọn đầy đủ phiên bản sản phẩm.");
+      setActionMessage("Vui lòng chọn phiên bản sản phẩm.");
 
       return false;
     }
@@ -565,6 +593,7 @@ function ProductDetail() {
 
         stock,
       ),
+
       1,
     );
 
@@ -576,10 +605,6 @@ function ProductDetail() {
       await addToCart({
         product_id: product.id,
 
-        /*
-         * Product đơn vẫn gửi
-         * default variant kỹ thuật nếu có.
-         */
         variant_id: selectedVariant?.id || defaultVariant?.id || null,
 
         quantity: safeQuantity,
@@ -593,7 +618,9 @@ function ProductDetail() {
 
       setActionMessage(
         selectedVariant
-          ? `Đã thêm phiên bản "${selectedVariant.variant_name}" vào giỏ hàng.`
+          ? `Đã thêm phiên bản "${
+              selectedVariant.variant_name || selectedVariant.sku
+            }" vào giỏ hàng.`
           : "Đã thêm sản phẩm vào giỏ hàng.",
       );
 
@@ -665,6 +692,10 @@ function ProductDetail() {
     <div className="pd-page">
       <Header />
 
+      {/* ======================================================
+          BREADCRUMB
+      ====================================================== */}
+
       <div className="pd-breadcrumb">
         <Link to="/">Trang chủ</Link>
 
@@ -691,8 +722,16 @@ function ProductDetail() {
         <span>{product.name}</span>
       </div>
 
+      {/* ======================================================
+          LAYOUT
+      ====================================================== */}
+
       <section className="pd-layout">
         <div className="pd-left">
+          {/* ==================================================
+              HERO
+          ================================================== */}
+
           <div className="pd-hero">
             <div className="pd-wrapper">
               <ProductGallery
@@ -704,6 +743,7 @@ function ProductDetail() {
                 product={displayProduct}
                 baseProduct={product}
                 options={options}
+                variants={activeVariants}
                 selectedValues={selectedValues}
                 selectedVariant={selectedVariant}
                 hasVariants={hasVariants}
@@ -711,11 +751,16 @@ function ProductDetail() {
                 actionLoading={actionLoading}
                 actionMessage={actionMessage}
                 onSelectOption={handleSelectOption}
+                onSelectVariant={handleSelectVariant}
                 isOptionValueAvailable={isOptionValueAvailable}
                 onAddToCart={handleAddToCart}
               />
             </div>
           </div>
+
+          {/* ==================================================
+              TABS
+          ================================================== */}
 
           <div className="pd-section">
             <div className="pd-wrapper-tabs">
@@ -729,6 +774,10 @@ function ProductDetail() {
               />
             </div>
           </div>
+
+          {/* ==================================================
+              RELATED PRODUCTS
+          ================================================== */}
 
           {relatedProducts.length > 0 && (
             <div className="pd-section">
@@ -744,17 +793,12 @@ function ProductDetail() {
                       return;
                     }
 
-                    /*
-                     * Product Related hiện chưa trả
-                     * toàn bộ variants.
-                     *
-                     * Nếu Backend phát hiện đây là
-                     * product nhiều variant,
-                     * nó sẽ yêu cầu khách vào Detail
-                     * để chọn phiên bản.
-                     */
                     try {
-                      await addToCart(item.id, 1);
+                      await addToCart({
+                        product_id: item.id,
+
+                        quantity: 1,
+                      });
 
                       setActionMessage(`Đã thêm "${item.name}" vào giỏ hàng.`);
                     } catch (error) {
@@ -765,10 +809,6 @@ function ProductDetail() {
 
                       setActionMessage(message);
 
-                      /*
-                       * Product có variant:
-                       * đưa khách vào Detail.
-                       */
                       if (String(message).toLowerCase().includes("biến thể")) {
                         navigate(`/products/${item.slug}`);
                       }
@@ -779,6 +819,10 @@ function ProductDetail() {
             </div>
           )}
         </div>
+
+        {/* ====================================================
+            STICKY
+        ==================================================== */}
 
         <div className="pd-right">
           <ProductStickyBox

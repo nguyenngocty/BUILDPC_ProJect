@@ -1459,39 +1459,124 @@ class ProductVariant {
   // ============================================================
 
   static async forceDeleteByProduct(connection, productId) {
+    const normalizedProductId = Number(productId);
+
+    if (!Number.isInteger(normalizedProductId) || normalizedProductId <= 0) {
+      throw new Error("ID sản phẩm không hợp lệ.");
+    }
+
+    // ==========================================================
+    // GET ALL VARIANTS OF PRODUCT
+    // ==========================================================
+
     const [variants] = await connection.execute(
       `
-        SELECT id
-        FROM product_variants
-        WHERE product_id = ?
-      `,
-      [productId],
+      SELECT
+        id,
+        product_id,
+        sku,
+        variant_name
+
+      FROM product_variants
+
+      WHERE product_id = ?
+
+      ORDER BY id ASC
+    `,
+      [normalizedProductId],
     );
 
-    for (const variant of variants) {
-      await connection.execute(
-        `
-          DELETE FROM product_variant_images
-          WHERE variant_id = ?
-        `,
-        [variant.id],
-      );
+    const variantIds = variants.map((variant) => Number(variant.id));
 
-      await connection.execute(
-        `
-          DELETE FROM product_variant_values
-          WHERE variant_id = ?
-        `,
-        [variant.id],
-      );
-    }
+    // ==========================================================
+    // CART ITEMS
+    //
+    // Cart chỉ là dữ liệu tạm.
+    // Khi Product bị force-delete thì cart item không còn giá trị
+    // nghiệp vụ, vì vậy được phép xóa.
+    //
+    // Phải xóa TRƯỚC product_variants vì:
+    //
+    // cart_items.variant_id
+    // -> product_variants.id
+    // ==========================================================
 
     await connection.execute(
       `
-        DELETE FROM product_variants
-        WHERE product_id = ?
+      DELETE FROM cart_items
+
+      WHERE product_id = ?
+    `,
+      [normalizedProductId],
+    );
+
+    // ==========================================================
+    // PC PARTS
+    //
+    // Không xóa PcPart ngay tại đây.
+    //
+    // Product.forceDelete() sẽ xử lý vì pc_parts còn có thể
+    // được pc_build_items tham chiếu.
+    //
+    // Tuy nhiên cần bỏ variant_id trước để Variant có thể xóa.
+    // ==========================================================
+
+    await connection.execute(
+      `
+      UPDATE pc_parts
+
+      SET
+        variant_id = NULL,
+        updated_at = NOW()
+
+      WHERE
+        product_id = ?
+        AND variant_id IS NOT NULL
+    `,
+      [normalizedProductId],
+    );
+
+    // ==========================================================
+    // VARIANT IMAGES
+    // ==========================================================
+
+    if (variantIds.length > 0) {
+      const placeholders = variantIds.map(() => "?").join(",");
+
+      await connection.execute(
+        `
+        DELETE FROM product_variant_images
+
+        WHERE variant_id IN (${placeholders})
       `,
-      [productId],
+        variantIds,
+      );
+
+      // ========================================================
+      // VARIANT VALUES
+      // ========================================================
+
+      await connection.execute(
+        `
+        DELETE FROM product_variant_values
+
+        WHERE variant_id IN (${placeholders})
+      `,
+        variantIds,
+      );
+    }
+
+    // ==========================================================
+    // VARIANTS
+    // ==========================================================
+
+    await connection.execute(
+      `
+      DELETE FROM product_variants
+
+      WHERE product_id = ?
+    `,
+      [normalizedProductId],
     );
   }
 

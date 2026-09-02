@@ -1922,41 +1922,230 @@ class Product {
   // ============================================================
 
   static async forceDelete(connection, id) {
-    await connection.execute(
+    const productId = Number(id);
+
+    if (!Number.isInteger(productId) || productId <= 0) {
+      throw new Error("ID sản phẩm không hợp lệ.");
+    }
+
+    // ==========================================================
+    // LOCK PRODUCT
+    // ==========================================================
+
+    const [productRows] = await connection.execute(
       `
-        DELETE
-        FROM product_images
-        WHERE product_id = ?
-      `,
-      [id],
+      SELECT
+        id,
+        name,
+        sku,
+        deleted_at
+
+      FROM products
+
+      WHERE id = ?
+
+      LIMIT 1
+
+      FOR UPDATE
+    `,
+      [productId],
     );
+
+    if (productRows.length === 0) {
+      throw new Error("Không tìm thấy sản phẩm.");
+    }
+
+    // ==========================================================
+    // GET PC PARTS
+    //
+    // Product có thể đã được map vào Build PC.
+    //
+    // Sau ProductVariant.forceDeleteByProduct():
+    // pc_parts.variant_id đã được đưa về NULL.
+    //
+    // Tuy nhiên pc_parts.product_id vẫn còn tham chiếu Product.
+    // Vì vậy phải xử lý pc_build_items trước pc_parts.
+    // ==========================================================
+
+    const [pcParts] = await connection.execute(
+      `
+      SELECT
+        id,
+        type_id,
+        product_id,
+        variant_id
+
+      FROM pc_parts
+
+      WHERE product_id = ?
+
+      ORDER BY id ASC
+
+      FOR UPDATE
+    `,
+      [productId],
+    );
+
+    const pcPartIds = pcParts.map((item) => Number(item.id));
+
+    // ==========================================================
+    // PC BUILD ITEMS
+    // ==========================================================
+
+    if (pcPartIds.length > 0) {
+      const placeholders = pcPartIds.map(() => "?").join(",");
+
+      // --------------------------------------------------------
+      // Lấy các Build bị ảnh hưởng trước khi xóa item.
+      //
+      // Sau này cần tính lại total_price của đúng những Build này.
+      // --------------------------------------------------------
+
+      const [affectedBuildRows] = await connection.execute(
+        `
+        SELECT DISTINCT
+          build_id
+
+        FROM pc_build_items
+
+        WHERE part_id IN (${placeholders})
+      `,
+        pcPartIds,
+      );
+
+      const affectedBuildIds = affectedBuildRows
+        .map((item) => Number(item.build_id))
+        .filter((buildId) => Number.isInteger(buildId) && buildId > 0);
+
+      // --------------------------------------------------------
+      // Xóa các item đang tham chiếu PcPart của Product.
+      //
+      // Phải chạy trước DELETE pc_parts.
+      // --------------------------------------------------------
+
+      await connection.execute(
+        `
+        DELETE FROM pc_build_items
+
+        WHERE part_id IN (${placeholders})
+      `,
+        pcPartIds,
+      );
+
+      // ========================================================
+      // RECALCULATE PC BUILD TOTAL
+      //
+      // Không để total_price của cấu hình chứa giá trị cũ
+      // sau khi một linh kiện đã bị force-delete.
+      // ========================================================
+
+      if (affectedBuildIds.length > 0) {
+        const buildPlaceholders = affectedBuildIds.map(() => "?").join(",");
+
+        await connection.execute(
+          `
+          UPDATE pc_builds pb
+
+          SET
+            pb.total_price = (
+              SELECT
+                COALESCE(
+                  SUM(pbi.total_price),
+                  0
+                )
+
+              FROM pc_build_items pbi
+
+              WHERE pbi.build_id = pb.id
+            ),
+
+            pb.updated_at = NOW()
+
+          WHERE pb.id IN (${buildPlaceholders})
+        `,
+          affectedBuildIds,
+        );
+      }
+    }
+
+    // ==========================================================
+    // PC PARTS
+    //
+    // pc_build_items đã được xử lý phía trên,
+    // nên lúc này có thể xóa mapping Build PC của Product.
+    // ==========================================================
 
     await connection.execute(
       `
-        DELETE
-        FROM product_specifications
-        WHERE product_id = ?
-      `,
-      [id],
+      DELETE FROM pc_parts
+
+      WHERE product_id = ?
+    `,
+      [productId],
     );
+
+    // ==========================================================
+    // PRODUCT GALLERY
+    // ==========================================================
 
     await connection.execute(
       `
-        DELETE
-        FROM product_stock_logs
-        WHERE product_id = ?
-      `,
-      [id],
+      DELETE FROM product_images
+
+      WHERE product_id = ?
+    `,
+      [productId],
     );
+
+    // ==========================================================
+    // PRODUCT SPECIFICATIONS
+    // ==========================================================
 
     await connection.execute(
       `
-        DELETE
-        FROM products
-        WHERE id = ?
-      `,
-      [id],
+      DELETE FROM product_specifications
+
+      WHERE product_id = ?
+    `,
+      [productId],
     );
+
+    // ==========================================================
+    // STOCK LOGS
+    //
+    // Variant đã được xóa ở ProductVariant.forceDeleteByProduct().
+    // Stock logs phải xóa trước Product nếu có FK product_id.
+    // ==========================================================
+
+    await connection.execute(
+      `
+      DELETE FROM product_stock_logs
+
+      WHERE product_id = ?
+    `,
+      [productId],
+    );
+
+    // ==========================================================
+    // PRODUCT
+    //
+    // Đây phải là bước cuối cùng.
+    // ==========================================================
+
+    const [result] = await connection.execute(
+      `
+      DELETE FROM products
+
+      WHERE id = ?
+    `,
+      [productId],
+    );
+
+    if (Number(result.affectedRows || 0) !== 1) {
+      throw new Error("Không thể xóa vĩnh viễn sản phẩm.");
+    }
+
+    return result.affectedRows;
   }
 
   // ============================================================

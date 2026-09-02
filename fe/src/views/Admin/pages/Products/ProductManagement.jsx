@@ -10,8 +10,14 @@ import { defaultProduct } from "../../../../constants/productDefault";
 
 import { createProductFormData } from "../../../../utils/productFormData";
 
-// variant stock modal
 import VariantManager from "./components/VariantManager";
+
+import RichTextEditor from "../../../components/RichText/RichTextEditor";
+
+import {
+  sanitizeRichTextHtml,
+  isRichTextEmpty,
+} from "../../../../utils/richText";
 
 import "./ProductManagement.css";
 
@@ -385,7 +391,7 @@ function ProductManagement() {
   }, [products]);
 
   // =======================================================
-  // FILTER KEYWORD SYNC
+  // FILTER KEYWORD
   // =======================================================
 
   useEffect(() => {
@@ -447,7 +453,7 @@ function ProductManagement() {
   }, []);
 
   // =======================================================
-  // ESC KEY
+  // ESC
   // =======================================================
 
   useEffect(() => {
@@ -501,12 +507,13 @@ function ProductManagement() {
 
     setFilters((previous) => ({
       ...previous,
+
       page: 1,
     }));
   };
 
   // =======================================================
-  // CHECKBOX
+  // SELECT
   // =======================================================
 
   const handleSelectProduct = (id) => {
@@ -550,7 +557,7 @@ function ProductManagement() {
   };
 
   // =======================================================
-  // FORM HELPERS
+  // PRODUCT FORM HELPERS
   // =======================================================
 
   const resetProductForm = () => {
@@ -578,6 +585,7 @@ function ProductManagement() {
 
     setProductForm((previous) => ({
       ...previous,
+
       [name]: value,
     }));
   };
@@ -612,6 +620,7 @@ function ProductManagement() {
 
       setProductForm({
         ...defaultProduct,
+
         ...data,
 
         gallery: data.gallery || [],
@@ -644,7 +653,7 @@ function ProductManagement() {
   };
 
   // =======================================================
-  // VALIDATE PRODUCT
+  // VALIDATE
   // =======================================================
 
   const validateProductForm = () => {
@@ -677,6 +686,10 @@ function ProductManagement() {
       errors.quantity = "Số lượng không hợp lệ.";
     }
 
+    if (String(productForm.description || "").length > 10000) {
+      errors.description = "Mô tả chi tiết không được vượt quá 10.000 ký tự.";
+    }
+
     if (productModalMode === "create" && !productForm.thumbnail) {
       errors.thumbnail = "Vui lòng chọn ảnh đại diện.";
     }
@@ -702,7 +715,13 @@ function ProductManagement() {
     try {
       setProductSaving(true);
 
-      const submitData = createProductFormData(productForm);
+      const safeProduct = {
+        ...productForm,
+
+        description: sanitizeRichTextHtml(productForm.description || ""),
+      };
+
+      const submitData = createProductFormData(safeProduct);
 
       if (productModalMode === "create") {
         await productService.createProduct(submitData);
@@ -796,6 +815,7 @@ function ProductManagement() {
   const galleryPreviews = useMemo(() => {
     return (productForm.gallery || []).map((image, index) => ({
       image,
+
       index,
 
       key:
@@ -1892,8 +1912,6 @@ function ProductManagement() {
           </div>
         )}
 
-        {/* PAGINATION */}
-
         {!loading && totalPages > 1 && (
           <div className="adm-product-pagination">
             <div className="adm-product-pagination__info">
@@ -2215,7 +2233,9 @@ function ProductManagement() {
                 </section>
               </div>
 
-              {/* DESCRIPTION */}
+              {/* =================================================
+                  DESCRIPTION
+                  ================================================= */}
 
               <section className="adm-product-form-card">
                 <div className="adm-product-form-card__header">
@@ -2239,19 +2259,39 @@ function ProductManagement() {
                     className="adm-product-textarea"
                     value={productForm.short_description || ""}
                     onChange={handleProductFieldChange}
+                    placeholder="Ví dụ: RAM Kingston FURY Beast DDR5 hiệu năng cao, thiết kế RGB hiện đại..."
                   />
+
+                  {productFormErrors.short_description && (
+                    <small>{productFormErrors.short_description}</small>
+                  )}
                 </div>
+
+                {/* =============================================
+                    RICH TEXT DESCRIPTION
+                    ============================================= */}
 
                 <div className="adm-product-field">
                   <label>Mô tả chi tiết</label>
 
-                  <textarea
-                    rows={8}
-                    name="description"
-                    className="adm-product-textarea adm-product-textarea--large"
+                  <RichTextEditor
                     value={productForm.description || ""}
-                    onChange={handleProductFieldChange}
+                    disabled={productSaving}
+                    placeholder="Viết mô tả chi tiết sản phẩm. Bạn có thể tạo tiêu đề, in đậm nội dung quan trọng, tạo danh sách ưu điểm, thông tin tương thích..."
+                    onChange={(html) => {
+                      clearProductError("description");
+
+                      setProductForm((previous) => ({
+                        ...previous,
+
+                        description: html,
+                      }));
+                    }}
                   />
+
+                  {productFormErrors.description && (
+                    <small>{productFormErrors.description}</small>
+                  )}
                 </div>
               </section>
 
@@ -2344,7 +2384,7 @@ function ProductManagement() {
                 </div>
               </section>
 
-              {/* FORM FOOTER */}
+              {/* FOOTER */}
 
               <div className="adm-product-form__footer">
                 <button
@@ -2546,12 +2586,23 @@ function ProductManagement() {
                 </p>
               </section>
 
+              {/* ===========================================
+                    RICH TEXT VIEW
+                    =========================================== */}
+
               <section className="adm-product-view-card">
                 <h3>Mô tả sản phẩm</h3>
 
-                <p className="adm-product-view-description">
-                  {selectedProduct.description || "Chưa có mô tả."}
-                </p>
+                {!isRichTextEmpty(selectedProduct.description) ? (
+                  <div
+                    className="adm-product-rich-description"
+                    dangerouslySetInnerHTML={{
+                      __html: sanitizeRichTextHtml(selectedProduct.description),
+                    }}
+                  />
+                ) : (
+                  <p className="adm-product-view-description">Chưa có mô tả.</p>
+                )}
               </section>
 
               <section className="adm-product-view-card">

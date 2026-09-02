@@ -13,6 +13,8 @@ function ProductInfo({
 
   options = [],
 
+  variants = [],
+
   selectedValues = {},
 
   selectedVariant,
@@ -27,6 +29,8 @@ function ProductInfo({
 
   onSelectOption,
 
+  onSelectVariant,
+
   isOptionValueAvailable,
 
   onAddToCart,
@@ -35,9 +39,6 @@ function ProductInfo({
 
   // ============================================================
   // RESET QUANTITY
-  //
-  // Khi đổi Variant:
-  // quantity về 1.
   // ============================================================
 
   useEffect(() => {
@@ -72,6 +73,38 @@ function ProductInfo({
       (option) => Array.isArray(option?.values) && option.values.length > 0,
     );
   }, [options, hasVariants]);
+
+  // ============================================================
+  // ACTIVE VARIANTS
+  //
+  // Dùng cho trường hợp Product có nhiều Variant nhưng
+  // KHÔNG khai báo options.
+  // ============================================================
+
+  const selectableVariants = useMemo(() => {
+    if (!hasVariants || !Array.isArray(variants)) {
+      return [];
+    }
+
+    return variants.filter(
+      (variant) => Number(variant?.status) === 1 && variant?.deleted_at == null,
+    );
+  }, [variants, hasVariants]);
+
+  // ============================================================
+  // SELECTOR MODE
+  //
+  // OPTION:
+  // capacity / bus / color...
+  //
+  // DIRECT:
+  // Product có nhiều variant nhưng chưa khai báo options.
+  // ============================================================
+
+  const hasOptionSelector = variantOptions.length > 0;
+
+  const hasDirectVariantSelector =
+    hasVariants && !hasOptionSelector && selectableVariants.length > 1;
 
   // ============================================================
   // QUANTITY
@@ -151,7 +184,9 @@ function ProductInfo({
             <div>
               <small>Phiên bản đang chọn</small>
 
-              <strong>{selectedVariant.variant_name}</strong>
+              <strong>
+                {selectedVariant.variant_name || selectedVariant.sku}
+              </strong>
             </div>
 
             {Number(selectedVariant.is_default) === 1 && (
@@ -247,10 +282,10 @@ function ProductInfo({
       </div>
 
       {/* ======================================================
-          VARIANT SELECTOR
+          OPTION BASED VARIANT SELECTOR
       ====================================================== */}
 
-      {variantOptions.length > 0 && (
+      {hasOptionSelector && (
         <div className="pd-variant-box">
           <div className="pd-variant-box__heading">
             <div className="pd-variant-heading-icon">
@@ -297,7 +332,7 @@ function ProductInfo({
                             active ? "pd-variant-value--active" : ""
                           } ${!available ? "pd-variant-value--disabled" : ""}`}
                           disabled={!available}
-                          onClick={() => onSelectOption(code, value.value)}
+                          onClick={() => onSelectOption?.(code, value.value)}
                         >
                           {option.display_type === "color" &&
                             value.color_code && (
@@ -330,7 +365,9 @@ function ProductInfo({
               <div className="pd-selected-variant-summary__content">
                 <span>Phiên bản phù hợp</span>
 
-                <strong>{selectedVariant.variant_name}</strong>
+                <strong>
+                  {selectedVariant.variant_name || selectedVariant.sku}
+                </strong>
               </div>
 
               <div className="pd-selected-variant-summary__stock">
@@ -344,6 +381,112 @@ function ProductInfo({
               <i className="bi bi-exclamation-triangle"></i>
 
               <span>Tổ hợp này hiện không có phiên bản phù hợp.</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ======================================================
+          DIRECT VARIANT SELECTOR
+
+          Trường hợp:
+          - variants > 1
+          - nhưng Product chưa có options
+
+          Ví dụ:
+          Mặc định
+          16GB / 5600MHz
+          32GB / 6000MHz
+      ====================================================== */}
+
+      {hasDirectVariantSelector && (
+        <div className="pd-variant-box">
+          <div className="pd-variant-box__heading">
+            <div className="pd-variant-heading-icon">
+              <i className="bi bi-boxes"></i>
+            </div>
+
+            <div>
+              <strong>Chọn phiên bản</strong>
+
+              <span>Chọn phiên bản phù hợp với nhu cầu của bạn</span>
+            </div>
+          </div>
+
+          <div className="pd-variant-options">
+            <div className="pd-variant-group">
+              <div className="pd-variant-group__label">
+                <span>Phiên bản</span>
+
+                {selectedVariant && (
+                  <strong>
+                    {selectedVariant.variant_name || selectedVariant.sku}
+                  </strong>
+                )}
+              </div>
+
+              <div className="pd-variant-values">
+                {selectableVariants.map((variant) => {
+                  const active =
+                    Number(selectedVariant?.id) === Number(variant.id);
+
+                  const quantity = Math.max(Number(variant.quantity || 0), 0);
+
+                  const outOfStock = quantity <= 0;
+
+                  return (
+                    <button
+                      key={variant.id}
+                      type="button"
+                      className={`pd-variant-value ${
+                        active ? "pd-variant-value--active" : ""
+                      }`}
+                      onClick={() => onSelectVariant?.(variant)}
+                    >
+                      <span>
+                        {variant.variant_name ||
+                          variant.sku ||
+                          `Phiên bản #${variant.id}`}
+                      </span>
+
+                      {active && <i className="bi bi-check-lg"></i>}
+
+                      {outOfStock && (
+                        <small
+                          style={{
+                            marginLeft: "6px",
+                            opacity: 0.65,
+                          }}
+                        >
+                          Hết hàng
+                        </small>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {selectedVariant && (
+            <div className="pd-selected-variant-summary">
+              <div className="pd-selected-variant-summary__icon">
+                <i className="bi bi-check2-circle"></i>
+              </div>
+
+              <div className="pd-selected-variant-summary__content">
+                <span>Phiên bản đang chọn</span>
+
+                <strong>
+                  {selectedVariant.variant_name || selectedVariant.sku}
+                </strong>
+              </div>
+
+              <div className="pd-selected-variant-summary__stock">
+                <small>Tồn kho</small>
+
+                <strong>{Number(selectedVariant.quantity || 0)}</strong>
+              </div>
             </div>
           )}
         </div>
