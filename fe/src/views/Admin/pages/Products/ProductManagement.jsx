@@ -1496,24 +1496,6 @@ function ProductManagement() {
 
             <button
               type="button"
-              className="adm-product-button adm-product-button--secondary"
-              onClick={() => toast("Chức năng Import chưa được cấu hình.")}
-            >
-              <i className="bi bi-upload" />
-              Import
-            </button>
-
-            <button
-              type="button"
-              className="adm-product-button adm-product-button--secondary"
-              onClick={() => toast("Chức năng Export chưa được cấu hình.")}
-            >
-              <i className="bi bi-download" />
-              Export
-            </button>
-
-            <button
-              type="button"
               className="adm-product-button adm-product-button--primary"
               onClick={handleAddProduct}
             >

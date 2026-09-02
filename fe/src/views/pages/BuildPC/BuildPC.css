@@ -8,6 +8,15 @@
   --glass: rgba(255, 255, 255, 0.7);
   --border: rgba(15, 23, 42, 0.08);
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+
+  /* ==========================================================
+     BUILD PC
+     Khoảng trống dành cho Header cố định
+  ========================================================== */
+
+  --client-build-header-height: 82px;
+  --client-build-page-gap: 28px;
+  --client-build-sticky-gap: 18px;
 }
 
 /* ============================================================
@@ -15,8 +24,20 @@
 ============================================================ */
 
 .client-build-page {
+  position: relative;
+  z-index: 0;
+
   min-height: 100vh;
-  padding: 34px 0 80px;
+
+  /*
+   * Header đang fixed nên nội dung phải bắt đầu
+   * sau chiều cao Header.
+   */
+  padding: calc(
+      var(--client-build-header-height) + var(--client-build-page-gap)
+    )
+    0 80px;
+
   background:
     radial-gradient(circle at 8% 6%, rgba(239, 35, 60, 0.07), transparent 25%),
     radial-gradient(
@@ -25,11 +46,16 @@
       transparent 24%
     ),
     var(--bg);
+
   color: var(--text);
 }
 
 .client-build-shell {
+  position: relative;
+  z-index: 1;
+
   width: min(1380px, calc(100% - 40px));
+
   margin: 0 auto;
 }
 
@@ -39,21 +65,32 @@
 
 .client-build-hero {
   position: relative;
+  z-index: 1;
+
   min-height: 310px;
+
   display: flex;
   align-items: center;
   justify-content: space-between;
+
   gap: 40px;
+
   overflow: hidden;
+
   padding: 48px 52px;
+
   border-radius: 28px;
+
   background: linear-gradient(
     135deg,
     #0b1120 0%,
     var(--dark) 55%,
     #182235 100%
   );
+
   box-shadow: 0 30px 70px rgba(15, 23, 42, 0.18);
+
+  isolation: isolate;
 }
 
 .client-build-hero::before {
@@ -822,8 +859,11 @@
 
 .client-build-summary {
   position: sticky;
-  top: 22px;
+
+  top: calc(var(--client-build-header-height) + var(--client-build-sticky-gap));
+
   overflow: hidden;
+
   border-radius: 21px;
 }
 
@@ -1287,27 +1327,44 @@
 .client-build-selector-overlay {
   position: fixed;
   inset: 0;
-  z-index: 2000;
+
+  z-index: 20000;
+
   display: flex;
   align-items: center;
   justify-content: center;
+
   padding: 26px;
+
   background: rgba(3, 8, 18, 0.68);
+
   backdrop-filter: blur(9px);
+
   -webkit-backdrop-filter: blur(9px);
+
   animation: client-build-fade-in 0.2s ease;
 }
-
 .client-build-selector-dialog {
+  position: relative;
+  z-index: 20001;
+
   width: min(1240px, 100%);
+
   max-height: calc(100vh - 52px);
+
   display: flex;
   flex-direction: column;
+
   overflow: hidden;
+
   border: 1px solid rgba(255, 255, 255, 0.18);
+
   border-radius: 23px;
+
   background: #fff;
+
   box-shadow: 0 40px 110px rgba(0, 0, 0, 0.32);
+
   animation: client-build-dialog-in 0.25s ease;
 }
 
@@ -1825,6 +1882,11 @@
 ============================================================ */
 
 @media (max-width: 800px) {
+  :root {
+    --client-build-header-height: 74px;
+    --client-build-page-gap: 20px;
+    --client-build-sticky-gap: 12px;
+  }
   .client-build-shell {
     width: min(100% - 24px, 1380px);
   }
@@ -1892,7 +1954,10 @@
 
 @media (max-width: 560px) {
   .client-build-page {
-    padding: 16px 0 50px;
+    padding: calc(
+        var(--client-build-header-height) + var(--client-build-page-gap)
+      )
+      0 50px;
   }
 
   .client-build-shell {
@@ -2085,4 +2150,10 @@
     flex-direction: column;
     padding: 9px 16px;
   }
+}
+.client-build-hero,
+.client-build-steps,
+.client-build-layout,
+.client-build-board {
+  scroll-margin-top: calc(var(--client-build-header-height) + 20px);
 }

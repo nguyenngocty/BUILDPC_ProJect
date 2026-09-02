@@ -12,6 +12,10 @@ import { useAuth } from "./AuthContext";
 
 export const CartContext = createContext(null);
 
+// ============================================================
+// NORMALIZE
+// ============================================================
+
 const normalizeNumber = (value, defaultValue = 0) => {
   const numberValue = Number(value);
 
@@ -23,6 +27,38 @@ const normalizeQuantity = (value) => {
 
   return Number.isInteger(quantity) ? quantity : null;
 };
+
+const normalizePositiveId = (value) => {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const id = Number(value);
+
+  if (!Number.isInteger(id) || id <= 0) {
+    return null;
+  }
+
+  return id;
+};
+
+const normalizeNullableId = (value) => {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const id = Number(value);
+
+  if (!Number.isInteger(id) || id <= 0) {
+    return null;
+  }
+
+  return id;
+};
+
+// ============================================================
+// USER
+// ============================================================
 
 const getUserIdFromCurrentUser = (currentUser) => {
   if (!currentUser) {
@@ -38,23 +74,22 @@ const getUserIdFromCurrentUser = (currentUser) => {
     currentUser.data?.user?.id ||
     currentUser.id;
 
-  const userId = Number(rawId);
-
-  if (!Number.isInteger(userId) || userId <= 0) {
-    return null;
-  }
-
-  return userId;
+  return normalizePositiveId(rawId);
 };
 
+// ============================================================
+// RESPONSE NORMALIZE
+// ============================================================
+
 const getCartItemsFromResponse = (resData) => {
-  return (
+  const items =
     resData?.data?.items ||
     resData?.items ||
     resData?.cart?.items ||
     resData?.data?.cart?.items ||
-    []
-  );
+    [];
+
+  return Array.isArray(items) ? items : [];
 };
 
 const getCartSummaryFromResponse = (resData, items = []) => {
@@ -66,6 +101,7 @@ const getCartSummaryFromResponse = (resData, items = []) => {
     cart.quantity ??
     cart.cart_count ??
     data.quantity ??
+    data.total_quantity ??
     data.cart_count ??
     items.reduce((sum, item) => {
       return sum + normalizeNumber(item.quantity);
@@ -75,6 +111,7 @@ const getCartSummaryFromResponse = (resData, items = []) => {
     cart.total_price ??
     cart.cart_total ??
     data.total_price ??
+    data.total_amount ??
     data.cart_total ??
     items.reduce((sum, item) => {
       const itemTotal = normalizeNumber(item.total_price);
@@ -97,12 +134,20 @@ const getCartSummaryFromResponse = (resData, items = []) => {
   };
 };
 
+// ============================================================
+// PROVIDER
+// ============================================================
+
 export function CartProvider({ children }) {
   const { currentUser, isAuthLoading } = useAuth();
 
   const userId = useMemo(() => {
     return getUserIdFromCurrentUser(currentUser);
   }, [currentUser]);
+
+  // ==========================================================
+  // CART STATE
+  // ==========================================================
 
   const [cartItems, setCartItems] = useState([]);
 
@@ -114,10 +159,11 @@ export function CartProvider({ children }) {
 
   const [cartError, setCartError] = useState("");
 
-  // =========================
-  // COUPON DÙNG CHUNG
+  // ==========================================================
+  // COUPON
+  //
   // CART -> CHECKOUT
-  // =========================
+  // ==========================================================
 
   const [appliedCoupon, setAppliedCouponState] = useState(null);
 
@@ -158,7 +204,10 @@ export function CartProvider({ children }) {
     }
   }, [getCouponStorageKey]);
 
-  // Load coupon khi user đăng nhập
+  // ==========================================================
+  // LOAD SAVED COUPON
+  // ==========================================================
+
   useEffect(() => {
     if (isAuthLoading) {
       return;
@@ -191,20 +240,23 @@ export function CartProvider({ children }) {
     }
   }, [userId, isAuthLoading]);
 
-  // =========================
+  // ==========================================================
   // RESET CART
-  // =========================
+  // ==========================================================
 
   const resetCartState = useCallback(() => {
     setCartItems([]);
+
     setCartCount(0);
+
     setCartTotal(0);
+
     setCartError("");
   }, []);
 
-  // =========================
+  // ==========================================================
   // FETCH CART
-  // =========================
+  // ==========================================================
 
   const fetchCart = useCallback(
     async ({ silent = false } = {}) => {
@@ -227,9 +279,9 @@ export function CartProvider({ children }) {
 
         setCartError("");
 
-        const res = await cartService.getCart(userId);
+        const res = await cartService.getCart();
 
-        const resData = res.data || {};
+        const resData = res?.data || {};
 
         const items = getCartItemsFromResponse(resData);
 
@@ -248,11 +300,16 @@ export function CartProvider({ children }) {
         console.error("Lỗi lấy giỏ hàng:", error);
 
         const message =
-          error.response?.data?.message || error.message || "Lỗi lấy giỏ hàng";
+          error?.response?.data?.message ||
+          error?.message ||
+          "Lỗi lấy giỏ hàng";
 
         setCartItems([]);
+
         setCartCount(0);
+
         setCartTotal(0);
+
         setCartError(message);
       } finally {
         if (!silent) {
@@ -263,13 +320,17 @@ export function CartProvider({ children }) {
     [userId, isAuthLoading, resetCartState, clearAppliedCoupon],
   );
 
+  // ==========================================================
+  // LOAD CART WHEN AUTH CHANGES
+  // ==========================================================
+
   useEffect(() => {
     fetchCart();
   }, [fetchCart]);
 
-  // =========================
+  // ==========================================================
   // REQUIRE LOGIN
-  // =========================
+  // ==========================================================
 
   const requireLogin = useCallback(() => {
     if (!userId) {
@@ -279,41 +340,95 @@ export function CartProvider({ children }) {
     return userId;
   }, [userId]);
 
-  // =========================
+  // ==========================================================
   // ADD TO CART
-  // =========================
+  //
+  // HỖ TRỢ:
+  //
+  // addToCart(productId, 1)
+  //
+  // hoặc:
+  //
+  // addToCart({
+  //   product_id: 66,
+  //   variant_id: 81,
+  //   quantity: 1,
+  // })
+  // ==========================================================
 
   const addToCart = useCallback(
     async (productOrId, quantity = 1) => {
-      const currentUserId = requireLogin();
+      requireLogin();
 
-      const productId =
+      // ====================================================
+      // PRODUCT ID
+      // ====================================================
+
+      const rawProductId =
         typeof productOrId === "object"
-          ? productOrId.product_id || productOrId.productId || productOrId.id
+          ? (productOrId?.product_id ??
+            productOrId?.productId ??
+            productOrId?.id)
           : productOrId;
 
-      const rawQuantity =
-        typeof productOrId === "object"
-          ? (productOrId.quantity ?? quantity)
-          : quantity;
-
-      const itemQuantity = normalizeQuantity(rawQuantity);
+      const productId = normalizePositiveId(rawProductId);
 
       if (!productId) {
         throw new Error("Không tìm thấy sản phẩm cần thêm vào giỏ");
       }
 
+      // ====================================================
+      // VARIANT ID
+      //
+      // Đây chính là phần file cũ làm mất.
+      // ====================================================
+
+      const rawVariantId =
+        typeof productOrId === "object"
+          ? (productOrId?.variant_id ?? productOrId?.variantId ?? null)
+          : null;
+
+      const variantId = normalizeNullableId(rawVariantId);
+
+      if (
+        rawVariantId !== undefined &&
+        rawVariantId !== null &&
+        rawVariantId !== "" &&
+        !variantId
+      ) {
+        throw new Error("Biến thể sản phẩm không hợp lệ");
+      }
+
+      // ====================================================
+      // QUANTITY
+      // ====================================================
+
+      const rawQuantity =
+        typeof productOrId === "object"
+          ? (productOrId?.quantity ?? quantity)
+          : quantity;
+
+      const itemQuantity = normalizeQuantity(rawQuantity);
+
       if (itemQuantity === null || itemQuantity <= 0) {
         throw new Error("Số lượng sản phẩm phải là số nguyên lớn hơn 0");
       }
 
-      await cartService.addToCart({
-        user_id: currentUserId,
+      // ====================================================
+      // REQUEST
+      // ====================================================
 
+      await cartService.addToCart({
         product_id: productId,
+
+        variant_id: variantId,
 
         quantity: itemQuantity,
       });
+
+      // ====================================================
+      // REFRESH
+      // ====================================================
 
       await fetchCart({
         silent: true,
@@ -322,29 +437,33 @@ export function CartProvider({ children }) {
     [requireLogin, fetchCart],
   );
 
-  // =========================
+  // ==========================================================
   // UPDATE QUANTITY
-  // =========================
+  // ==========================================================
 
   const updateQuantity = useCallback(
     async (itemId, quantity) => {
-      const currentUserId = requireLogin();
+      requireLogin();
 
-      const nextQuantity = normalizeQuantity(quantity);
+      const normalizedItemId = normalizePositiveId(itemId);
 
-      if (!itemId) {
+      if (!normalizedItemId) {
         throw new Error("Không tìm thấy sản phẩm trong giỏ hàng");
       }
+
+      const nextQuantity = normalizeQuantity(quantity);
 
       if (nextQuantity === null) {
         throw new Error("Số lượng sản phẩm phải là số nguyên");
       }
 
+      // ====================================================
+      // QUANTITY <= 0 => REMOVE
+      // ====================================================
+
       if (nextQuantity <= 0) {
         await cartService.removeCartItem({
-          user_id: currentUserId,
-
-          item_id: itemId,
+          item_id: normalizedItemId,
         });
 
         await fetchCart({
@@ -354,10 +473,12 @@ export function CartProvider({ children }) {
         return;
       }
 
-      await cartService.updateCartItem({
-        user_id: currentUserId,
+      // ====================================================
+      // UPDATE
+      // ====================================================
 
-        item_id: itemId,
+      await cartService.updateCartItem({
+        item_id: normalizedItemId,
 
         quantity: nextQuantity,
       });
@@ -369,22 +490,22 @@ export function CartProvider({ children }) {
     [requireLogin, fetchCart],
   );
 
-  // =========================
+  // ==========================================================
   // REMOVE ITEM
-  // =========================
+  // ==========================================================
 
   const removeItem = useCallback(
     async (itemId) => {
-      const currentUserId = requireLogin();
+      requireLogin();
 
-      if (!itemId) {
+      const normalizedItemId = normalizePositiveId(itemId);
+
+      if (!normalizedItemId) {
         throw new Error("Không tìm thấy sản phẩm cần xóa");
       }
 
       await cartService.removeCartItem({
-        user_id: currentUserId,
-
-        item_id: itemId,
+        item_id: normalizedItemId,
       });
 
       await fetchCart({
@@ -394,66 +515,93 @@ export function CartProvider({ children }) {
     [requireLogin, fetchCart],
   );
 
-  // =========================
+  // ==========================================================
   // CLEAR CART
-  // =========================
+  // ==========================================================
 
   const clearCart = useCallback(async () => {
-    const currentUserId = requireLogin();
+    requireLogin();
 
-    await cartService.clearCart(currentUserId);
+    await cartService.clearCart();
 
     resetCartState();
 
     clearAppliedCoupon();
   }, [requireLogin, resetCartState, clearAppliedCoupon]);
 
-  // =========================
+  // ==========================================================
   // CONTEXT VALUE
-  // =========================
+  // ==========================================================
 
   const value = useMemo(
     () => ({
       userId,
 
       cartItems,
+
       cartLoading,
+
       cartError,
+
       cartCount,
+
       cartTotal,
 
       fetchCart,
+
       refreshCart: fetchCart,
 
       addToCart,
+
       updateQuantity,
+
       removeItem,
+
       clearCart,
 
       appliedCoupon,
+
       setAppliedCoupon,
+
       clearAppliedCoupon,
     }),
     [
       userId,
+
       cartItems,
+
       cartLoading,
+
       cartError,
+
       cartCount,
+
       cartTotal,
+
       fetchCart,
+
       addToCart,
+
       updateQuantity,
+
       removeItem,
+
       clearCart,
+
       appliedCoupon,
+
       setAppliedCoupon,
+
       clearAppliedCoupon,
     ],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
+
+// ============================================================
+// HOOK
+// ============================================================
 
 export const useCart = () => {
   const context = useContext(CartContext);

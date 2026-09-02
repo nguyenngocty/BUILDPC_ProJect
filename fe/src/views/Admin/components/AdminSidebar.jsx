@@ -33,11 +33,6 @@ const menuItems = [
     icon: "bi-cpu",
   },
   {
-    label: "Linh kiện",
-    to: "/admin/pc-parts",
-    icon: "bi-pc-display",
-  },
-  {
     label: "Quản lý người dùng",
     to: "/admin/users",
     icon: "bi-people",

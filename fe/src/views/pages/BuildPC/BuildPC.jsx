@@ -1108,11 +1108,19 @@ const BuildPC = () => {
       );
 
       window.setTimeout(() => {
+        const target = document.querySelector(".client-build-layout");
+
+        if (!target) {
+          return;
+        }
+
+        const headerOffset = 110;
+
+        const top =
+          target.getBoundingClientRect().top + window.scrollY - headerOffset;
+
         window.scrollTo({
-          top: Math.max(
-            0,
-            document.querySelector(".client-build-layout")?.offsetTop - 80 || 0,
-          ),
+          top: Math.max(0, top),
 
           behavior: "smooth",
         });

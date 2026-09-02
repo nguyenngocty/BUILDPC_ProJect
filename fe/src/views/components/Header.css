@@ -1202,7 +1202,6 @@
 .client-header a:focus-visible,
 .client-header button:focus-visible,
 .client-header input:focus-visible {
-  outline: 2px solid rgba(239, 35, 60, 0.44);
   outline-offset: 2px;
 }
 

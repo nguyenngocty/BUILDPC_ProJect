@@ -6,15 +6,28 @@
 .client-build-action-overlay {
   position: fixed;
   inset: 0;
-  z-index: 2100;
+
+  z-index: 21000;
+
   display: flex;
   align-items: center;
   justify-content: center;
+
   padding: 24px;
+
   background: rgba(3, 8, 18, 0.7);
+
   backdrop-filter: blur(10px);
+
   -webkit-backdrop-filter: blur(10px);
+
   animation: client-build-action-fade 0.2s ease;
+}
+.client-build-auto-dialog,
+.client-build-save-dialog,
+.client-build-reset-dialog {
+  position: relative;
+  z-index: 21001;
 }
 
 .client-build-auto-dialog,
