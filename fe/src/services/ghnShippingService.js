@@ -3,6 +3,8 @@ import api from "./api";
 const ghnShippingService = {
   // ============================================================
   // STATUS
+  //
+  // GET /api/client/shipping/ghn/status
   // ============================================================
 
   getStatus: () => {
@@ -11,6 +13,8 @@ const ghnShippingService = {
 
   // ============================================================
   // PROVINCES
+  //
+  // GET /api/client/shipping/ghn/provinces
   // ============================================================
 
   getProvinces: () => {
@@ -19,6 +23,8 @@ const ghnShippingService = {
 
   // ============================================================
   // DISTRICTS
+  //
+  // GET /api/client/shipping/ghn/districts/:provinceId
   // ============================================================
 
   getDistricts: (provinceId) => {
@@ -27,6 +33,8 @@ const ghnShippingService = {
 
   // ============================================================
   // WARDS
+  //
+  // GET /api/client/shipping/ghn/wards/:districtId
   // ============================================================
 
   getWards: (districtId) => {
@@ -35,6 +43,11 @@ const ghnShippingService = {
 
   // ============================================================
   // FEE
+  //
+  // POST /api/client/shipping/ghn/fee
+  //
+  // Có thể giữ lại cho những nơi khác cần tính riêng phí ship.
+  // Checkout chính hiện tại dùng getQuote().
   // ============================================================
 
   calculateFee: ({
@@ -49,7 +62,7 @@ const ghnShippingService = {
       {
         to_district_id: Number(toDistrictId),
 
-        to_ward_code: String(toWardCode || ""),
+        to_ward_code: String(toWardCode || "").trim(),
 
         insurance_value: Math.max(Number(insuranceValue) || 0, 0),
 
@@ -60,6 +73,10 @@ const ghnShippingService = {
 
   // ============================================================
   // LEAD TIME
+  //
+  // POST /api/client/shipping/ghn/lead-time
+  //
+  // Có thể giữ lại cho những nơi khác cần tính riêng thời gian.
   // ============================================================
 
   calculateLeadTime: ({ toDistrictId, toWardCode }) => {
@@ -69,13 +86,28 @@ const ghnShippingService = {
       {
         to_district_id: Number(toDistrictId),
 
-        to_ward_code: String(toWardCode || ""),
+        to_ward_code: String(toWardCode || "").trim(),
       },
     );
   },
 
   // ============================================================
   // FULL QUOTE
+  //
+  // POST /api/client/shipping/ghn/quote
+  //
+  // Đây là hàm Checkout đang sử dụng.
+  //
+  // Backend sẽ:
+  //
+  // 1. Validate Province
+  // 2. Validate District
+  // 3. Validate Ward
+  // 4. Tự chọn GHN service
+  // 5. Tính shipping fee
+  // 6. Tính lead time
+  //
+  // FE không tự quyết định service_id.
   // ============================================================
 
   getQuote: ({
@@ -85,19 +117,29 @@ const ghnShippingService = {
     insuranceValue = 0,
     codValue = 0,
   }) => {
+    const normalizedProvinceId = Number(provinceId);
+
+    const normalizedDistrictId = Number(districtId);
+
+    const normalizedWardCode = String(wardCode || "").trim();
+
+    const normalizedInsuranceValue = Math.max(Number(insuranceValue) || 0, 0);
+
+    const normalizedCodValue = Math.max(Number(codValue) || 0, 0);
+
     return api.post(
       "/client/shipping/ghn/quote",
 
       {
-        province_id: Number(provinceId),
+        province_id: normalizedProvinceId,
 
-        district_id: Number(districtId),
+        district_id: normalizedDistrictId,
 
-        ward_code: String(wardCode || "").trim(),
+        ward_code: normalizedWardCode,
 
-        insurance_value: Math.max(Number(insuranceValue) || 0, 0),
+        insurance_value: normalizedInsuranceValue,
 
-        cod_value: Math.max(Number(codValue) || 0, 0),
+        cod_value: normalizedCodValue,
       },
     );
   },

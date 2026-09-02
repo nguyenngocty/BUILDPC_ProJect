@@ -1,236 +1,385 @@
-const ShippingRate = require("../../models/ShippingRate");
+const ghnService = require("../../services/ghnService");
 
-// ======================================================
+// ============================================================
 // HELPERS
-// ======================================================
+// ============================================================
+
+const normalizePositiveInt = (value) => {
+  const parsed = Number.parseInt(value, 10);
+
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return null;
+  }
+
+  return parsed;
+};
 
 const normalizeMoney = (value) => {
-  const numberValue = Number(value);
+  const number = Number(value);
 
-  if (!Number.isFinite(numberValue)) {
+  if (!Number.isFinite(number)) {
     return 0;
   }
 
-  return Math.max(numberValue, 0);
+  return Math.max(number, 0);
 };
 
-const normalizeProvinceCode = (value) => {
-  return String(value || "")
-    .trim()
-    .toUpperCase();
+const normalizeText = (value) => {
+  return String(value || "").trim();
 };
 
-// ======================================================
-// GET ACTIVE SHIPPING RATES
-// GET /client/shipping/rates
-//
-// Dùng cho Checkout:
-// lấy danh sách tỉnh / thành phố đang hoạt động.
-// ======================================================
+// ============================================================
+// GHN ERROR
+// ============================================================
 
-exports.getActiveShippingRates = async (
-  req,
+const handleGhnError = (
   res,
-  next,
+  error,
+  fallback = "Không thể xử lý yêu cầu GHN.",
 ) => {
+  console.error("[GHN]", error?.code || "GHN_ERROR", error?.message || error);
+
+  const code = error?.code || "GHN_ERROR";
+
+  const configErrors = [
+    "GHN_TOKEN_MISSING",
+    "GHN_SHOP_ID_MISSING",
+    "GHN_PACKAGE_CONFIG_MISSING",
+    "GHN_SHOP_NOT_FOUND",
+    "GHN_SHOP_DISTRICT_MISSING",
+    "GHN_SHOP_WARD_MISSING",
+  ];
+
+  const status = configErrors.includes(code) ? 500 : 400;
+
+  return res.status(status).json({
+    success: false,
+
+    message: error?.message || fallback,
+
+    code,
+  });
+};
+
+// ============================================================
+// GET STATUS
+//
+// GET /api/client/shipping/ghn/status
+// ============================================================
+
+exports.getGhnStatus = async (req, res) => {
   try {
-    const shippingRates =
-      await ShippingRate.getActiveList();
+    const data = ghnService.getStatus();
 
-    const data = shippingRates.map(
-      (item) => ({
-        id: item.id,
-
-        province_code:
-          item.province_code,
-
-        province_name:
-          item.province_name,
-
-        shipping_fee: normalizeMoney(
-          item.shipping_fee,
-        ),
-
-        free_shipping_min:
-          item.free_shipping_min ===
-            null ||
-          item.free_shipping_min ===
-            undefined
-            ? null
-            : normalizeMoney(
-                item.free_shipping_min,
-              ),
-      }),
-    );
-
-    return res.json({
+    return res.status(200).json({
       success: true,
 
-      message:
-        "Lấy danh sách khu vực vận chuyển thành công",
+      message: "Lấy trạng thái GHN thành công.",
 
       data,
     });
   } catch (error) {
-    next(error);
+    return handleGhnError(res, error, "Không thể kiểm tra cấu hình GHN.");
   }
 };
 
-// ======================================================
-// CALCULATE SHIPPING
-// POST /client/shipping/calculate
+// ============================================================
+// GET PROVINCES
 //
-// Body:
-// {
-//   "province_code": "CAN_THO",
-//   "subtotal": 1950000
-// }
-// ======================================================
+// GET /api/client/shipping/ghn/provinces
+// ============================================================
 
-exports.calculateShippingFee = async (
-  req,
-  res,
-  next,
-) => {
+exports.getGhnProvinces = async (req, res) => {
   try {
-    const provinceCode =
-      normalizeProvinceCode(
-        req.body?.province_code,
-      );
+    const provinces = await ghnService.getProvinces();
 
-    const subtotal = normalizeMoney(
-      req.body?.subtotal,
-    );
-
-    // ==================================================
-    // VALIDATE PROVINCE
-    // ==================================================
-    if (!provinceCode) {
-      return res.status(400).json({
-        success: false,
-
-        message:
-          "Vui lòng chọn tỉnh / thành phố nhận hàng",
-      });
-    }
-
-    // ==================================================
-    // VALIDATE SUBTOTAL
-    // ==================================================
-    if (subtotal <= 0) {
-      return res.status(400).json({
-        success: false,
-
-        message:
-          "Giá trị giỏ hàng không hợp lệ",
-      });
-    }
-
-    // ==================================================
-    // FIND ACTIVE SHIPPING RATE
-    // ==================================================
-    const shippingRate =
-      await ShippingRate.getActiveByProvinceCode(
-        provinceCode,
-      );
-
-    if (!shippingRate) {
-      return res.status(404).json({
-        success: false,
-
-        message:
-          "Khu vực này hiện chưa được hỗ trợ vận chuyển",
-      });
-    }
-
-    // ==================================================
-    // SHIPPING INFORMATION
-    // ==================================================
-    const baseShippingFee =
-      normalizeMoney(
-        shippingRate.shipping_fee,
-      );
-
-    const freeShippingMin =
-      shippingRate.free_shipping_min ===
-        null ||
-      shippingRate.free_shipping_min ===
-        undefined
-        ? null
-        : normalizeMoney(
-            shippingRate.free_shipping_min,
-          );
-
-    // ==================================================
-    // FREE SHIPPING
-    // ==================================================
-    let shippingFee =
-      baseShippingFee;
-
-    let isFreeShipping = false;
-
-    if (
-      freeShippingMin !== null &&
-      subtotal >= freeShippingMin
-    ) {
-      shippingFee = 0;
-      isFreeShipping = true;
-    }
-
-    // ==================================================
-    // AMOUNT LEFT TO FREE SHIPPING
-    // ==================================================
-    let amountToFreeShipping = null;
-
-    if (
-      freeShippingMin !== null &&
-      subtotal < freeShippingMin
-    ) {
-      amountToFreeShipping =
-        Math.max(
-          freeShippingMin - subtotal,
-          0,
-        );
-    }
-
-    // ==================================================
-    // RESPONSE
-    // ==================================================
-    return res.json({
+    return res.status(200).json({
       success: true,
 
-      message:
-        "Tính phí vận chuyển thành công",
+      message: "Lấy danh sách tỉnh/thành GHN thành công.",
 
-      data: {
-        id:
-          shippingRate.id,
-
-        province_code:
-          shippingRate.province_code,
-
-        province_name:
-          shippingRate.province_name,
-
-        subtotal,
-
-        base_shipping_fee:
-          baseShippingFee,
-
-        shipping_fee:
-          shippingFee,
-
-        free_shipping_min:
-          freeShippingMin,
-
-        is_free_shipping:
-          isFreeShipping,
-
-        amount_to_free_shipping:
-          amountToFreeShipping,
-      },
+      data: Array.isArray(provinces) ? provinces : [],
     });
   } catch (error) {
-    next(error);
+    return handleGhnError(
+      res,
+      error,
+      "Không thể tải danh sách tỉnh/thành GHN.",
+    );
+  }
+};
+
+// ============================================================
+// GET DISTRICTS
+//
+// GET /api/client/shipping/ghn/districts/:provinceId
+// ============================================================
+
+exports.getGhnDistricts = async (req, res) => {
+  try {
+    const provinceId = normalizePositiveInt(req.params?.provinceId);
+
+    if (!provinceId) {
+      return res.status(400).json({
+        success: false,
+
+        message: "province_id không hợp lệ.",
+
+        code: "GHN_INVALID_PROVINCE",
+      });
+    }
+
+    const districts = await ghnService.getDistricts(provinceId);
+
+    return res.status(200).json({
+      success: true,
+
+      message: "Lấy danh sách quận/huyện GHN thành công.",
+
+      data: Array.isArray(districts) ? districts : [],
+    });
+  } catch (error) {
+    return handleGhnError(
+      res,
+      error,
+      "Không thể tải danh sách quận/huyện GHN.",
+    );
+  }
+};
+
+// ============================================================
+// GET WARDS
+//
+// GET /api/client/shipping/ghn/wards/:districtId
+// ============================================================
+
+exports.getGhnWards = async (req, res) => {
+  try {
+    const districtId = normalizePositiveInt(req.params?.districtId);
+
+    if (!districtId) {
+      return res.status(400).json({
+        success: false,
+
+        message: "district_id không hợp lệ.",
+
+        code: "GHN_INVALID_DISTRICT",
+      });
+    }
+
+    const wards = await ghnService.getWards(districtId);
+
+    return res.status(200).json({
+      success: true,
+
+      message: "Lấy danh sách phường/xã GHN thành công.",
+
+      data: Array.isArray(wards) ? wards : [],
+    });
+  } catch (error) {
+    return handleGhnError(res, error, "Không thể tải danh sách phường/xã GHN.");
+  }
+};
+
+// ============================================================
+// CALCULATE FEE
+//
+// POST /api/client/shipping/ghn/fee
+//
+// BODY:
+//
+// {
+//   "to_district_id": 1572,
+//   "to_ward_code": "550307",
+//   "insurance_value": 1000000,
+//   "cod_value": 1000000
+// }
+// ============================================================
+
+exports.calculateGhnFee = async (req, res) => {
+  try {
+    const toDistrictId = normalizePositiveInt(req.body?.to_district_id);
+
+    const toWardCode = normalizeText(req.body?.to_ward_code);
+
+    if (!toDistrictId) {
+      return res.status(400).json({
+        success: false,
+
+        message: "Quận/huyện nhận hàng không hợp lệ.",
+
+        code: "GHN_INVALID_TO_DISTRICT",
+      });
+    }
+
+    if (!toWardCode) {
+      return res.status(400).json({
+        success: false,
+
+        message: "Phường/xã nhận hàng không hợp lệ.",
+
+        code: "GHN_INVALID_TO_WARD",
+      });
+    }
+
+    const data = await ghnService.calculateFee({
+      toDistrictId,
+
+      toWardCode,
+
+      insuranceValue: normalizeMoney(req.body?.insurance_value),
+
+      codValue: normalizeMoney(req.body?.cod_value),
+    });
+
+    return res.status(200).json({
+      success: true,
+
+      message: "Tính phí vận chuyển GHN thành công.",
+
+      data,
+    });
+  } catch (error) {
+    return handleGhnError(res, error, "Không thể tính phí vận chuyển GHN.");
+  }
+};
+
+// ============================================================
+// CALCULATE LEAD TIME
+//
+// POST /api/client/shipping/ghn/lead-time
+// ============================================================
+
+exports.calculateGhnLeadTime = async (req, res) => {
+  try {
+    const toDistrictId = normalizePositiveInt(req.body?.to_district_id);
+
+    const toWardCode = normalizeText(req.body?.to_ward_code);
+
+    if (!toDistrictId) {
+      return res.status(400).json({
+        success: false,
+
+        message: "Quận/huyện nhận hàng không hợp lệ.",
+
+        code: "GHN_INVALID_TO_DISTRICT",
+      });
+    }
+
+    if (!toWardCode) {
+      return res.status(400).json({
+        success: false,
+
+        message: "Phường/xã nhận hàng không hợp lệ.",
+
+        code: "GHN_INVALID_TO_WARD",
+      });
+    }
+
+    const data = await ghnService.calculateLeadTime({
+      toDistrictId,
+
+      toWardCode,
+    });
+
+    return res.status(200).json({
+      success: true,
+
+      message: "Tính thời gian giao hàng GHN thành công.",
+
+      data,
+    });
+  } catch (error) {
+    return handleGhnError(
+      res,
+      error,
+      "Không thể tính thời gian giao hàng GHN.",
+    );
+  }
+};
+
+// ============================================================
+// FULL QUOTE
+//
+// POST /api/client/shipping/ghn/quote
+//
+// BODY:
+//
+// {
+//   "province_id": 202,
+//   "district_id": 1572,
+//   "ward_code": "550307",
+//   "insurance_value": 1000000,
+//   "cod_value": 1000000
+// }
+// ============================================================
+
+exports.getGhnQuote = async (req, res) => {
+  try {
+    const provinceId = normalizePositiveInt(req.body?.province_id);
+
+    const districtId = normalizePositiveInt(req.body?.district_id);
+
+    const wardCode = normalizeText(req.body?.ward_code);
+
+    // ========================================================
+    // VALIDATE
+    // ========================================================
+
+    if (!provinceId) {
+      return res.status(400).json({
+        success: false,
+
+        message: "Tỉnh / thành phố nhận hàng không hợp lệ.",
+
+        code: "GHN_INVALID_PROVINCE",
+      });
+    }
+
+    if (!districtId) {
+      return res.status(400).json({
+        success: false,
+
+        message: "Quận / huyện nhận hàng không hợp lệ.",
+
+        code: "GHN_INVALID_DISTRICT",
+      });
+    }
+
+    if (!wardCode) {
+      return res.status(400).json({
+        success: false,
+
+        message: "Phường / xã nhận hàng không hợp lệ.",
+
+        code: "GHN_INVALID_WARD",
+      });
+    }
+
+    // ========================================================
+    // GET QUOTE
+    // ========================================================
+
+    const data = await ghnService.getShippingQuote({
+      provinceId,
+
+      districtId,
+
+      wardCode,
+
+      insuranceValue: normalizeMoney(req.body?.insurance_value),
+
+      codValue: normalizeMoney(req.body?.cod_value),
+    });
+
+    return res.status(200).json({
+      success: true,
+
+      message: "Lấy báo giá vận chuyển GHN thành công.",
+
+      data,
+    });
+  } catch (error) {
+    return handleGhnError(res, error, "Không thể lấy báo giá vận chuyển GHN.");
   }
 };
