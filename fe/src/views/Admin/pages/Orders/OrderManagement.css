@@ -1408,6 +1408,14 @@
   background: rgba(165, 0, 100, 0.08);
 }
 
+.adm-order-payment-method--zalopay {
+  border-color: rgba(0, 104, 255, 0.18);
+
+  color: #0068ff;
+
+  background: rgba(0, 104, 255, 0.09);
+}
+
 .adm-order-payment-method--unknown {
   border-color: #dbe2ea;
 

@@ -102,7 +102,7 @@ const getStatusMeta = (status) => {
 // =========================================================
 
 const getPaymentMethodMeta = (method) => {
-  switch (method) {
+  switch (String(method || "").toLowerCase()) {
     case "cod":
       return {
         type: "cod",
@@ -122,6 +122,13 @@ const getPaymentMethodMeta = (method) => {
         type: "momo",
         icon: "bi-wallet2",
         label: "MoMo",
+      };
+
+    case "zalopay":
+      return {
+        type: "zalopay",
+        icon: "bi-wallet2",
+        label: "ZaloPay",
       };
 
     default:
@@ -308,6 +315,7 @@ const OrderManagement = () => {
       });
 
       setPage(nextPage);
+
       setLimit(nextLimit);
     } catch (error) {
       console.error(error);
@@ -350,8 +358,11 @@ const OrderManagement = () => {
 
   const handleReset = () => {
     setKeyword("");
+
     setStatus("");
+
     setFromDate("");
+
     setToDate("");
 
     setSelectedOrder(null);
@@ -387,6 +398,7 @@ const OrderManagement = () => {
     const newLimit = Number(event.target.value);
 
     setLimit(newLimit);
+
     setPage(1);
 
     fetchOrders({
@@ -452,7 +464,6 @@ const OrderManagement = () => {
         if (detailElement) {
           detailElement.scrollIntoView({
             behavior: "smooth",
-
             block: "start",
           });
         }
@@ -796,10 +807,6 @@ const OrderManagement = () => {
 
   return (
     <div className="adm-order-page">
-      {/* ===================================================
-          PAGE HEADER
-          =================================================== */}
-
       <section className="adm-order-header">
         <div className="adm-order-header__content">
           <span className="adm-order-header__kicker">Đơn hàng</span>
@@ -829,10 +836,6 @@ const OrderManagement = () => {
           </div>
         </div>
       </section>
-
-      {/* ===================================================
-          FILTER
-          =================================================== */}
 
       <section className="adm-order-panel">
         <div className="adm-order-panel__header">
@@ -936,10 +939,6 @@ const OrderManagement = () => {
           </div>
         </div>
       </section>
-
-      {/* ===================================================
-          ORDER LIST
-          =================================================== */}
 
       <section className="adm-order-panel">
         <div className="adm-order-panel__header">
@@ -1142,10 +1141,6 @@ const OrderManagement = () => {
                 </table>
               </div>
 
-              {/* =================================================
-                  PAGINATION
-                  ================================================= */}
-
               {pagination.total > 0 && (
                 <div className="adm-order-pagination">
                   <div className="adm-order-pagination__info">
@@ -1233,10 +1228,6 @@ const OrderManagement = () => {
         </div>
       </section>
 
-      {/* ===================================================
-          ORDER DETAIL
-          =================================================== */}
-
       {selectedOrder && (
         <section className="adm-order-panel adm-order-detail-card">
           <div className="adm-order-panel__header">
@@ -1267,8 +1258,6 @@ const OrderManagement = () => {
 
           <div className="adm-order-panel__body">
             <div className="adm-order-detail-grid">
-              {/* CUSTOMER */}
-
               <article className="adm-order-detail-item">
                 <span className="adm-order-detail-item__icon">
                   <i className="bi bi-person" />
@@ -1284,8 +1273,6 @@ const OrderManagement = () => {
                   </strong>
                 </div>
               </article>
-
-              {/* PHONE */}
 
               <article className="adm-order-detail-item">
                 <span className="adm-order-detail-item__icon">
@@ -1303,8 +1290,6 @@ const OrderManagement = () => {
                 </div>
               </article>
 
-              {/* ADDRESS */}
-
               <article className="adm-order-detail-item">
                 <span className="adm-order-detail-item__icon">
                   <i className="bi bi-geo-alt" />
@@ -1320,8 +1305,6 @@ const OrderManagement = () => {
                   </strong>
                 </div>
               </article>
-
-              {/* ORDER STATUS */}
 
               <article className="adm-order-detail-item">
                 <span className="adm-order-detail-item__icon">
@@ -1353,8 +1336,6 @@ const OrderManagement = () => {
                 </div>
               </article>
 
-              {/* PAYMENT METHOD */}
-
               <article className="adm-order-detail-item">
                 <span className="adm-order-detail-item__icon">
                   <i className="bi bi-credit-card" />
@@ -1378,8 +1359,10 @@ const OrderManagement = () => {
                           <i className={`bi ${paymentMethod.icon}`} />
 
                           <span>
-                            {selectedOrder.payment_method_label ||
-                              paymentMethod.label}
+                            {paymentMethod.type !== "unknown"
+                              ? paymentMethod.label
+                              : selectedOrder.payment_method_label ||
+                                paymentMethod.label}
                           </span>
                         </span>
                       );
@@ -1387,8 +1370,6 @@ const OrderManagement = () => {
                   </div>
                 </div>
               </article>
-
-              {/* PAYMENT STATUS */}
 
               <article className="adm-order-detail-item">
                 <span className="adm-order-detail-item__icon">
@@ -1443,8 +1424,6 @@ const OrderManagement = () => {
                 </div>
               </article>
 
-              {/* NOTE */}
-
               <article className="adm-order-detail-item">
                 <span className="adm-order-detail-item__icon">
                   <i className="bi bi-chat-left-text" />
@@ -1458,8 +1437,6 @@ const OrderManagement = () => {
                   </strong>
                 </div>
               </article>
-
-              {/* CREATED */}
 
               <article className="adm-order-detail-item">
                 <span className="adm-order-detail-item__icon">
@@ -1475,10 +1452,6 @@ const OrderManagement = () => {
                 </div>
               </article>
             </div>
-
-            {/* =================================================
-                PRODUCTS
-                ================================================= */}
 
             <div className="adm-order-section-heading">
               <span className="adm-order-section-heading__icon">
@@ -1576,8 +1549,6 @@ const OrderManagement = () => {
                 </tbody>
               </table>
             </div>
-
-            {/* TOTAL */}
 
             <div className="adm-order-total">
               <span className="adm-order-total__label">Tổng thanh toán</span>

@@ -107,6 +107,8 @@ const createMomoPayment = async ({ order }) => {
     timeout: 30000,
   });
 
+  console.log("MOMO CREATE RESPONSE:", response.data);
+
   return response.data;
 };
 

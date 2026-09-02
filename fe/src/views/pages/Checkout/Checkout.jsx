@@ -95,6 +95,19 @@ const PAYMENT_INFO = {
 
     className: "momo",
 
+    tag: "Online",
+  },
+
+  zalopay: {
+    title: "Thanh toán online ZaloPay",
+
+    description:
+      "Bạn sẽ được chuyển sang cổng ZaloPay Sandbox để hoàn tất thanh toán. Hệ thống sẽ kiểm tra kết quả giao dịch khi quay lại website.",
+
+    icon: "bi-wallet2",
+
+    className: "zalopay",
+
     tag: "Khuyên dùng",
   },
 };
@@ -193,8 +206,6 @@ const Checkout = () => {
 
   // =========================
   // DISCOUNT
-  // Chỉ dùng coupon đã validate
-  // tại Checkout.
   // =========================
 
   const discount = useMemo(() => {
@@ -284,7 +295,6 @@ const Checkout = () => {
 
   // =========================
   // VALIDATE COUPON
-  // CART -> CHECKOUT
   // =========================
 
   useEffect(() => {
@@ -328,8 +338,6 @@ const Checkout = () => {
 
         setValidatedCoupon(coupon);
 
-        // cập nhật lại coupon
-        // trong CartContext/sessionStorage
         setAppliedCoupon(coupon);
       } catch (error) {
         if (cancelled) {
@@ -720,7 +728,7 @@ const Checkout = () => {
       newErrors.payment = "Vui lòng chọn phương thức thanh toán";
     }
 
-    if (!["cod", "bank", "momo"].includes(form.payment)) {
+    if (!["cod", "bank", "momo", "zalopay"].includes(form.payment)) {
       newErrors.payment = "Phương thức thanh toán không hợp lệ";
     }
 
@@ -886,17 +894,19 @@ const Checkout = () => {
       const orderId = order?.id;
 
       // =========================
-      // MOMO
+      // ONLINE PAYMENT
+      // MOMO + ZALOPAY
       // =========================
 
-      if (form.payment === "momo" && responseData?.payment_url) {
+      if (
+        ["momo", "zalopay"].includes(form.payment) &&
+        responseData?.payment_url
+      ) {
         window.location.href = responseData.payment_url;
 
         return;
       }
 
-      // clearCart trong
-      // CartContext cũng xóa coupon
       await syncClearCartAfterOrder();
 
       // =========================
@@ -1247,6 +1257,8 @@ const Checkout = () => {
               </div>
 
               <div className="ck-payment">
+                {/* COD */}
+
                 <label className="ck-pay-option">
                   <input
                     type="radio"
@@ -1280,6 +1292,8 @@ const Checkout = () => {
                     </span>
                   </div>
                 </label>
+
+                {/* BANK */}
 
                 <label className="ck-pay-option">
                   <input
@@ -1315,6 +1329,8 @@ const Checkout = () => {
                   </div>
                 </label>
 
+                {/* MOMO */}
+
                 <label className="ck-pay-option">
                   <input
                     type="radio"
@@ -1335,13 +1351,50 @@ const Checkout = () => {
                           Thanh toán online MoMo
                         </span>
 
+                        <span className="ck-pay-tag">Online</span>
+                      </div>
+
+                      <span className="ck-pay-sub">
+                        Thanh toán qua thẻ ATM / Napas trên cổng MoMo.
+                      </span>
+                    </div>
+
+                    <span className="ck-pay-check">
+                      <i className="bi bi-check-lg" />
+                    </span>
+                  </div>
+                </label>
+
+                {/* ZALOPAY */}
+
+                <label className="ck-pay-option">
+                  <input
+                    type="radio"
+                    name="payment"
+                    value="zalopay"
+                    checked={form.payment === "zalopay"}
+                    onChange={handleChange}
+                  />
+
+                  <div className="ck-pay-card">
+                    <div className="ck-pay-icon zalopay">
+                      <i className="bi bi-wallet2" />
+                    </div>
+
+                    <div className="ck-pay-content">
+                      <div className="ck-pay-top">
+                        <span className="ck-pay-title">
+                          Thanh toán online ZaloPay
+                        </span>
+
                         <span className="ck-pay-tag recommended">
                           Khuyên dùng
                         </span>
                       </div>
 
                       <span className="ck-pay-sub">
-                        Thanh toán qua thẻ ATM / Napas trên cổng MoMo.
+                        Thanh toán trên cổng ZaloPay Sandbox và tự động xác nhận
+                        giao dịch.
                       </span>
                     </div>
 
@@ -1383,15 +1436,15 @@ const Checkout = () => {
                   </>
                 ) : form.payment === "momo" ? (
                   "Tiếp tục thanh toán MoMo"
+                ) : form.payment === "zalopay" ? (
+                  "Tiếp tục thanh toán ZaloPay"
                 ) : (
                   "Đặt hàng"
                 )}
               </button>
             </div>
 
-            {/* =========================
-                ORDER SUMMARY
-            ========================= */}
+            {/* ORDER SUMMARY */}
 
             <div className="ck-summary">
               <h2>Đơn hàng</h2>
@@ -1434,8 +1487,6 @@ const Checkout = () => {
 
                 <span>{formatMoney(subtotal)}</span>
               </div>
-
-              {/* COUPON */}
 
               {appliedCoupon?.code && (
                 <div className="ck-row">
