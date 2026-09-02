@@ -52,6 +52,10 @@ const normalizeProvinceCode = (value) => {
     .toUpperCase();
 };
 
+const normalizeWardCode = (value) => {
+  return String(value || "").trim();
+};
+
 const normalizeCouponCode = (value) => {
   return String(value || "")
     .trim()
@@ -65,7 +69,7 @@ const normalizePaymentMethod = (value) => {
 };
 
 // ============================================================
-// VALIDATE ORDER DATA
+// VALIDATE ORDER
 // ============================================================
 
 const validateOrderData = (data) => {
@@ -79,6 +83,12 @@ const validateOrderData = (data) => {
 
   if (!data.shipping_phone) {
     return "Vui lòng nhập số điện thoại";
+  }
+
+  const phone = String(data.shipping_phone).replace(/\s+/g, "").trim();
+
+  if (!/^(0|\+84)[0-9]{9,10}$/.test(phone)) {
+    return "Số điện thoại không hợp lệ";
   }
 
   if (!data.shipping_email) {
@@ -99,6 +109,14 @@ const validateOrderData = (data) => {
     return "Vui lòng chọn tỉnh / thành phố nhận hàng";
   }
 
+  if (!data.shipping_district_id) {
+    return "Vui lòng chọn quận / huyện nhận hàng";
+  }
+
+  if (!data.shipping_ward_code) {
+    return "Vui lòng chọn phường / xã nhận hàng";
+  }
+
   if (!data.payment_method) {
     return "Vui lòng chọn phương thức thanh toán";
   }
@@ -111,7 +129,7 @@ const validateOrderData = (data) => {
 };
 
 // ============================================================
-// BANK INFO
+// BANK
 // ============================================================
 
 const getBankInfo = async (orderId) => {
@@ -133,9 +151,7 @@ const getBankInfo = async (orderId) => {
 };
 
 // ============================================================
-// SEND CONFIRMATION MAIL SAFELY
-//
-// Mail lỗi không được làm lỗi Order.
+// SEND MAIL SAFELY
 // ============================================================
 
 const sendConfirmationMailSafely = async (
@@ -160,19 +176,7 @@ const sendConfirmationMailSafely = async (
 };
 
 // ============================================================
-// CANCEL ORDER AFTER MOMO INITIALIZATION FAILURE
-//
-// Order đã:
-// - tạo trong DB
-// - trừ stock
-// - tăng coupon used_count
-//
-// Nếu createMomoPayment() fail thì phải:
-// - CANCELLED
-// - restore stock
-// - restore coupon
-//
-// Không để Order PENDING giữ tồn kho vô thời hạn.
+// MOMO ROLLBACK
 // ============================================================
 
 const rollbackMomoInitializedOrder = async (
@@ -192,14 +196,6 @@ const rollbackMomoInitializedOrder = async (
       allowedStatuses: ["PENDING"],
     });
   } catch (cancelError) {
-    /*
-     * Đây là tình huống nghiêm trọng:
-     *
-     * MoMo init fail nhưng Order không tự cancel được.
-     *
-     * Không nuốt lỗi hoàn toàn.
-     * Ghi rõ server log để Admin kiểm tra.
-     */
     console.error(
       `[ORDER][MOMO] Không thể rollback đơn ${order.order_code || order.id}:`,
       cancelError,
@@ -214,16 +210,20 @@ const rollbackMomoInitializedOrder = async (
 //
 // POST /api/client/orders
 //
-// SECURITY:
+// Client KHÔNG được quyết định:
 //
-// KHÔNG tin:
-// - req.body.shipping_fee
-// - req.body.discount_amount
+// - user_id
+// - shipping_fee
+// - shipping_base_fee
+// - shipping_provider
+// - shipping province/district/ward name
+// - GHN province id
+// - service id
+// - estimated delivery
+// - discount amount
 //
-// Backend tự tính từ:
-// - Cart/Product/Variant
-// - province_code
-// - coupon_code
+// Client chỉ gửi ID/code địa chỉ.
+// Backend tự validate toàn bộ.
 // ============================================================
 
 exports.createOrder = async (req, res, next) => {
@@ -231,17 +231,7 @@ exports.createOrder = async (req, res, next) => {
 
   try {
     const data = {
-      // ======================================================
-      // USER
-      //
-      // Không nhận user_id từ Client.
-      // ======================================================
-
       user_id: req.auth?.userId,
-
-      // ======================================================
-      // SHIPPING SNAPSHOT INPUT
-      // ======================================================
 
       shipping_name: emptyToNull(req.body.shipping_name),
 
@@ -253,25 +243,16 @@ exports.createOrder = async (req, res, next) => {
 
       province_code: normalizeProvinceCode(req.body.province_code),
 
-      // ======================================================
-      // COUPON
-      //
-      // Chỉ nhận CODE.
-      //
-      // discount_amount do Model tự tính.
-      // ======================================================
+      shipping_district_id: normalizePositiveInt(
+        req.body.shipping_district_id,
+        null,
+      ),
+
+      shipping_ward_code: normalizeWardCode(req.body.shipping_ward_code),
 
       coupon_code: normalizeCouponCode(req.body.coupon_code),
 
-      // ======================================================
-      // PAYMENT
-      // ======================================================
-
       payment_method: normalizePaymentMethod(req.body.payment_method || "cod"),
-
-      // ======================================================
-      // NOTE
-      // ======================================================
 
       note: emptyToNull(req.body.note),
     };
@@ -292,20 +273,6 @@ exports.createOrder = async (req, res, next) => {
 
     // ========================================================
     // CREATE
-    //
-    // Order.createFromCart tự:
-    //
-    // - lock cart
-    // - re-read Product/Variant
-    // - tính giá hiện tại
-    // - subtotal
-    // - validate coupon
-    // - discount
-    // - shipping
-    // - total
-    // - stock
-    // - stock log
-    // - payment
     // ========================================================
 
     createdOrder = await Order.createFromCart(data);
@@ -352,10 +319,6 @@ exports.createOrder = async (req, res, next) => {
         });
       }
 
-      // ======================================================
-      // MOMO RESPONSE INVALID
-      // ======================================================
-
       if (Number(momoResult?.resultCode) !== 0 || !momoResult?.payUrl) {
         const reason = momoResult?.message || "Không tạo được thanh toán MoMo";
 
@@ -379,13 +342,6 @@ exports.createOrder = async (req, res, next) => {
         });
       }
 
-      // ======================================================
-      // MOMO SUCCESS INIT
-      //
-      // Chưa gửi email xác nhận ở đây.
-      // Email được gửi khi callback xác nhận payment success.
-      // ======================================================
-
       return res.status(201).json({
         success: true,
 
@@ -402,7 +358,7 @@ exports.createOrder = async (req, res, next) => {
     }
 
     // ========================================================
-    // NON-MOMO CONFIRMATION MAIL
+    // EMAIL
     // ========================================================
 
     const mailSent = await sendConfirmationMailSafely(createdOrder);
@@ -464,8 +420,6 @@ exports.createOrder = async (req, res, next) => {
 
 // ============================================================
 // GET USER ORDERS
-//
-// GET /api/client/orders
 // ============================================================
 
 exports.getOrders = async (req, res, next) => {
@@ -492,10 +446,6 @@ exports.getOrders = async (req, res, next) => {
       .trim()
       .slice(0, 100);
 
-    // ========================================================
-    // STATUS FILTER
-    // ========================================================
-
     if (status && !ORDER_STATUSES.includes(status)) {
       return res.status(422).json({
         success: false,
@@ -503,10 +453,6 @@ exports.getOrders = async (req, res, next) => {
         message: "Trạng thái đơn hàng không hợp lệ.",
       });
     }
-
-    // ========================================================
-    // COUNT
-    // ========================================================
 
     const totalItems = await Order.countUserOrders({
       userId,
@@ -519,10 +465,6 @@ exports.getOrders = async (req, res, next) => {
     const totalPages = totalItems > 0 ? Math.ceil(totalItems / limit) : 0;
 
     const page = totalPages > 0 ? Math.min(requestedPage, totalPages) : 1;
-
-    // ========================================================
-    // DATA
-    // ========================================================
 
     const orders = await Order.getUserOrders({
       userId,
@@ -573,9 +515,7 @@ exports.getOrders = async (req, res, next) => {
 };
 
 // ============================================================
-// GET ORDER DETAIL
-//
-// GET /api/client/orders/:id
+// ORDER DETAIL
 // ============================================================
 
 exports.getOrderById = async (req, res, next) => {
@@ -627,9 +567,7 @@ exports.getOrderById = async (req, res, next) => {
 };
 
 // ============================================================
-// CANCEL ORDER
-//
-// PATCH /api/client/orders/:id/cancel
+// CANCEL
 // ============================================================
 
 exports.cancelOrder = async (req, res, next) => {
@@ -696,8 +634,6 @@ exports.cancelOrder = async (req, res, next) => {
 
 // ============================================================
 // REORDER PREVIEW
-//
-// GET /api/client/orders/:id/reorder-checkout
 // ============================================================
 
 exports.getReorderCheckout = async (req, res, next) => {
@@ -764,16 +700,6 @@ exports.getReorderCheckout = async (req, res, next) => {
 
 // ============================================================
 // CREATE REORDER
-//
-// POST /api/client/orders/:id/reorder-checkout
-//
-// Tương tự createOrder:
-//
-// Không nhận:
-// - shipping_fee
-// - discount_amount
-//
-// Backend tự tính lại.
 // ============================================================
 
 exports.createReorderCheckout = async (req, res, next) => {
@@ -800,10 +726,6 @@ exports.createReorderCheckout = async (req, res, next) => {
       });
     }
 
-    // ======================================================
-    // REQUEST
-    // ======================================================
-
     const data = {
       user_id: userId,
 
@@ -819,16 +741,19 @@ exports.createReorderCheckout = async (req, res, next) => {
 
       province_code: normalizeProvinceCode(req.body.province_code),
 
+      shipping_district_id: normalizePositiveInt(
+        req.body.shipping_district_id,
+        null,
+      ),
+
+      shipping_ward_code: normalizeWardCode(req.body.shipping_ward_code),
+
       coupon_code: normalizeCouponCode(req.body.coupon_code),
 
       note: emptyToNull(req.body.note),
 
       payment_method: normalizePaymentMethod(req.body.payment_method || "cod"),
     };
-
-    // ======================================================
-    // VALIDATE
-    // ======================================================
 
     const errorMessage = validateOrderData(data);
 
@@ -839,10 +764,6 @@ exports.createReorderCheckout = async (req, res, next) => {
         message: errorMessage,
       });
     }
-
-    // ======================================================
-    // CREATE
-    // ======================================================
 
     createdOrder = await Order.createFromReorder(data);
 
@@ -927,7 +848,7 @@ exports.createReorderCheckout = async (req, res, next) => {
     }
 
     // ======================================================
-    // NON-MOMO EMAIL
+    // EMAIL
     // ======================================================
 
     const mailSent = await sendConfirmationMailSafely(

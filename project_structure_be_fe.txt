@@ -159,11 +159,13 @@ FRONTEND STRUCTURE
 fe/
 ├── public/
 │   ├── images/
+│   │   ├── logotech.png
 │   │   └── no-image.png
 │   ├── favicon.ico
 │   ├── index.html
 │   ├── logo192.png
 │   ├── logo512.png
+│   ├── logotech.png
 │   ├── manifest.json
 │   └── robots.txt
 ├── src/
@@ -438,7 +440,6 @@ fe/
 │   ├── App.test.js
 │   ├── index.css
 │   ├── index.js
-│   ├── logo.svg
 │   ├── reportWebVitals.js
 │   └── setupTests.js
 ├── .env
@@ -447,7 +448,7 @@ fe/
 └── README.md
 
 Frontend folders: 62
-Frontend files: 226
+Frontend files: 227
 
 
 ==========================================================================================
@@ -726,6 +727,5 @@ src/
 ├── App.test.js
 ├── index.css
 ├── index.js
-├── logo.svg
 ├── reportWebVitals.js
 └── setupTests.js

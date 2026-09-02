@@ -1,66 +1,168 @@
+/* =========================================================
+   GOOGLE SIGN-IN
+========================================================= */
+
 .google-signin {
+  position: relative;
+
   width: 100%;
+
+  font-family: "Be Vietnam Pro", "Segoe UI", Arial, sans-serif;
 }
+
+/* =========================================================
+   GOOGLE BUTTON WRAPPER
+========================================================= */
 
 .google-signin-button-wrapper {
   position: relative;
+
   display: flex;
+  align-items: center;
   justify-content: center;
+
   width: 100%;
+
+  overflow: hidden;
+
+  border-radius: 10px;
 }
 
 .google-signin-button {
   display: flex;
+  align-items: center;
   justify-content: center;
+
   width: 100%;
   min-height: 44px;
+
+  overflow: hidden;
 }
 
+/*
+ * Google render iframe/div bên trong.
+ * Chỉ giới hạn kích thước,
+ * không can thiệp giao diện chính thức của Google.
+ */
+
 .google-signin-button > div {
-  max-width: 100%;
+  width: 100% !important;
+  max-width: 100% !important;
 }
+
+/* =========================================================
+   LOADING + ERROR
+========================================================= */
 
 .google-signin-loading,
 .google-signin-error {
-  width: 100%;
-  min-height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
+
+  width: 100%;
+  min-height: 44px;
+
   padding: 10px 14px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 700;
+
+  border: 1px solid #e2e8f0;
+
+  border-radius: 10px;
+
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.5;
+
   text-align: center;
 }
 
 .google-signin-loading {
-  border: 1px solid var(--border);
-  color: var(--muted);
-  background: var(--light);
+  position: relative;
+
+  overflow: hidden;
+
+  color: #64748b;
+
+  background: #f8fafc;
+}
+
+.google-signin-loading::after {
+  content: "";
+
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+
+  height: 2px;
+
+  background: linear-gradient(90deg, transparent, #ef233c, transparent);
+
+  transform: translateX(-100%);
+
+  animation: googleSigninLoading 1.3s ease-in-out infinite;
 }
 
 .google-signin-error {
-  border: 1px solid rgba(239, 35, 60, 0.25);
-  color: #b42335;
-  background: rgba(239, 35, 60, 0.08);
+  border-color: rgba(220, 38, 38, 0.18);
+
+  color: #b91c1c;
+
+  background: #fef2f2;
 }
+
+/* =========================================================
+   DISABLED
+========================================================= */
 
 .google-signin-disabled-overlay {
   position: absolute;
   inset: 0;
-  z-index: 2;
-  border-radius: 8px;
+  z-index: 5;
+
+  border-radius: 10px;
+
   cursor: not-allowed;
-  background: rgba(255, 255, 255, 0.48);
+
+  background: rgba(255, 255, 255, 0.55);
 }
 
 .google-signin.is-disabled {
-  opacity: 0.72;
+  opacity: 0.65;
 }
 
+/* =========================================================
+   ANIMATION
+========================================================= */
+
+@keyframes googleSigninLoading {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  50% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* =========================================================
+   MOBILE
+========================================================= */
+
 @media (max-width: 575.98px) {
+  .google-signin-button-wrapper,
   .google-signin-button {
-    overflow: hidden;
+    width: 100%;
+  }
+
+  .google-signin-loading,
+  .google-signin-error {
+    min-height: 43px;
+
+    font-size: 12.5px;
   }
 }

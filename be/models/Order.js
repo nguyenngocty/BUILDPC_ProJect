@@ -1,5 +1,6 @@
 const database = require("../config/database");
 const ProductVariant = require("./ProductVariant");
+const ghnService = require("../services/ghnService");
 
 const db =
   database.pool ||
@@ -80,10 +81,20 @@ const normalizeProvinceCode = (value) => {
     .toUpperCase();
 };
 
+const normalizeWardCode = (value) => {
+  return String(value || "").trim();
+};
+
 const normalizeCouponCode = (value) => {
   return String(value || "")
     .trim()
     .toUpperCase();
+};
+
+const normalizePaymentMethod = (value) => {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
 };
 
 const getFinalPrice = ({ price, sale_price }) => {
@@ -156,6 +167,112 @@ const getVietnamToday = () => {
 };
 
 // ============================================================
+// GHN HELPERS
+// ============================================================
+
+const isGhnItemActive = (item) => {
+  if (!item) {
+    return false;
+  }
+
+  if (item.Status !== undefined && Number(item.Status) !== 1) {
+    return false;
+  }
+
+  if (item.IsEnable !== undefined && Number(item.IsEnable) !== 1) {
+    return false;
+  }
+
+  return true;
+};
+
+const normalizeGhnEstimatedDelivery = (value) => {
+  // ========================================================
+  // EMPTY
+  // ========================================================
+
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const rawValue = String(value).trim();
+
+  if (!rawValue) {
+    return null;
+  }
+
+  // ========================================================
+  // NUMERIC TIMESTAMP
+  //
+  // GHN thường trả Unix timestamp theo giây.
+  //
+  // Quan trọng:
+  // - 0
+  // - "0"
+  // - số âm
+  //
+  // đều KHÔNG phải ngày giao hàng hợp lệ.
+  // Tuyệt đối không được new Date(0) vì sẽ ra năm 1970.
+  // ========================================================
+
+  const numericPattern = /^-?\d+(\.\d+)?$/;
+
+  if (numericPattern.test(rawValue)) {
+    const numericValue = Number(rawValue);
+
+    if (!Number.isFinite(numericValue) || numericValue <= 0) {
+      return null;
+    }
+
+    /*
+     * Nếu giá trị lớn hơn 100000000000
+     * thì xem như millisecond timestamp.
+     *
+     * Ngược lại xem như Unix timestamp theo giây.
+     */
+    const milliseconds =
+      numericValue > 100000000000 ? numericValue : numericValue * 1000;
+
+    const date = new Date(milliseconds);
+
+    if (Number.isNaN(date.getTime())) {
+      return null;
+    }
+
+    /*
+     * Chặn mọi giá trị timestamp bất thường
+     * vô tình dẫn tới năm 1970 hoặc quá cũ.
+     *
+     * GHN estimated delivery phải là thời gian thực tế,
+     * nên mốc trước năm 2000 không có ý nghĩa nghiệp vụ.
+     */
+    if (date.getUTCFullYear() < 2000) {
+      return null;
+    }
+
+    return date;
+  }
+
+  // ========================================================
+  // DATE STRING
+  //
+  // Phòng trường hợp GHN thay đổi response
+  // và trả ISO datetime/string datetime.
+  // ========================================================
+
+  const parsedDate = new Date(rawValue);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return null;
+  }
+
+  if (parsedDate.getUTCFullYear() < 2000) {
+    return null;
+  }
+
+  return parsedDate;
+};
+// ============================================================
 // JSON
 // ============================================================
 
@@ -199,33 +316,33 @@ const getVariantOptionsSnapshot = async (executor, variantId) => {
   const rows = await runQuery(
     executor,
     `
-      SELECT
-        pvv.option_id,
-        pvv.option_value_id,
+        SELECT
+          pvv.option_id,
+          pvv.option_value_id,
 
-        po.name AS option_name,
-        po.code AS option_code,
-        po.display_type,
+          po.name AS option_name,
+          po.code AS option_code,
+          po.display_type,
 
-        pov.value,
-        pov.label,
-        pov.color_code
+          pov.value,
+          pov.label,
+          pov.color_code
 
-      FROM product_variant_values pvv
+        FROM product_variant_values pvv
 
-      INNER JOIN product_options po
-        ON po.id = pvv.option_id
+        INNER JOIN product_options po
+          ON po.id = pvv.option_id
 
-      INNER JOIN product_option_values pov
-        ON pov.id = pvv.option_value_id
+        INNER JOIN product_option_values pov
+          ON pov.id = pvv.option_value_id
 
-      WHERE
-        pvv.variant_id = ?
+        WHERE
+          pvv.variant_id = ?
 
-      ORDER BY
-        po.sort_order ASC,
-        po.id ASC
-    `,
+        ORDER BY
+          po.sort_order ASC,
+          po.id ASC
+      `,
     [variantId],
   );
 
@@ -285,6 +402,7 @@ const createStockLog = async (
   connection,
   {
     productId,
+
     variantId = null,
 
     type,
@@ -292,12 +410,15 @@ const createStockLog = async (
     quantity,
 
     quantityBefore,
+
     quantityAfter,
 
     productQuantityBefore = null,
+
     productQuantityAfter = null,
 
     referenceType = null,
+
     referenceId = null,
 
     note = null,
@@ -378,12 +499,6 @@ const createStockLog = async (
 
 // ============================================================
 // CART ITEM NORMALIZER
-//
-// IMPORTANT:
-//
-// - Re-read product/variant from DB.
-// - Lock stock rows.
-// - Never trust cart price.
 // ============================================================
 
 const normalizeCartCheckoutItem = async (connection, cartItem) => {
@@ -404,29 +519,29 @@ const normalizeCartCheckoutItem = async (connection, cartItem) => {
   const productRows = await runQuery(
     connection,
     `
-      SELECT
-        id,
-        name,
-        slug,
-        sku,
-        thumbnail,
+          SELECT
+            id,
+            name,
+            slug,
+            sku,
+            thumbnail,
 
-        price,
-        sale_price,
+            price,
+            sale_price,
 
-        quantity,
-        status
+            quantity,
+            status
 
-      FROM products
+          FROM products
 
-      WHERE
-        id = ?
-        AND deleted_at IS NULL
+          WHERE
+            id = ?
+            AND deleted_at IS NULL
 
-      LIMIT 1
+          LIMIT 1
 
-      FOR UPDATE
-    `,
+          FOR UPDATE
+        `,
     [productId],
   );
 
@@ -441,21 +556,21 @@ const normalizeCartCheckoutItem = async (connection, cartItem) => {
   }
 
   // ========================================================
-  // ACTIVE VARIANT COUNT
+  // VARIANT COUNT
   // ========================================================
 
   const variantCountRows = await runQuery(
     connection,
     `
-      SELECT
-        COUNT(*) AS total
+          SELECT
+            COUNT(*) AS total
 
-      FROM product_variants
+          FROM product_variants
 
-      WHERE
-        product_id = ?
-        AND deleted_at IS NULL
-    `,
+          WHERE
+            product_id = ?
+            AND deleted_at IS NULL
+        `,
     [productId],
   );
 
@@ -469,34 +584,34 @@ const normalizeCartCheckoutItem = async (connection, cartItem) => {
     const variantRows = await runQuery(
       connection,
       `
-        SELECT
-          id,
-          product_id,
+            SELECT
+              id,
+              product_id,
 
-          sku,
-          variant_name,
+              sku,
+              variant_name,
 
-          price,
-          sale_price,
+              price,
+              sale_price,
 
-          quantity,
+              quantity,
 
-          thumbnail,
+              thumbnail,
 
-          status,
-          is_default
+              status,
+              is_default
 
-        FROM product_variants
+            FROM product_variants
 
-        WHERE
-          id = ?
-          AND product_id = ?
-          AND deleted_at IS NULL
+            WHERE
+              id = ?
+              AND product_id = ?
+              AND deleted_at IS NULL
 
-        LIMIT 1
+            LIMIT 1
 
-        FOR UPDATE
-      `,
+            FOR UPDATE
+          `,
       [variantId, productId],
     );
 
@@ -558,7 +673,7 @@ const normalizeCartCheckoutItem = async (connection, cartItem) => {
   }
 
   // ========================================================
-  // PRODUCT CÓ NHIỀU VARIANT NHƯNG KHÔNG CHỌN VARIANT
+  // MULTIPLE VARIANT
   // ========================================================
 
   if (activeVariantCount > 1) {
@@ -566,45 +681,45 @@ const normalizeCartCheckoutItem = async (connection, cartItem) => {
   }
 
   // ========================================================
-  // LEGACY CART - PRODUCT CÓ 1 VARIANT
+  // LEGACY - 1 VARIANT
   // ========================================================
 
   if (activeVariantCount === 1) {
     const onlyVariantRows = await runQuery(
       connection,
       `
-        SELECT
-          id,
-          product_id,
+            SELECT
+              id,
+              product_id,
 
-          sku,
-          variant_name,
+              sku,
+              variant_name,
 
-          price,
-          sale_price,
+              price,
+              sale_price,
 
-          quantity,
+              quantity,
 
-          thumbnail,
+              thumbnail,
 
-          status,
-          is_default
+              status,
+              is_default
 
-        FROM product_variants
+            FROM product_variants
 
-        WHERE
-          product_id = ?
-          AND deleted_at IS NULL
+            WHERE
+              product_id = ?
+              AND deleted_at IS NULL
 
-        ORDER BY
-          is_default DESC,
-          sort_order ASC,
-          id ASC
+            ORDER BY
+              is_default DESC,
+              sort_order ASC,
+              id ASC
 
-        LIMIT 1
+            LIMIT 1
 
-        FOR UPDATE
-      `,
+            FOR UPDATE
+          `,
       [productId],
     );
 
@@ -658,7 +773,7 @@ const normalizeCartCheckoutItem = async (connection, cartItem) => {
   }
 
   // ========================================================
-  // LEGACY PRODUCT KHÔNG CÓ VARIANT
+  // LEGACY PRODUCT
   // ========================================================
 
   const stock = Math.max(Number(product.quantity || 0), 0);
@@ -747,26 +862,26 @@ const resolveCouponForCheckout = async (
   const rows = await runQuery(
     connection,
     `
-      SELECT
-        id,
-        code,
-        type,
-        value,
-        min_order,
-        start_date,
-        end_date,
-        quantity,
-        used_count,
-        status
+          SELECT
+            id,
+            code,
+            type,
+            value,
+            min_order,
+            start_date,
+            end_date,
+            quantity,
+            used_count,
+            status
 
-      FROM coupons
+          FROM coupons
 
-      WHERE UPPER(code) = ?
+          WHERE UPPER(code) = ?
 
-      LIMIT 1
+          LIMIT 1
 
-      FOR UPDATE
-    `,
+          FOR UPDATE
+        `,
     [normalizedCode],
   );
 
@@ -832,10 +947,7 @@ const resolveCouponForCheckout = async (
 };
 
 // ============================================================
-// SHIPPING
-//
-// Checkout final amount MUST be calculated by Backend.
-// Frontend only sends province_code.
+// SHIPPING + GHN
 // ============================================================
 
 const resolveShippingForCheckout = async (
@@ -843,38 +955,77 @@ const resolveShippingForCheckout = async (
   {
     provinceCode,
 
+    districtId,
+
+    wardCode,
+
     subtotal,
+
+    discountAmount = 0,
+
+    paymentMethod = "cod",
   },
 ) => {
-  const normalizedCode = normalizeProvinceCode(provinceCode);
+  const normalizedProvinceCode = normalizeProvinceCode(provinceCode);
 
-  if (!normalizedCode) {
+  const normalizedDistrictId = normalizeNullableInt(districtId);
+
+  const normalizedWardCode = normalizeWardCode(wardCode);
+
+  const normalizedSubtotal = normalizeMoney(subtotal);
+
+  const normalizedDiscountAmount = normalizeMoney(discountAmount);
+
+  const normalizedPaymentMethod = normalizePaymentMethod(paymentMethod);
+
+  if (!normalizedProvinceCode) {
     throw new Error("Vui lòng chọn tỉnh / thành phố nhận hàng.");
   }
+
+  if (!normalizedDistrictId) {
+    throw new Error("Vui lòng chọn quận / huyện nhận hàng.");
+  }
+
+  if (!normalizedWardCode) {
+    throw new Error("Vui lòng chọn phường / xã nhận hàng.");
+  }
+
+  if (normalizedSubtotal <= 0) {
+    throw new Error("Giá trị đơn hàng không hợp lệ.");
+  }
+
+  // ========================================================
+  // WEBSITE SHIPPING REGION
+  // ========================================================
 
   const rows = await runQuery(
     connection,
     `
-      SELECT
-        id,
-        province_code,
-        province_name,
-        shipping_fee,
-        free_shipping_min,
-        status
+          SELECT
+            id,
 
-      FROM shipping_rates
+            province_code,
+            province_name,
 
-      WHERE
-        province_code = ?
-        AND status = 1
-        AND deleted_at IS NULL
+            ghn_province_id,
 
-      LIMIT 1
+            shipping_fee,
+            free_shipping_min,
 
-      FOR UPDATE
-    `,
-    [normalizedCode],
+            status
+
+          FROM shipping_rates
+
+          WHERE
+            province_code = ?
+            AND status = 1
+            AND deleted_at IS NULL
+
+          LIMIT 1
+
+          FOR UPDATE
+        `,
+    [normalizedProvinceCode],
   );
 
   const shippingRate = rows[0];
@@ -883,7 +1034,90 @@ const resolveShippingForCheckout = async (
     throw new Error("Khu vực này hiện chưa được hỗ trợ vận chuyển.");
   }
 
-  const baseShippingFee = normalizeMoney(shippingRate.shipping_fee);
+  const ghnProvinceId = normalizeNullableInt(shippingRate.ghn_province_id);
+
+  if (!ghnProvinceId) {
+    throw new Error(
+      `Khu vực "${shippingRate.province_name}" chưa được ánh xạ với GHN.`,
+    );
+  }
+
+  // ========================================================
+  // DISTRICT
+  // ========================================================
+
+  const districts = await ghnService.getDistricts(ghnProvinceId);
+
+  const district = (Array.isArray(districts) ? districts : []).find(
+    (item) => Number(item?.DistrictID) === Number(normalizedDistrictId),
+  );
+
+  if (!district) {
+    throw new Error("Quận / huyện không thuộc tỉnh / thành phố đã chọn.");
+  }
+
+  if (!isGhnItemActive(district)) {
+    throw new Error("Quận / huyện này hiện không được GHN hỗ trợ giao hàng.");
+  }
+
+  // ========================================================
+  // WARD
+  // ========================================================
+
+  const wards = await ghnService.getWards(normalizedDistrictId);
+
+  const ward = (Array.isArray(wards) ? wards : []).find(
+    (item) => String(item?.WardCode || "").trim() === normalizedWardCode,
+  );
+
+  if (!ward) {
+    throw new Error("Phường / xã không thuộc quận / huyện đã chọn.");
+  }
+
+  if (!isGhnItemActive(ward)) {
+    throw new Error("Phường / xã này hiện không được GHN hỗ trợ giao hàng.");
+  }
+
+  // ========================================================
+  // COD VALUE
+  // ========================================================
+
+  const merchandiseAmount = Math.max(
+    normalizedSubtotal - normalizedDiscountAmount,
+    0,
+  );
+
+  const codValue = normalizedPaymentMethod === "cod" ? merchandiseAmount : 0;
+
+  // ========================================================
+  // GHN FEE
+  // ========================================================
+
+  const feeResult = await ghnService.calculateFee({
+    toDistrictId: normalizedDistrictId,
+
+    toWardCode: normalizedWardCode,
+
+    insuranceValue: 0,
+
+    codValue,
+  });
+
+  const ghnBaseFee = normalizeMoney(feeResult?.total);
+
+  if (ghnBaseFee <= 0) {
+    throw new Error("GHN không trả về phí vận chuyển hợp lệ.");
+  }
+
+  const selectedService = feeResult?.selected_service;
+
+  if (!selectedService || !Number(selectedService.service_id)) {
+    throw new Error("Không xác định được dịch vụ vận chuyển GHN.");
+  }
+
+  // ========================================================
+  // FREE SHIPPING
+  // ========================================================
 
   const freeShippingMin =
     shippingRate.free_shipping_min === null ||
@@ -891,29 +1125,69 @@ const resolveShippingForCheckout = async (
       ? null
       : normalizeMoney(shippingRate.free_shipping_min);
 
-  let shippingFee = baseShippingFee;
+  const isFreeShipping =
+    freeShippingMin !== null && normalizedSubtotal >= freeShippingMin;
 
-  if (freeShippingMin !== null && subtotal >= freeShippingMin) {
-    shippingFee = 0;
+  const shippingFee = isFreeShipping ? 0 : ghnBaseFee;
+
+  // ========================================================
+  // LEAD TIME
+  // ========================================================
+
+  let estimatedDelivery = null;
+
+  try {
+    const leadTimeResult = await ghnService.calculateLeadTime({
+      toDistrictId: normalizedDistrictId,
+
+      toWardCode: normalizedWardCode,
+    });
+
+    estimatedDelivery = normalizeGhnEstimatedDelivery(leadTimeResult?.leadtime);
+  } catch (error) {
+    console.warn(
+      "[ORDER][GHN] Không lấy được thời gian giao dự kiến:",
+      error?.message || error,
+    );
   }
 
   return {
     shipping_rate_id: Number(shippingRate.id),
 
+    shipping_provider: "ghn",
+
+    shipping_ghn_province_id: Number(ghnProvinceId),
+
     shipping_province_code: shippingRate.province_code,
 
     shipping_province_name: shippingRate.province_name,
 
+    shipping_district_id: Number(district.DistrictID),
+
+    shipping_district_name: String(district.DistrictName || "").trim(),
+
+    shipping_ward_code: String(ward.WardCode || "").trim(),
+
+    shipping_ward_name: String(ward.WardName || "").trim(),
+
+    shipping_service_id: Number(selectedService.service_id),
+
+    shipping_service_type_id: Number(selectedService.service_type_id),
+
+    shipping_base_fee: ghnBaseFee,
+
     shipping_fee: shippingFee,
 
-    base_shipping_fee: baseShippingFee,
-
     free_shipping_min: freeShippingMin,
+
+    is_free_shipping: isFreeShipping,
+
+    shipping_estimated_delivery: estimatedDelivery,
   };
 };
 
 // ============================================================
-// DECREASE STOCK + STOCK LOG
+// DECREASE STOCK
 // ============================================================
 
 const decreaseCheckoutStock = async (
@@ -928,20 +1202,20 @@ const decreaseCheckoutStock = async (
   const productRows = await runQuery(
     connection,
     `
-      SELECT
-        id,
-        quantity
+          SELECT
+            id,
+            quantity
 
-      FROM products
+          FROM products
 
-      WHERE
-        id = ?
-        AND deleted_at IS NULL
+          WHERE
+            id = ?
+            AND deleted_at IS NULL
 
-      LIMIT 1
+          LIMIT 1
 
-      FOR UPDATE
-    `,
+          FOR UPDATE
+        `,
     [item.product_id],
   );
 
@@ -954,30 +1228,30 @@ const decreaseCheckoutStock = async (
   const productQuantityBefore = Math.max(Number(product.quantity || 0), 0);
 
   // ========================================================
-  // VARIANT STOCK
+  // VARIANT
   // ========================================================
 
   if (item.variant_id) {
     const variantRows = await runQuery(
       connection,
       `
-        SELECT
-          id,
-          product_id,
-          quantity
+            SELECT
+              id,
+              product_id,
+              quantity
 
-        FROM product_variants
+            FROM product_variants
 
-        WHERE
-          id = ?
-          AND product_id = ?
-          AND deleted_at IS NULL
-          AND status = 1
+            WHERE
+              id = ?
+              AND product_id = ?
+              AND deleted_at IS NULL
+              AND status = 1
 
-        LIMIT 1
+            LIMIT 1
 
-        FOR UPDATE
-      `,
+            FOR UPDATE
+          `,
       [item.variant_id, item.product_id],
     );
 
@@ -1000,19 +1274,19 @@ const decreaseCheckoutStock = async (
     const result = await runQuery(
       connection,
       `
-        UPDATE product_variants
+            UPDATE product_variants
 
-        SET
-          quantity = quantity - ?,
-          updated_at = NOW()
+            SET
+              quantity = quantity - ?,
+              updated_at = NOW()
 
-        WHERE
-          id = ?
-          AND product_id = ?
-          AND deleted_at IS NULL
-          AND status = 1
-          AND quantity >= ?
-      `,
+            WHERE
+              id = ?
+              AND product_id = ?
+              AND deleted_at IS NULL
+              AND status = 1
+              AND quantity >= ?
+          `,
       [item.quantity, item.variant_id, item.product_id, item.quantity],
     );
 
@@ -1029,14 +1303,14 @@ const decreaseCheckoutStock = async (
     const productAfterRows = await runQuery(
       connection,
       `
-        SELECT quantity
+            SELECT quantity
 
-        FROM products
+            FROM products
 
-        WHERE id = ?
+            WHERE id = ?
 
-        LIMIT 1
-      `,
+            LIMIT 1
+          `,
       [item.product_id],
     );
 
@@ -1073,7 +1347,7 @@ const decreaseCheckoutStock = async (
   }
 
   // ========================================================
-  // LEGACY PRODUCT STOCK
+  // LEGACY PRODUCT
   // ========================================================
 
   if (item.quantity > productQuantityBefore) {
@@ -1085,18 +1359,18 @@ const decreaseCheckoutStock = async (
   const result = await runQuery(
     connection,
     `
-      UPDATE products
+          UPDATE products
 
-      SET
-        quantity = quantity - ?,
-        updated_at = NOW()
+          SET
+            quantity = quantity - ?,
+            updated_at = NOW()
 
-      WHERE
-        id = ?
-        AND deleted_at IS NULL
-        AND status = 1
-        AND quantity >= ?
-    `,
+          WHERE
+            id = ?
+            AND deleted_at IS NULL
+            AND status = 1
+            AND quantity >= ?
+        `,
     [item.quantity, item.product_id, item.quantity],
   );
 
@@ -1141,22 +1415,22 @@ const restoreOrderStock = async (connection, orderId) => {
   const orderRows = await runQuery(
     connection,
     `
-      SELECT
-        id,
-        order_code,
-        status,
-        stock_restored_at
+          SELECT
+            id,
+            order_code,
+            status,
+            stock_restored_at
 
-      FROM orders
+          FROM orders
 
-      WHERE
-        id = ?
-        AND deleted_at IS NULL
+          WHERE
+            id = ?
+            AND deleted_at IS NULL
 
-      LIMIT 1
+          LIMIT 1
 
-      FOR UPDATE
-    `,
+          FOR UPDATE
+        `,
     [orderId],
   );
 
@@ -1177,25 +1451,25 @@ const restoreOrderStock = async (connection, orderId) => {
   const items = await runQuery(
     connection,
     `
-      SELECT
-        id,
-        product_id,
-        variant_id,
-        product_name,
-        variant_name,
-        sku,
-        quantity
+          SELECT
+            id,
+            product_id,
+            variant_id,
+            product_name,
+            variant_name,
+            sku,
+            quantity
 
-      FROM order_items
+          FROM order_items
 
-      WHERE
-        order_id = ?
-        AND deleted_at IS NULL
+          WHERE
+            order_id = ?
+            AND deleted_at IS NULL
 
-      ORDER BY id ASC
+          ORDER BY id ASC
 
-      FOR UPDATE
-    `,
+          FOR UPDATE
+        `,
     [orderId],
   );
 
@@ -1215,18 +1489,18 @@ const restoreOrderStock = async (connection, orderId) => {
     const productRows = await runQuery(
       connection,
       `
-        SELECT
-          id,
-          quantity
+            SELECT
+              id,
+              quantity
 
-        FROM products
+            FROM products
 
-        WHERE id = ?
+            WHERE id = ?
 
-        LIMIT 1
+            LIMIT 1
 
-        FOR UPDATE
-      `,
+            FOR UPDATE
+          `,
       [productId],
     );
 
@@ -1243,22 +1517,22 @@ const restoreOrderStock = async (connection, orderId) => {
       const variantRows = await runQuery(
         connection,
         `
-          SELECT
-            id,
-            product_id,
-            quantity,
-            deleted_at
+              SELECT
+                id,
+                product_id,
+                quantity,
+                deleted_at
 
-          FROM product_variants
+              FROM product_variants
 
-          WHERE
-            id = ?
-            AND product_id = ?
+              WHERE
+                id = ?
+                AND product_id = ?
 
-          LIMIT 1
+              LIMIT 1
 
-          FOR UPDATE
-        `,
+              FOR UPDATE
+            `,
         [variantId, productId],
       );
 
@@ -1273,16 +1547,16 @@ const restoreOrderStock = async (connection, orderId) => {
       const result = await runQuery(
         connection,
         `
-          UPDATE product_variants
+              UPDATE product_variants
 
-          SET
-            quantity = quantity + ?,
-            updated_at = NOW()
+              SET
+                quantity = quantity + ?,
+                updated_at = NOW()
 
-          WHERE
-            id = ?
-            AND product_id = ?
-        `,
+              WHERE
+                id = ?
+                AND product_id = ?
+            `,
         [quantity, variantId, productId],
       );
 
@@ -1299,14 +1573,14 @@ const restoreOrderStock = async (connection, orderId) => {
       const productAfterRows = await runQuery(
         connection,
         `
-          SELECT quantity
+              SELECT quantity
 
-          FROM products
+              FROM products
 
-          WHERE id = ?
+              WHERE id = ?
 
-          LIMIT 1
-        `,
+              LIMIT 1
+            `,
         [productId],
       );
 
@@ -1342,7 +1616,7 @@ const restoreOrderStock = async (connection, orderId) => {
     }
 
     // ======================================================
-    // LEGACY PRODUCT
+    // PRODUCT
     // ======================================================
 
     if (!product) {
@@ -1354,16 +1628,16 @@ const restoreOrderStock = async (connection, orderId) => {
     const result = await runQuery(
       connection,
       `
-        UPDATE products
+            UPDATE products
 
-        SET
-          quantity = quantity + ?,
-          updated_at = NOW()
+            SET
+              quantity = quantity + ?,
+              updated_at = NOW()
 
-        WHERE
-          id = ?
-          AND deleted_at IS NULL
-      `,
+            WHERE
+              id = ?
+              AND deleted_at IS NULL
+          `,
       [quantity, productId],
     );
 
@@ -1398,11 +1672,6 @@ const restoreOrderStock = async (connection, orderId) => {
     });
   }
 
-  /*
-   * syncProductAggregate() đã được gọi ngay sau từng Variant,
-   * nhưng giữ Set để đảm bảo aggregate cuối cùng chính xác
-   * nếu một Product xuất hiện nhiều OrderItem.
-   */
   for (const productId of productsToSync) {
     await ProductVariant.syncProductAggregate(connection, productId);
   }
@@ -1410,17 +1679,17 @@ const restoreOrderStock = async (connection, orderId) => {
   await runQuery(
     connection,
     `
-      UPDATE orders
+        UPDATE orders
 
-      SET
-        stock_restored_at = NOW(),
-        updated_at = NOW()
+        SET
+          stock_restored_at = NOW(),
+          updated_at = NOW()
 
-      WHERE
-        id = ?
-        AND stock_restored_at IS NULL
-        AND deleted_at IS NULL
-    `,
+        WHERE
+          id = ?
+          AND stock_restored_at IS NULL
+          AND deleted_at IS NULL
+      `,
     [orderId],
   );
 
@@ -1439,22 +1708,22 @@ const restoreOrderCoupon = async (connection, orderId) => {
   const orderRows = await runQuery(
     connection,
     `
-      SELECT
-        id,
-        coupon_id,
-        coupon_code,
-        coupon_restored_at
+          SELECT
+            id,
+            coupon_id,
+            coupon_code,
+            coupon_restored_at
 
-      FROM orders
+          FROM orders
 
-      WHERE
-        id = ?
-        AND deleted_at IS NULL
+          WHERE
+            id = ?
+            AND deleted_at IS NULL
 
-      LIMIT 1
+          LIMIT 1
 
-      FOR UPDATE
-    `,
+          FOR UPDATE
+        `,
     [orderId],
   );
 
@@ -1483,18 +1752,18 @@ const restoreOrderCoupon = async (connection, orderId) => {
   const couponRows = await runQuery(
     connection,
     `
-      SELECT
-        id,
-        used_count
+          SELECT
+            id,
+            used_count
 
-      FROM coupons
+          FROM coupons
 
-      WHERE id = ?
+          WHERE id = ?
 
-      LIMIT 1
+          LIMIT 1
 
-      FOR UPDATE
-    `,
+          FOR UPDATE
+        `,
     [order.coupon_id],
   );
 
@@ -1504,18 +1773,18 @@ const restoreOrderCoupon = async (connection, orderId) => {
     await runQuery(
       connection,
       `
-        UPDATE coupons
+          UPDATE coupons
 
-        SET
-          used_count =
-            CASE
-              WHEN used_count > 0
-              THEN used_count - 1
-              ELSE 0
-            END
+          SET
+            used_count =
+              CASE
+                WHEN used_count > 0
+                THEN used_count - 1
+                ELSE 0
+              END
 
-        WHERE id = ?
-      `,
+          WHERE id = ?
+        `,
       [order.coupon_id],
     );
   }
@@ -1523,17 +1792,17 @@ const restoreOrderCoupon = async (connection, orderId) => {
   await runQuery(
     connection,
     `
-      UPDATE orders
+        UPDATE orders
 
-      SET
-        coupon_restored_at = NOW(),
-        updated_at = NOW()
+        SET
+          coupon_restored_at = NOW(),
+          updated_at = NOW()
 
-      WHERE
-        id = ?
-        AND coupon_restored_at IS NULL
-        AND deleted_at IS NULL
-    `,
+        WHERE
+          id = ?
+          AND coupon_restored_at IS NULL
+          AND deleted_at IS NULL
+      `,
     [orderId],
   );
 
@@ -1545,7 +1814,7 @@ const restoreOrderCoupon = async (connection, orderId) => {
 };
 
 // ============================================================
-// CANCEL WITH EXISTING TRANSACTION
+// CANCEL TRANSACTION
 // ============================================================
 
 const cancelAndRestoreStockInTransaction = async (
@@ -1567,22 +1836,22 @@ const cancelAndRestoreStockInTransaction = async (
   const orderRows = await runQuery(
     connection,
     `
-      SELECT
-        id,
-        status,
-        stock_restored_at,
-        coupon_restored_at
+          SELECT
+            id,
+            status,
+            stock_restored_at,
+            coupon_restored_at
 
-      FROM orders
+          FROM orders
 
-      WHERE
-        id = ?
-        AND deleted_at IS NULL
+          WHERE
+            id = ?
+            AND deleted_at IS NULL
 
-      LIMIT 1
+          LIMIT 1
 
-      FOR UPDATE
-    `,
+          FOR UPDATE
+        `,
     [normalizedOrderId],
   );
 
@@ -1594,13 +1863,6 @@ const cancelAndRestoreStockInTransaction = async (
 
   const currentStatus = String(order.status || "").toUpperCase();
 
-  // ========================================================
-  // ALREADY CANCELLED
-  //
-  // Vẫn cho restore nếu dữ liệu legacy bị CANCELLED
-  // nhưng marker restore chưa tồn tại.
-  // ========================================================
-
   if (currentStatus === "CANCELLED") {
     await restoreOrderStock(connection, normalizedOrderId);
 
@@ -1609,58 +1871,42 @@ const cancelAndRestoreStockInTransaction = async (
     return;
   }
 
-  // ========================================================
-  // STATUS
-  // ========================================================
-
   if (!allowedStatuses.includes(currentStatus)) {
     throw new Error(`Không thể hủy đơn hàng ở trạng thái ${currentStatus}`);
   }
 
-  // ========================================================
-  // STOCK
-  // ========================================================
-
   await restoreOrderStock(connection, normalizedOrderId);
 
-  // ========================================================
-  // COUPON
-  // ========================================================
-
   await restoreOrderCoupon(connection, normalizedOrderId);
-
-  // ========================================================
-  // CANCEL
-  // ========================================================
 
   await runQuery(
     connection,
     `
-      UPDATE orders
+        UPDATE orders
 
-      SET
-        status = 'CANCELLED',
+        SET
+          status = 'CANCELLED',
 
-        cancel_reason =
-          CASE
-            WHEN ? IS NOT NULL
-                 AND ? <> ''
-            THEN ?
-            ELSE cancel_reason
-          END,
+          cancel_reason =
+            CASE
+              WHEN ? IS NOT NULL
+                   AND ? <> ''
+              THEN ?
+              ELSE cancel_reason
+            END,
 
-        cancelled_at =
-          COALESCE(
-            cancelled_at,
-            NOW()
-          ),
+          cancelled_at =
+            COALESCE(
+              cancelled_at,
+              NOW()
+            ),
 
-        updated_at = NOW()
+          updated_at = NOW()
 
-      WHERE
-        id = ?
-        AND deleted_at IS NULL
-    `,
+        WHERE
+          id = ?
+          AND deleted_at IS NULL
+      `,
     [reason, reason, reason, normalizedOrderId],
   );
 };
@@ -1731,27 +1977,242 @@ const buildUserOrderConditions = ({ userId, status, search }) => {
 };
 
 // ============================================================
+// INSERT ORDER HELPER
+// ============================================================
+
+const insertOrder = async (
+  connection,
+  {
+    userId,
+
+    orderCode,
+
+    subtotal,
+
+    discountAmount,
+
+    couponResult,
+
+    shippingResult,
+
+    totalAmount,
+
+    data,
+  },
+) => {
+  const result = await runQuery(
+    connection,
+    `
+        INSERT INTO orders
+        (
+          user_id,
+
+          order_code,
+
+          subtotal,
+
+          shipping_fee,
+
+          discount_amount,
+
+          coupon_id,
+
+          coupon_code,
+
+          coupon_restored_at,
+
+          shipping_rate_id,
+
+          shipping_provider,
+
+          shipping_ghn_province_id,
+
+          shipping_province_code,
+
+          shipping_province_name,
+
+          shipping_district_id,
+
+          shipping_district_name,
+
+          shipping_ward_code,
+
+          shipping_ward_name,
+
+          shipping_service_id,
+
+          shipping_service_type_id,
+
+          shipping_base_fee,
+
+          shipping_estimated_delivery,
+
+          total_amount,
+
+          shipping_name,
+
+          shipping_phone,
+
+          shipping_email,
+
+          shipping_address,
+
+          note,
+
+          status,
+
+          stock_restored_at,
+
+          created_at,
+
+          updated_at
+        )
+
+        VALUES
+        (
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          NULL,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          'PENDING',
+
+          NULL,
+
+          NOW(),
+
+          NOW()
+        )
+      `,
+    [
+      userId,
+
+      orderCode,
+
+      subtotal,
+
+      shippingResult.shipping_fee,
+
+      discountAmount,
+
+      couponResult.coupon_id,
+
+      couponResult.coupon_code,
+
+      shippingResult.shipping_rate_id,
+
+      shippingResult.shipping_provider,
+
+      shippingResult.shipping_ghn_province_id,
+
+      shippingResult.shipping_province_code,
+
+      shippingResult.shipping_province_name,
+
+      shippingResult.shipping_district_id,
+
+      shippingResult.shipping_district_name,
+
+      shippingResult.shipping_ward_code,
+
+      shippingResult.shipping_ward_name,
+
+      shippingResult.shipping_service_id,
+
+      shippingResult.shipping_service_type_id,
+
+      shippingResult.shipping_base_fee,
+
+      shippingResult.shipping_estimated_delivery,
+
+      totalAmount,
+
+      data.shipping_name,
+
+      data.shipping_phone,
+
+      data.shipping_email || null,
+
+      data.shipping_address,
+
+      data.note || null,
+    ],
+  );
+
+  return Number(result.insertId);
+};
+
+// ============================================================
 // ORDER MODEL
 // ============================================================
 
 const Order = {
   // ==========================================================
-  // CART + ITEMS
+  // CART
   // ==========================================================
 
   async getCartWithItems(userId) {
     const cartRows = await query(
       `
-        SELECT *
+          SELECT *
 
-        FROM carts
+          FROM carts
 
-        WHERE
-          user_id = ?
-          AND deleted_at IS NULL
+          WHERE
+            user_id = ?
+            AND deleted_at IS NULL
 
-        LIMIT 1
-      `,
+          LIMIT 1
+        `,
       [userId],
     );
 
@@ -1767,58 +2228,58 @@ const Order = {
 
     const items = await query(
       `
-        SELECT
-          ci.id AS cart_item_id,
+          SELECT
+            ci.id AS cart_item_id,
 
-          ci.cart_id,
+            ci.cart_id,
 
-          ci.product_id,
-          ci.variant_id,
+            ci.product_id,
+            ci.variant_id,
 
-          ci.quantity,
+            ci.quantity,
 
-          ci.price AS cart_price,
+            ci.price AS cart_price,
 
-          ci.total_price AS cart_total_price,
+            ci.total_price AS cart_total_price,
 
-          p.name AS product_name,
+            p.name AS product_name,
 
-          p.slug AS product_slug,
+            p.slug AS product_slug,
 
-          p.thumbnail AS product_image,
+            p.thumbnail AS product_image,
 
-          p.status AS product_status,
+            p.status AS product_status,
 
-          pv.variant_name,
+            pv.variant_name,
 
-          pv.sku AS variant_sku,
+            pv.sku AS variant_sku,
 
-          pv.thumbnail AS variant_thumbnail,
+            pv.thumbnail AS variant_thumbnail,
 
-          pv.price AS variant_price,
+            pv.price AS variant_price,
 
-          pv.sale_price AS variant_sale_price,
+            pv.sale_price AS variant_sale_price,
 
-          pv.quantity AS variant_stock,
+            pv.quantity AS variant_stock,
 
-          pv.status AS variant_status
+            pv.status AS variant_status
 
-        FROM cart_items ci
+          FROM cart_items ci
 
-        INNER JOIN products p
-          ON p.id = ci.product_id
+          INNER JOIN products p
+            ON p.id = ci.product_id
 
-        LEFT JOIN product_variants pv
-          ON pv.id = ci.variant_id
+          LEFT JOIN product_variants pv
+            ON pv.id = ci.variant_id
 
-        WHERE
-          ci.cart_id = ?
-          AND ci.deleted_at IS NULL
-          AND p.deleted_at IS NULL
+          WHERE
+            ci.cart_id = ?
+            AND ci.deleted_at IS NULL
+            AND p.deleted_at IS NULL
 
-        ORDER BY
-          ci.id ASC
-      `,
+          ORDER BY
+            ci.id ASC
+        `,
       [cart.id],
     );
 
@@ -1830,7 +2291,7 @@ const Order = {
   },
 
   // ==========================================================
-  // CREATE ORDER FROM CART
+  // CREATE FROM CART
   // ==========================================================
 
   async createFromCart(data) {
@@ -1844,10 +2305,22 @@ const Order = {
       data.province_code || data.shipping_province_code,
     );
 
+    const shippingDistrictId = normalizeNullableInt(data.shipping_district_id);
+
+    const shippingWardCode = normalizeWardCode(data.shipping_ward_code);
+
     const couponCode = normalizeCouponCode(data.coupon_code);
 
     if (!provinceCode) {
       throw new Error("Vui lòng chọn tỉnh / thành phố nhận hàng.");
+    }
+
+    if (!shippingDistrictId) {
+      throw new Error("Vui lòng chọn quận / huyện nhận hàng.");
+    }
+
+    if (!shippingWardCode) {
+      throw new Error("Vui lòng chọn phường / xã nhận hàng.");
     }
 
     const connection = await getTransactionConnection();
@@ -1864,20 +2337,20 @@ const Order = {
       const cartRows = await runQuery(
         connection,
         `
-          SELECT
-            id,
-            user_id
+            SELECT
+              id,
+              user_id
 
-          FROM carts
+            FROM carts
 
-          WHERE
-            user_id = ?
-            AND deleted_at IS NULL
+            WHERE
+              user_id = ?
+              AND deleted_at IS NULL
 
-          LIMIT 1
+            LIMIT 1
 
-          FOR UPDATE
-        `,
+            FOR UPDATE
+          `,
         [userId],
       );
 
@@ -1894,36 +2367,31 @@ const Order = {
       const cartItems = await runQuery(
         connection,
         `
-          SELECT
-            id,
-            cart_id,
-            product_id,
-            variant_id,
-            quantity,
-            price,
-            total_price
+            SELECT
+              id,
+              cart_id,
+              product_id,
+              variant_id,
+              quantity,
+              price,
+              total_price
 
-          FROM cart_items
+            FROM cart_items
 
-          WHERE
-            cart_id = ?
-            AND deleted_at IS NULL
+            WHERE
+              cart_id = ?
+              AND deleted_at IS NULL
 
-          ORDER BY
-            id ASC
+            ORDER BY id ASC
 
-          FOR UPDATE
-        `,
+            FOR UPDATE
+          `,
         [cart.id],
       );
 
       if (cartItems.length === 0) {
         throw new Error("Giỏ hàng đang trống");
       }
-
-      // ======================================================
-      // REVALIDATE PRODUCT + VARIANT + PRICE
-      // ======================================================
 
       const checkoutItems = [];
 
@@ -1959,21 +2427,25 @@ const Order = {
         subtotal,
       });
 
+      const discountAmount = Number(couponResult.discount_amount || 0);
+
       // ======================================================
-      // SHIPPING
+      // SHIPPING GHN
       // ======================================================
 
       const shippingResult = await resolveShippingForCheckout(connection, {
         provinceCode,
 
+        districtId: shippingDistrictId,
+
+        wardCode: shippingWardCode,
+
         subtotal,
+
+        discountAmount,
+
+        paymentMethod: data.payment_method,
       });
-
-      // ======================================================
-      // TOTAL
-      // ======================================================
-
-      const discountAmount = Number(couponResult.discount_amount || 0);
 
       const shippingFee = Number(shippingResult.shipping_fee || 0);
 
@@ -1985,158 +2457,46 @@ const Order = {
       // ORDER
       // ======================================================
 
-      const orderResult = await runQuery(
-        connection,
-        `
-          INSERT INTO orders
-          (
-            user_id,
+      orderId = await insertOrder(connection, {
+        userId,
 
-            order_code,
+        orderCode,
 
-            subtotal,
+        subtotal,
 
-            shipping_fee,
+        discountAmount,
 
-            discount_amount,
+        couponResult,
 
-            coupon_id,
+        shippingResult,
 
-            coupon_code,
+        totalAmount,
 
-            coupon_restored_at,
-
-            shipping_rate_id,
-
-            shipping_province_code,
-
-            shipping_province_name,
-
-            total_amount,
-
-            shipping_name,
-
-            shipping_phone,
-
-            shipping_email,
-
-            shipping_address,
-
-            note,
-
-            status,
-
-            stock_restored_at,
-
-            created_at,
-
-            updated_at
-          )
-
-          VALUES
-          (
-            ?,
-
-            ?,
-
-            ?,
-
-            ?,
-
-            ?,
-
-            ?,
-
-            ?,
-
-            NULL,
-
-            ?,
-
-            ?,
-
-            ?,
-
-            ?,
-
-            ?,
-
-            ?,
-
-            ?,
-
-            ?,
-
-            ?,
-
-            'PENDING',
-
-            NULL,
-
-            NOW(),
-
-            NOW()
-          )
-        `,
-        [
-          userId,
-
-          orderCode,
-
-          subtotal,
-
-          shippingFee,
-
-          discountAmount,
-
-          couponResult.coupon_id,
-
-          couponResult.coupon_code,
-
-          shippingResult.shipping_rate_id,
-
-          shippingResult.shipping_province_code,
-
-          shippingResult.shipping_province_name,
-
-          totalAmount,
-
-          data.shipping_name,
-
-          data.shipping_phone,
-
-          data.shipping_email || null,
-
-          data.shipping_address,
-
-          data.note || null,
-        ],
-      );
-
-      orderId = Number(orderResult.insertId);
+        data,
+      });
 
       if (!orderId) {
         throw new Error("Không tạo được đơn hàng");
       }
 
       // ======================================================
-      // COUPON USED COUNT
+      // COUPON COUNT
       // ======================================================
 
       if (couponResult.coupon_id) {
         const couponUpdate = await runQuery(
           connection,
           `
-            UPDATE coupons
+              UPDATE coupons
 
-            SET
-              used_count = used_count + 1
+              SET
+                used_count = used_count + 1
 
-            WHERE
-              id = ?
-              AND status = 1
-              AND used_count < quantity
-          `,
+              WHERE
+                id = ?
+                AND status = 1
+                AND used_count < quantity
+            `,
           [couponResult.coupon_id],
         );
 
@@ -2148,7 +2508,7 @@ const Order = {
       }
 
       // ======================================================
-      // ORDER ITEMS + STOCK
+      // ITEMS + STOCK
       // ======================================================
 
       for (const item of checkoutItems) {
@@ -2334,50 +2694,50 @@ const Order = {
   },
 
   // ==========================================================
-  // GET ORDER BY ID
+  // GET BY ID
   // ==========================================================
 
   async getById(id) {
     const orderRows = await query(
       `
-        SELECT
-          o.*,
+          SELECT
+            o.*,
 
-          p.payment_method,
+            p.payment_method,
 
-          p.amount AS payment_amount,
+            p.amount AS payment_amount,
 
-          p.status AS payment_status,
+            p.status AS payment_status,
 
-          p.transaction_code,
+            p.transaction_code,
 
-          p.paid_at
+            p.paid_at
 
-        FROM orders o
+          FROM orders o
 
-        LEFT JOIN payments p
-          ON p.id = (
-            SELECT
-              p2.id
+          LEFT JOIN payments p
+            ON p.id = (
+              SELECT
+                p2.id
 
-            FROM payments p2
+              FROM payments p2
 
-            WHERE
-              p2.order_id = o.id
-              AND p2.deleted_at IS NULL
+              WHERE
+                p2.order_id = o.id
+                AND p2.deleted_at IS NULL
 
-            ORDER BY
-              p2.id DESC
+              ORDER BY
+                p2.id DESC
 
-            LIMIT 1
-          )
+              LIMIT 1
+            )
 
-        WHERE
-          o.id = ?
-          AND o.deleted_at IS NULL
+          WHERE
+            o.id = ?
+            AND o.deleted_at IS NULL
 
-        LIMIT 1
-      `,
+          LIMIT 1
+        `,
       [id],
     );
 
@@ -2389,44 +2749,44 @@ const Order = {
 
     const items = await query(
       `
-        SELECT
-          id,
+          SELECT
+            id,
 
-          order_id,
+            order_id,
 
-          product_id,
+            product_id,
 
-          variant_id,
+            variant_id,
 
-          product_name,
+            product_name,
 
-          variant_name,
+            variant_name,
 
-          sku,
+            sku,
 
-          product_image,
+            product_image,
 
-          variant_options,
+            variant_options,
 
-          price,
+            price,
 
-          quantity,
+            quantity,
 
-          total_price,
+            total_price,
 
-          created_at,
+            created_at,
 
-          updated_at
+            updated_at
 
-        FROM order_items
+          FROM order_items
 
-        WHERE
-          order_id = ?
-          AND deleted_at IS NULL
+          WHERE
+            order_id = ?
+            AND deleted_at IS NULL
 
-        ORDER BY
-          id ASC
-      `,
+          ORDER BY
+            id ASC
+        `,
       [id],
     );
 
@@ -2440,6 +2800,32 @@ const Order = {
       subtotal: Number(order.subtotal || 0),
 
       shipping_fee: Number(order.shipping_fee || 0),
+
+      shipping_base_fee: Number(order.shipping_base_fee || 0),
+
+      shipping_ghn_province_id:
+        order.shipping_ghn_province_id !== null &&
+        order.shipping_ghn_province_id !== undefined
+          ? Number(order.shipping_ghn_province_id)
+          : null,
+
+      shipping_district_id:
+        order.shipping_district_id !== null &&
+        order.shipping_district_id !== undefined
+          ? Number(order.shipping_district_id)
+          : null,
+
+      shipping_service_id:
+        order.shipping_service_id !== null &&
+        order.shipping_service_id !== undefined
+          ? Number(order.shipping_service_id)
+          : null,
+
+      shipping_service_type_id:
+        order.shipping_service_type_id !== null &&
+        order.shipping_service_type_id !== undefined
+          ? Number(order.shipping_service_type_id)
+          : null,
 
       discount_amount: Number(order.discount_amount || 0),
 
@@ -2470,51 +2856,51 @@ const Order = {
   },
 
   // ==========================================================
-  // USER ORDER BY ID
+  // USER ORDER DETAIL
   // ==========================================================
 
   async getUserOrderById({ userId, orderId }) {
     const orderRows = await query(
       `
-        SELECT
-          o.*,
+          SELECT
+            o.*,
 
-          p.payment_method,
+            p.payment_method,
 
-          p.amount AS payment_amount,
+            p.amount AS payment_amount,
 
-          p.status AS payment_status,
+            p.status AS payment_status,
 
-          p.transaction_code,
+            p.transaction_code,
 
-          p.paid_at
+            p.paid_at
 
-        FROM orders o
+          FROM orders o
 
-        LEFT JOIN payments p
-          ON p.id = (
-            SELECT
-              p2.id
+          LEFT JOIN payments p
+            ON p.id = (
+              SELECT
+                p2.id
 
-            FROM payments p2
+              FROM payments p2
 
-            WHERE
-              p2.order_id = o.id
-              AND p2.deleted_at IS NULL
+              WHERE
+                p2.order_id = o.id
+                AND p2.deleted_at IS NULL
 
-            ORDER BY
-              p2.id DESC
+              ORDER BY
+                p2.id DESC
 
-            LIMIT 1
-          )
+              LIMIT 1
+            )
 
-        WHERE
-          o.id = ?
-          AND o.user_id = ?
-          AND o.deleted_at IS NULL
+          WHERE
+            o.id = ?
+            AND o.user_id = ?
+            AND o.deleted_at IS NULL
 
-        LIMIT 1
-      `,
+          LIMIT 1
+        `,
       [orderId, userId],
     );
 
@@ -2524,86 +2910,9 @@ const Order = {
       return null;
     }
 
-    const items = await query(
-      `
-        SELECT
-          id,
+    const fullOrder = await this.getById(orderId);
 
-          order_id,
-
-          product_id,
-
-          variant_id,
-
-          product_name,
-
-          variant_name,
-
-          sku,
-
-          product_image,
-
-          variant_options,
-
-          price,
-
-          quantity,
-
-          total_price,
-
-          created_at,
-
-          updated_at
-
-        FROM order_items
-
-        WHERE
-          order_id = ?
-          AND deleted_at IS NULL
-
-        ORDER BY
-          id ASC
-      `,
-      [orderId],
-    );
-
-    return {
-      ...order,
-
-      id: Number(order.id),
-
-      user_id: Number(order.user_id),
-
-      subtotal: Number(order.subtotal || 0),
-
-      shipping_fee: Number(order.shipping_fee || 0),
-
-      discount_amount: Number(order.discount_amount || 0),
-
-      coupon_id:
-        order.coupon_id !== null && order.coupon_id !== undefined
-          ? Number(order.coupon_id)
-          : null,
-
-      shipping_rate_id:
-        order.shipping_rate_id !== null && order.shipping_rate_id !== undefined
-          ? Number(order.shipping_rate_id)
-          : null,
-
-      total_amount: Number(order.total_amount || 0),
-
-      payment_amount:
-        order.payment_amount !== null && order.payment_amount !== undefined
-          ? Number(order.payment_amount)
-          : null,
-
-      payment_status:
-        order.payment_status !== null && order.payment_status !== undefined
-          ? Number(order.payment_status)
-          : null,
-
-      items: items.map(normalizeOrderItem),
-    };
+    return fullOrder;
   },
 
   // ==========================================================
@@ -2637,118 +2946,138 @@ const Order = {
 
     const rows = await query(
       `
-        SELECT
-          o.id,
+          SELECT
+            o.id,
 
-          o.user_id,
+            o.user_id,
 
-          o.order_code,
+            o.order_code,
 
-          o.subtotal,
+            o.subtotal,
 
-          o.shipping_fee,
+            o.shipping_fee,
 
-          o.discount_amount,
+            o.shipping_base_fee,
 
-          o.coupon_id,
+            o.discount_amount,
 
-          o.coupon_code,
+            o.coupon_id,
 
-          o.shipping_rate_id,
+            o.coupon_code,
 
-          o.shipping_province_code,
+            o.shipping_rate_id,
 
-          o.shipping_province_name,
+            o.shipping_provider,
 
-          o.total_amount,
+            o.shipping_ghn_province_id,
 
-          o.shipping_name,
+            o.shipping_province_code,
 
-          o.shipping_phone,
+            o.shipping_province_name,
 
-          o.shipping_email,
+            o.shipping_district_id,
 
-          o.shipping_address,
+            o.shipping_district_name,
 
-          o.note,
+            o.shipping_ward_code,
 
-          o.cancel_reason,
+            o.shipping_ward_name,
 
-          o.cancelled_at,
+            o.shipping_service_id,
 
-          o.status,
+            o.shipping_service_type_id,
 
-          o.created_at,
+            o.shipping_estimated_delivery,
 
-          o.updated_at,
+            o.total_amount,
 
-          p.payment_method,
+            o.shipping_name,
 
-          p.amount AS payment_amount,
+            o.shipping_phone,
 
-          p.status AS payment_status,
+            o.shipping_email,
 
-          p.transaction_code,
+            o.shipping_address,
 
-          p.paid_at,
+            o.note,
 
-          COALESCE(
-            item_summary.item_count,
-            0
-          ) AS item_count,
+            o.cancel_reason,
 
-          COALESCE(
-            item_summary.total_quantity,
-            0
-          ) AS total_quantity
+            o.cancelled_at,
 
-        FROM orders o
+            o.status,
 
-        LEFT JOIN payments p
-          ON p.id = (
+            o.created_at,
+
+            o.updated_at,
+
+            p.payment_method,
+
+            p.amount AS payment_amount,
+
+            p.status AS payment_status,
+
+            p.transaction_code,
+
+            p.paid_at,
+
+            COALESCE(
+              item_summary.item_count,
+              0
+            ) AS item_count,
+
+            COALESCE(
+              item_summary.total_quantity,
+              0
+            ) AS total_quantity
+
+          FROM orders o
+
+          LEFT JOIN payments p
+            ON p.id = (
+              SELECT
+                p2.id
+
+              FROM payments p2
+
+              WHERE
+                p2.order_id = o.id
+                AND p2.deleted_at IS NULL
+
+              ORDER BY
+                p2.id DESC
+
+              LIMIT 1
+            )
+
+          LEFT JOIN (
             SELECT
-              p2.id
+              order_id,
 
-            FROM payments p2
+              COUNT(*) AS item_count,
+
+              SUM(quantity) AS total_quantity
+
+            FROM order_items
 
             WHERE
-              p2.order_id = o.id
-              AND p2.deleted_at IS NULL
+              deleted_at IS NULL
 
-            ORDER BY
-              p2.id DESC
-
-            LIMIT 1
-          )
-
-        LEFT JOIN (
-          SELECT
-            order_id,
-
-            COUNT(*) AS item_count,
-
-            SUM(quantity) AS total_quantity
-
-          FROM order_items
+            GROUP BY
+              order_id
+          ) AS item_summary
+            ON item_summary.order_id = o.id
 
           WHERE
-            deleted_at IS NULL
+            ${whereSql}
 
-          GROUP BY
-            order_id
-        ) AS item_summary
-          ON item_summary.order_id = o.id
+          ORDER BY
+            o.created_at DESC,
+            o.id DESC
 
-        WHERE
-          ${whereSql}
-
-        ORDER BY
-          o.created_at DESC,
-          o.id DESC
-
-        LIMIT ${safeLimit}
-        OFFSET ${offset}
-      `,
+          LIMIT ${safeLimit}
+          OFFSET ${offset}
+        `,
       params,
     );
 
@@ -2763,17 +3092,9 @@ const Order = {
 
       shipping_fee: Number(item.shipping_fee || 0),
 
+      shipping_base_fee: Number(item.shipping_base_fee || 0),
+
       discount_amount: Number(item.discount_amount || 0),
-
-      coupon_id:
-        item.coupon_id !== null && item.coupon_id !== undefined
-          ? Number(item.coupon_id)
-          : null,
-
-      shipping_rate_id:
-        item.shipping_rate_id !== null && item.shipping_rate_id !== undefined
-          ? Number(item.shipping_rate_id)
-          : null,
 
       total_amount: Number(item.total_amount || 0),
 
@@ -2794,7 +3115,7 @@ const Order = {
   },
 
   // ==========================================================
-  // COUNT USER ORDERS
+  // COUNT
   // ==========================================================
 
   async countUserOrders({ userId, status = "", search = "" }) {
@@ -2808,14 +3129,14 @@ const Order = {
 
     const rows = await query(
       `
-        SELECT
-          COUNT(*) AS total
+          SELECT
+            COUNT(*) AS total
 
-        FROM orders o
+          FROM orders o
 
-        WHERE
-          ${whereSql}
-      `,
+          WHERE
+            ${whereSql}
+        `,
       params,
     );
 
@@ -2823,22 +3144,22 @@ const Order = {
   },
 
   // ==========================================================
-  // GET BY ORDER CODE
+  // ORDER CODE
   // ==========================================================
 
   async getByOrderCode(orderCode) {
     const rows = await query(
       `
-        SELECT id
+          SELECT id
 
-        FROM orders
+          FROM orders
 
-        WHERE
-          order_code = ?
-          AND deleted_at IS NULL
+          WHERE
+            order_code = ?
+            AND deleted_at IS NULL
 
-        LIMIT 1
-      `,
+          LIMIT 1
+        `,
       [orderCode],
     );
 
@@ -2848,10 +3169,6 @@ const Order = {
 
     return this.getById(rows[0].id);
   },
-
-  // ==========================================================
-  // GET BY USER
-  // ==========================================================
 
   async getByUserId(userId) {
     return query(
@@ -2864,8 +3181,7 @@ const Order = {
           user_id = ?
           AND deleted_at IS NULL
 
-        ORDER BY
-          id DESC
+        ORDER BY id DESC
       `,
       [userId],
     );
@@ -2892,24 +3208,22 @@ const Order = {
       const orderRows = await runQuery(
         connection,
         `
-          SELECT
-            id,
-            status,
+            SELECT
+              id,
+              status,
+              stock_restored_at,
+              coupon_restored_at
 
-            stock_restored_at,
+            FROM orders
 
-            coupon_restored_at
+            WHERE
+              order_code = ?
+              AND deleted_at IS NULL
 
-          FROM orders
+            LIMIT 1
 
-          WHERE
-            order_code = ?
-            AND deleted_at IS NULL
-
-          LIMIT 1
-
-          FOR UPDATE
-        `,
+            FOR UPDATE
+          `,
         [order_code],
       );
 
@@ -2926,25 +3240,24 @@ const Order = {
       const paymentRows = await runQuery(
         connection,
         `
-          SELECT
-            id,
-            status,
-            transaction_code,
-            paid_at
+            SELECT
+              id,
+              status,
+              transaction_code,
+              paid_at
 
-          FROM payments
+            FROM payments
 
-          WHERE
-            order_id = ?
-            AND deleted_at IS NULL
+            WHERE
+              order_id = ?
+              AND deleted_at IS NULL
 
-          ORDER BY
-            id DESC
+            ORDER BY id DESC
 
-          LIMIT 1
+            LIMIT 1
 
-          FOR UPDATE
-        `,
+            FOR UPDATE
+          `,
         [orderId],
       );
 
@@ -2955,10 +3268,6 @@ const Order = {
       }
 
       const isPaid = Number(payment_status) === 1;
-
-      // ======================================================
-      // SUCCESS
-      // ======================================================
 
       if (isPaid) {
         if (String(order.status || "").toUpperCase() === "CANCELLED") {
@@ -3022,19 +3331,11 @@ const Order = {
         return this.getById(orderId);
       }
 
-      // ======================================================
-      // LATE FAIL AFTER SUCCESS
-      // ======================================================
-
       if (Number(payment.status) === 1) {
         await connection.commit();
 
         return this.getById(orderId);
       }
-
-      // ======================================================
-      // PAYMENT FAIL
-      // ======================================================
 
       await runQuery(
         connection,
@@ -3106,24 +3407,22 @@ const Order = {
       const orderRows = await runQuery(
         connection,
         `
-          SELECT
-            id,
-            status,
+            SELECT
+              id,
+              status,
+              stock_restored_at,
+              coupon_restored_at
 
-            stock_restored_at,
+            FROM orders
 
-            coupon_restored_at
+            WHERE
+              id = ?
+              AND deleted_at IS NULL
 
-          FROM orders
+            LIMIT 1
 
-          WHERE
-            id = ?
-            AND deleted_at IS NULL
-
-          LIMIT 1
-
-          FOR UPDATE
-        `,
+            FOR UPDATE
+          `,
         [normalizedOrderId],
       );
 
@@ -3138,27 +3437,24 @@ const Order = {
       const paymentRows = await runQuery(
         connection,
         `
-          SELECT
-            id,
-            status,
+            SELECT
+              id,
+              status,
+              transaction_code,
+              paid_at
 
-            transaction_code,
+            FROM payments
 
-            paid_at
+            WHERE
+              order_id = ?
+              AND deleted_at IS NULL
 
-          FROM payments
+            ORDER BY id DESC
 
-          WHERE
-            order_id = ?
-            AND deleted_at IS NULL
+            LIMIT 1
 
-          ORDER BY
-            id DESC
-
-          LIMIT 1
-
-          FOR UPDATE
-        `,
+            FOR UPDATE
+          `,
         [normalizedOrderId],
       );
 
@@ -3232,10 +3528,6 @@ const Order = {
         return this.getById(normalizedOrderId);
       }
 
-      /*
-       * Callback FAIL đến trễ sau SUCCESS
-       * không được đảo trạng thái payment.
-       */
       if (Number(payment.status) === 1) {
         await connection.commit();
 
@@ -3288,7 +3580,7 @@ const Order = {
   },
 
   // ==========================================================
-  // CANCEL BY USER
+  // CANCEL USER
   // ==========================================================
 
   async cancelByUser({ userId, orderId, reason }) {
@@ -3377,31 +3669,24 @@ const Order = {
 
       const productRows = await query(
         `
-          SELECT
-            id,
+            SELECT
+              id,
+              name,
+              sku,
+              thumbnail,
+              price,
+              sale_price,
+              quantity,
+              status
 
-            name,
+            FROM products
 
-            sku,
+            WHERE
+              id = ?
+              AND deleted_at IS NULL
 
-            thumbnail,
-
-            price,
-
-            sale_price,
-
-            quantity,
-
-            status
-
-          FROM products
-
-          WHERE
-            id = ?
-            AND deleted_at IS NULL
-
-          LIMIT 1
-        `,
+            LIMIT 1
+          `,
         [productId],
       );
 
@@ -3447,41 +3732,29 @@ const Order = {
         continue;
       }
 
-      // ======================================================
-      // VARIANT
-      // ======================================================
-
       if (variantId) {
         const variantRows = await query(
           `
-            SELECT
-              id,
+              SELECT
+                id,
+                product_id,
+                sku,
+                variant_name,
+                price,
+                sale_price,
+                quantity,
+                thumbnail,
+                status
 
-              product_id,
+              FROM product_variants
 
-              sku,
+              WHERE
+                id = ?
+                AND product_id = ?
+                AND deleted_at IS NULL
 
-              variant_name,
-
-              price,
-
-              sale_price,
-
-              quantity,
-
-              thumbnail,
-
-              status
-
-            FROM product_variants
-
-            WHERE
-              id = ?
-              AND product_id = ?
-              AND deleted_at IS NULL
-
-            LIMIT 1
-          `,
+              LIMIT 1
+            `,
           [variantId, productId],
         );
 
@@ -3614,10 +3887,6 @@ const Order = {
         continue;
       }
 
-      // ======================================================
-      // LEGACY PRODUCT
-      // ======================================================
-
       const stock = Math.max(Number(product.quantity || 0), 0);
 
       if (stock <= 0) {
@@ -3718,6 +3987,16 @@ const Order = {
 
         shipping_province_name: sourceOrder.shipping_province_name || "",
 
+        shipping_ghn_province_id: sourceOrder.shipping_ghn_province_id || null,
+
+        shipping_district_id: sourceOrder.shipping_district_id || null,
+
+        shipping_district_name: sourceOrder.shipping_district_name || "",
+
+        shipping_ward_code: sourceOrder.shipping_ward_code || "",
+
+        shipping_ward_name: sourceOrder.shipping_ward_name || "",
+
         note: sourceOrder.note || "",
       },
 
@@ -3742,6 +4021,10 @@ const Order = {
       data.province_code || data.shipping_province_code,
     );
 
+    const shippingDistrictId = normalizeNullableInt(data.shipping_district_id);
+
+    const shippingWardCode = normalizeWardCode(data.shipping_ward_code);
+
     const couponCode = normalizeCouponCode(data.coupon_code);
 
     if (userId < 1 || sourceOrderId < 1) {
@@ -3752,20 +4035,27 @@ const Order = {
       throw new Error("Vui lòng chọn tỉnh / thành phố nhận hàng.");
     }
 
+    if (!shippingDistrictId) {
+      throw new Error("Vui lòng chọn quận / huyện nhận hàng.");
+    }
+
+    if (!shippingWardCode) {
+      throw new Error("Vui lòng chọn phường / xã nhận hàng.");
+    }
+
     const preview = await this.getReorderCheckoutPreview({
       userId,
 
       orderId: sourceOrderId,
     });
 
-    if (
-      !preview ||
-      !Array.isArray(preview.items) ||
-      preview.items.length === 0
-    ) {
-      throw new Error("Không có sản phẩm nào còn khả dụng để mua lại");
+    if (!preview) {
+      throw new Error("Không tìm thấy đơn hàng");
     }
 
+    if (!Array.isArray(preview.items) || preview.items.length === 0) {
+      throw new Error("Không có sản phẩm nào còn khả dụng để mua lại");
+    }
     const connection = await getTransactionConnection();
 
     let newOrderId = null;
@@ -3773,33 +4063,26 @@ const Order = {
     try {
       await connection.beginTransaction();
 
-      // ======================================================
-      // SOURCE ORDER
-      // ======================================================
-
       const sourceOrderRows = await runQuery(
         connection,
         `
-          SELECT
-            id,
+            SELECT
+              id,
+              user_id,
+              order_code,
+              status
 
-            user_id,
+            FROM orders
 
-            order_code,
+            WHERE
+              id = ?
+              AND user_id = ?
+              AND deleted_at IS NULL
 
-            status
+            LIMIT 1
 
-          FROM orders
-
-          WHERE
-            id = ?
-            AND user_id = ?
-            AND deleted_at IS NULL
-
-          LIMIT 1
-
-          FOR UPDATE
-        `,
+            FOR UPDATE
+          `,
         [sourceOrderId, userId],
       );
 
@@ -3812,10 +4095,6 @@ const Order = {
       if (String(sourceOrder.status || "").toUpperCase() !== "CANCELLED") {
         throw new Error("Chỉ đơn hàng đã hủy mới có thể mua lại");
       }
-
-      // ======================================================
-      // REVALIDATE
-      // ======================================================
 
       const checkoutItems = [];
 
@@ -3835,18 +4114,10 @@ const Order = {
         throw new Error("Không có sản phẩm nào còn khả dụng để mua lại");
       }
 
-      // ======================================================
-      // SUBTOTAL
-      // ======================================================
-
       const subtotal = checkoutItems.reduce(
         (sum, item) => sum + Number(item.total_price || 0),
         0,
       );
-
-      // ======================================================
-      // COUPON
-      // ======================================================
 
       const couponResult = await resolveCouponForCheckout(connection, {
         couponCode,
@@ -3854,17 +4125,21 @@ const Order = {
         subtotal,
       });
 
-      // ======================================================
-      // SHIPPING
-      // ======================================================
+      const discountAmount = Number(couponResult.discount_amount || 0);
 
       const shippingResult = await resolveShippingForCheckout(connection, {
         provinceCode,
 
-        subtotal,
-      });
+        districtId: shippingDistrictId,
 
-      const discountAmount = Number(couponResult.discount_amount || 0);
+        wardCode: shippingWardCode,
+
+        subtotal,
+
+        discountAmount,
+
+        paymentMethod: data.payment_method,
+      });
 
       const shippingFee = Number(shippingResult.shipping_fee || 0);
 
@@ -3872,162 +4147,42 @@ const Order = {
 
       const orderCode = generateOrderCode();
 
-      // ======================================================
-      // NEW ORDER
-      // ======================================================
+      newOrderId = await insertOrder(connection, {
+        userId,
 
-      const orderResult = await runQuery(
-        connection,
-        `
-          INSERT INTO orders
-          (
-            user_id,
+        orderCode,
 
-            order_code,
+        subtotal,
 
-            subtotal,
+        discountAmount,
 
-            shipping_fee,
+        couponResult,
 
-            discount_amount,
+        shippingResult,
 
-            coupon_id,
+        totalAmount,
 
-            coupon_code,
-
-            coupon_restored_at,
-
-            shipping_rate_id,
-
-            shipping_province_code,
-
-            shipping_province_name,
-
-            total_amount,
-
-            shipping_name,
-
-            shipping_phone,
-
-            shipping_email,
-
-            shipping_address,
-
-            note,
-
-            status,
-
-            stock_restored_at,
-
-            created_at,
-
-            updated_at
-          )
-
-          VALUES
-          (
-            ?,
-
-            ?,
-
-            ?,
-
-            ?,
-
-            ?,
-
-            ?,
-
-            ?,
-
-            NULL,
-
-            ?,
-
-            ?,
-
-            ?,
-
-            ?,
-
-            ?,
-
-            ?,
-
-            ?,
-
-            ?,
-
-            ?,
-
-            'PENDING',
-
-            NULL,
-
-            NOW(),
-
-            NOW()
-          )
-        `,
-        [
-          userId,
-
-          orderCode,
-
-          subtotal,
-
-          shippingFee,
-
-          discountAmount,
-
-          couponResult.coupon_id,
-
-          couponResult.coupon_code,
-
-          shippingResult.shipping_rate_id,
-
-          shippingResult.shipping_province_code,
-
-          shippingResult.shipping_province_name,
-
-          totalAmount,
-
-          data.shipping_name,
-
-          data.shipping_phone,
-
-          data.shipping_email || null,
-
-          data.shipping_address,
-
-          data.note || null,
-        ],
-      );
-
-      newOrderId = Number(orderResult.insertId);
+        data,
+      });
 
       if (!newOrderId) {
         throw new Error("Không tạo được đơn mua lại");
       }
 
-      // ======================================================
-      // COUPON COUNT
-      // ======================================================
-
       if (couponResult.coupon_id) {
         const couponUpdate = await runQuery(
           connection,
           `
-            UPDATE coupons
+              UPDATE coupons
 
-            SET
-              used_count = used_count + 1
+              SET
+                used_count = used_count + 1
 
-            WHERE
-              id = ?
-              AND status = 1
-              AND used_count < quantity
-          `,
+              WHERE
+                id = ?
+                AND status = 1
+                AND used_count < quantity
+            `,
           [couponResult.coupon_id],
         );
 
@@ -4037,10 +4192,6 @@ const Order = {
           );
         }
       }
-
-      // ======================================================
-      // ITEMS + STOCK
-      // ======================================================
 
       for (const item of checkoutItems) {
         await decreaseCheckoutStock(connection, item, {
@@ -4135,10 +4286,6 @@ const Order = {
           ],
         );
       }
-
-      // ======================================================
-      // PAYMENT
-      // ======================================================
 
       await runQuery(
         connection,
