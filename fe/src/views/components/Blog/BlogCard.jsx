@@ -1,6 +1,10 @@
 import { Link } from "react-router-dom";
 
 function BlogCard({ blog }) {
+  const description =
+    blog.desc ||
+    "Khám phá nội dung, kiến thức và kinh nghiệm hữu ích từ BuildPC.";
+
   return (
     <article className="bp-blog-card">
       <Link to={`/blog/${blog.id}`} className="bp-blog-card__image">
@@ -27,7 +31,7 @@ function BlogCard({ blog }) {
           <span>
             <i className="bi bi-eye" />
 
-            {blog.views}
+            {Number(blog.views || 0).toLocaleString("vi-VN")}
           </span>
         </div>
 
@@ -36,9 +40,9 @@ function BlogCard({ blog }) {
         </h3>
 
         <p className="bp-blog-card__desc">
-          {blog.desc?.length > 120
-            ? `${blog.desc.substring(0, 120)}...`
-            : blog.desc}
+          {description.length > 120
+            ? `${description.substring(0, 120)}...`
+            : description}
         </p>
 
         <Link to={`/blog/${blog.id}`} className="bp-blog-card__button">

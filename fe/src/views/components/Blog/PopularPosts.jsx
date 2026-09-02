@@ -1,13 +1,15 @@
 import { Link } from "react-router-dom";
 
-function PopularPosts({ blogs }) {
-  if (!blogs || blogs.length === 0) return null;
+function PopularPosts({ blogs = [] }) {
+  if (blogs.length === 0) {
+    return null;
+  }
 
   return (
     <section className="bp-popular">
       <div className="bp-popular__header">
         <h3 className="bp-popular__title">
-          <i className="bi bi-fire"></i>
+          <i className="bi bi-fire" />
           Được xem nhiều
         </h3>
       </div>
@@ -23,15 +25,13 @@ function PopularPosts({ blogs }) {
               <img
                 src={item.image}
                 alt={item.title}
-                onError={(e) => {
-                  e.target.src =
-                    "https://placehold.co/120x90?text=No+Image";
+                loading="lazy"
+                onError={(event) => {
+                  event.currentTarget.src = "/images/no-image.png";
                 }}
               />
 
-              <span className="bp-popular__rank">
-                {index + 1}
-              </span>
+              <span className="bp-popular__rank">{index + 1}</span>
             </div>
 
             <div className="bp-popular__content">
@@ -39,8 +39,9 @@ function PopularPosts({ blogs }) {
 
               <div className="bp-popular__meta">
                 <span>
-                  <i className="bi bi-eye"></i>
-                  {item.views || 0}
+                  <i className="bi bi-eye" />
+
+                  {Number(item.views || 0).toLocaleString("vi-VN")}
                 </span>
               </div>
             </div>

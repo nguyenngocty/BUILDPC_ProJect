@@ -1,84 +1,130 @@
 import React, { useEffect, useState } from "react";
+
 import { Link } from "react-router-dom";
+
 import toast from "react-hot-toast";
 
 import "./PostManagement.css";
 
 import postService from "../../../../services/postService";
-import categoryService from "../../../../services/categoryService";
+import postCategoryService from "../../../../services/postCategoryService";
+
+// ============================================================
+// IMAGE
+// ============================================================
+
+const IMAGE_BASE_URL =
+  process.env.REACT_APP_API_URL?.replace(/\/api\/?$/, "") ||
+  "http://localhost:5000";
 
 const NO_IMAGE_SVG =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Crect width='80' height='80' rx='12' fill='%23f1f5f9'/%3E%3Cpath d='M22 24h36v32H22z' fill='%23e2e8f0'/%3E%3Ccircle cx='32' cy='34' r='5' fill='%2394a3b8'/%3E%3Cpath d='M26 50l9-9 7 7 5-5 7 7H26z' fill='%2394a3b8'/%3E%3C/svg%3E";
 
+function getImageUrl(image) {
+  if (!image) {
+    return NO_IMAGE_SVG;
+  }
+
+  if (
+    image.startsWith("http://") ||
+    image.startsWith("https://") ||
+    image.startsWith("data:")
+  ) {
+    return image;
+  }
+
+  return `${IMAGE_BASE_URL}${image.startsWith("/") ? image : `/${image}`}`;
+}
+
 function PostManagement() {
   const [posts, setPosts] = useState([]);
+
   const [loading, setLoading] = useState(true);
 
   const [keyword, setKeyword] = useState("");
-  const [category, setCategory] = useState("");
+
+  const [postCategoryId, setPostCategoryId] = useState("");
+
   const [status, setStatus] = useState("");
+
   const [featured, setFeatured] = useState("");
 
   const [categoryList, setCategoryList] = useState([]);
 
   const [page, setPage] = useState(1);
+
   const [limit, setLimit] = useState(10);
+
   const [total, setTotal] = useState(0);
 
   const [openMenuId, setOpenMenuId] = useState(null);
 
+  const [actionLoadingId, setActionLoadingId] = useState(null);
+
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
     postId: null,
+    postTitle: "",
   });
 
-  // =====================================================
-  // LOAD CATEGORIES
-  // =====================================================
+  // ============================================================
+  // LOAD POST CATEGORIES
+  // ============================================================
 
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const res = await categoryService.getCategories({
-          status: 1,
-        });
+        const response = await postCategoryService.getActiveCategories();
 
-        setCategoryList(res.data || []);
+        setCategoryList(response?.data?.data || []);
       } catch (error) {
-        console.error("Lỗi tải danh mục:", error);
+        console.error("Lỗi tải danh mục bài viết:", error);
+
+        toast.error("Không tải được danh mục bài viết.");
       }
     };
 
     fetchCategories();
   }, []);
 
-  // =====================================================
+  // ============================================================
   // LOAD POSTS
-  // =====================================================
+  // ============================================================
 
   const fetchPosts = async () => {
     try {
       setLoading(true);
 
-      const res = await postService.getPosts({
+      const response = await postService.getPosts({
         keyword,
-        category_id: category,
+
+        post_category_id: postCategoryId,
+
         status,
+
         is_featured: featured,
+
         sortBy: "created_at",
+
         order: "DESC",
+
         page,
         limit,
       });
 
-      setPosts(res.data.data || []);
-      setTotal(res.data.total || 0);
+      const payload = response?.data || {};
+
+      setPosts(Array.isArray(payload.data) ? payload.data : []);
+
+      setTotal(Number(payload.total ?? payload.pagination?.total ?? 0));
 
       setOpenMenuId(null);
     } catch (error) {
       console.error(error);
 
-      toast.error("Không tải được danh sách bài viết.");
+      toast.error(
+        error?.response?.data?.message || "Không tải được danh sách bài viết.",
+      );
     } finally {
       setLoading(false);
     }
@@ -86,22 +132,25 @@ function PostManagement() {
 
   useEffect(() => {
     setPage(1);
-  }, [keyword, category, status, featured]);
+  }, [keyword, postCategoryId, status, featured]);
 
   useEffect(() => {
     fetchPosts();
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keyword, category, status, featured, page, limit]);
+  }, [keyword, postCategoryId, status, featured, page, limit]);
 
-  // =====================================================
+  // ============================================================
   // DELETE
-  // =====================================================
+  // ============================================================
 
-  const handleOpenDeleteConfirm = (id) => {
+  const handleOpenDeleteConfirm = (post) => {
+    setOpenMenuId(null);
+
     setConfirmModal({
       isOpen: true,
-      postId: id,
+      postId: post.id,
+      postTitle: post.title || "",
     });
   };
 
@@ -109,38 +158,105 @@ function PostManagement() {
     setConfirmModal({
       isOpen: false,
       postId: null,
+      postTitle: "",
     });
   };
 
   const handleConfirmDelete = async () => {
     const id = confirmModal.postId;
 
-    if (!id) return;
+    if (!id) {
+      return;
+    }
 
     try {
+      setActionLoadingId(id);
+
       await postService.deletePost(id);
 
-      toast.success("Xóa bài viết thành công.");
+      toast.success("Đã đưa bài viết vào thùng rác.");
 
-      setConfirmModal({
-        isOpen: false,
-        postId: null,
-      });
+      handleCloseDeleteConfirm();
+
+      /*
+       * Nếu đang ở trang cuối và xóa item cuối,
+       * quay về trang trước.
+       */
+      if (posts.length === 1 && page > 1) {
+        setPage((current) => Math.max(1, current - 1));
+      } else {
+        await fetchPosts();
+      }
+    } catch (error) {
+      console.error(error);
+
+      toast.error(error?.response?.data?.message || "Không thể xóa bài viết.");
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  // ============================================================
+  // TOGGLE STATUS
+  // ============================================================
+
+  const handleToggleStatus = async (post) => {
+    try {
+      setActionLoadingId(post.id);
+
+      setOpenMenuId(null);
+
+      const response = await postService.toggleStatus(post.id);
+
+      toast.success(response?.data?.message || "Đã cập nhật trạng thái.");
 
       await fetchPosts();
     } catch (error) {
       console.error(error);
 
-      toast.error(error?.response?.data?.message || "Không thể xóa bài viết.");
+      toast.error(
+        error?.response?.data?.message || "Không thể thay đổi trạng thái.",
+      );
+    } finally {
+      setActionLoadingId(null);
     }
   };
 
-  // =====================================================
+  // ============================================================
+  // TOGGLE FEATURED
+  // ============================================================
+
+  const handleToggleFeatured = async (post) => {
+    try {
+      setActionLoadingId(post.id);
+
+      setOpenMenuId(null);
+
+      const response = await postService.toggleFeatured(post.id);
+
+      toast.success(response?.data?.message || "Đã cập nhật bài viết nổi bật.");
+
+      await fetchPosts();
+    } catch (error) {
+      console.error(error);
+
+      toast.error(
+        error?.response?.data?.message ||
+          "Không thể thay đổi trạng thái nổi bật.",
+      );
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  // ============================================================
   // FORMAT
-  // =====================================================
+  // ============================================================
 
   const formatDate = (date) => {
-    if (!date) return "--";
+    if (!date) {
+      return "--";
+    }
 
     const parsed = new Date(date);
 
@@ -151,9 +267,9 @@ function PostManagement() {
     return parsed.toLocaleDateString("vi-VN");
   };
 
-  // =====================================================
+  // ============================================================
   // PAGINATION
-  // =====================================================
+  // ============================================================
 
   const totalPages = Math.max(Math.ceil(total / limit), 1);
 
@@ -218,7 +334,8 @@ function PostManagement() {
             <h2>Xóa bài viết</h2>
 
             <p>
-              Bài viết sẽ bị xóa khỏi hệ thống. Bạn có chắc chắn muốn tiếp tục?
+              Bài viết <strong>{confirmModal.postTitle}</strong> sẽ được đưa vào
+              thùng rác. Bạn có chắc chắn muốn tiếp tục?
             </p>
 
             <div className="post-confirm-actions">
@@ -226,6 +343,7 @@ function PostManagement() {
                 type="button"
                 className="post-button post-button-neutral"
                 onClick={handleCloseDeleteConfirm}
+                disabled={actionLoadingId === confirmModal.postId}
               >
                 Hủy
               </button>
@@ -234,9 +352,13 @@ function PostManagement() {
                 type="button"
                 className="post-button post-button-danger"
                 onClick={handleConfirmDelete}
+                disabled={actionLoadingId === confirmModal.postId}
               >
                 <i className="bi bi-trash3" />
-                Xóa bài viết
+
+                {actionLoadingId === confirmModal.postId
+                  ? "Đang xóa..."
+                  : "Xóa bài viết"}
               </button>
             </div>
           </div>
@@ -257,15 +379,28 @@ function PostManagement() {
           <h1>Quản lý bài viết</h1>
 
           <p>
-            Quản lý tin tức, hướng dẫn Build PC, nội dung SEO và chương trình
-            khuyến mãi.
+            Quản lý tin tức, hướng dẫn Build PC, nội dung SEO và các bài viết
+            trên website.
           </p>
         </div>
 
-        <Link to="/admin/posts/create" className="post-create-button">
-          <i className="bi bi-plus-lg" />
-          <span>Tạo bài viết mới</span>
-        </Link>
+        <div
+          style={{
+            display: "flex",
+            gap: "10px",
+            flexWrap: "wrap",
+          }}
+        >
+          <Link to="/admin/post-categories" className="post-create-button">
+            <i className="bi bi-folder2-open" />
+            <span>Danh mục bài viết</span>
+          </Link>
+
+          <Link to="/admin/posts/create" className="post-create-button">
+            <i className="bi bi-plus-lg" />
+            <span>Tạo bài viết mới</span>
+          </Link>
+        </div>
       </section>
 
       {/* =================================================
@@ -280,7 +415,9 @@ function PostManagement() {
 
           <div>
             <span>Tổng bài viết</span>
+
             <strong>{total}</strong>
+
             <small>Nội dung trong hệ thống</small>
           </div>
         </article>
@@ -292,7 +429,9 @@ function PostManagement() {
 
           <div>
             <span>Trang hiện tại</span>
+
             <strong>{page}</strong>
+
             <small>Tổng {totalPages} trang dữ liệu</small>
           </div>
         </article>
@@ -304,7 +443,9 @@ function PostManagement() {
 
           <div>
             <span>Hiển thị</span>
+
             <strong>{posts.length}</strong>
+
             <small>{limit} bài viết mỗi trang</small>
           </div>
         </article>
@@ -327,7 +468,7 @@ function PostManagement() {
       </section>
 
       {/* =================================================
-          CONTENT CARD
+          CONTENT
       ================================================= */}
 
       <section className="post-content-card">
@@ -377,14 +518,14 @@ function PostManagement() {
             <i className="bi bi-folder2-open" />
 
             <select
-              value={category}
-              onChange={(event) => setCategory(event.target.value)}
+              value={postCategoryId}
+              onChange={(event) => setPostCategoryId(event.target.value)}
             >
-              <option value="">Tất cả danh mục</option>
+              <option value="">Tất cả danh mục bài viết</option>
 
-              {categoryList.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
+              {categoryList.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
                 </option>
               ))}
             </select>
@@ -452,8 +593,11 @@ function PostManagement() {
                   <th className="post-column-content">Bài viết</th>
 
                   <th>Tác giả</th>
+
                   <th>Danh mục</th>
+
                   <th>Ngày đăng</th>
+
                   <th className="post-text-center">Lượt xem</th>
 
                   <th className="post-text-center">Nổi bật</th>
@@ -499,11 +643,7 @@ function PostManagement() {
                       <td>
                         <div className="post-identity">
                           <img
-                            src={
-                              post.thumbnail
-                                ? `http://localhost:5000${post.thumbnail}`
-                                : NO_IMAGE_SVG
-                            }
+                            src={getImageUrl(post.thumbnail)}
                             alt={post.title || "Bài viết"}
                             className="post-list-thumbnail"
                             onError={(event) => {
@@ -528,13 +668,16 @@ function PostManagement() {
                       <td>
                         <span className="post-author">
                           <i className="bi bi-person-circle" />
-                          {post.author || "Không rõ"}
+
+                          {post.author || post.author_name || "Không rõ"}
                         </span>
                       </td>
 
                       <td>
                         <span className="post-category-pill">
-                          {post.category_name}
+                          {post.post_category_name ||
+                            post.category_name ||
+                            "Chưa phân loại"}
                         </span>
                       </td>
 
@@ -547,7 +690,8 @@ function PostManagement() {
                       <td className="post-text-center">
                         <span className="post-view-count">
                           <i className="bi bi-eye" />
-                          {post.views || 0}
+
+                          {Number(post.views || 0)}
                         </span>
                       </td>
 
@@ -583,6 +727,7 @@ function PostManagement() {
                           <button
                             type="button"
                             className="post-action-trigger"
+                            disabled={actionLoadingId === post.id}
                             onClick={() =>
                               setOpenMenuId(
                                 openMenuId === post.id ? null : post.id,
@@ -590,7 +735,11 @@ function PostManagement() {
                             }
                             aria-label="Mở menu thao tác"
                           >
-                            <i className="bi bi-three-dots-vertical" />
+                            {actionLoadingId === post.id ? (
+                              <span className="post-loader" />
+                            ) : (
+                              <i className="bi bi-three-dots-vertical" />
+                            )}
                           </button>
 
                           {openMenuId === post.id && (
@@ -608,8 +757,52 @@ function PostManagement() {
 
                               <button
                                 type="button"
+                                className="post-action-menu-item"
+                                onClick={() => handleToggleStatus(post)}
+                              >
+                                <span className="post-action-menu-icon post-action-menu-icon-edit">
+                                  <i
+                                    className={
+                                      Number(post.status) === 1
+                                        ? "bi bi-eye-slash"
+                                        : "bi bi-eye"
+                                    }
+                                  />
+                                </span>
+
+                                <span>
+                                  {Number(post.status) === 1
+                                    ? "Chuyển thành bản nháp"
+                                    : "Xuất bản"}
+                                </span>
+                              </button>
+
+                              <button
+                                type="button"
+                                className="post-action-menu-item"
+                                onClick={() => handleToggleFeatured(post)}
+                              >
+                                <span className="post-action-menu-icon post-action-menu-icon-edit">
+                                  <i
+                                    className={
+                                      Number(post.is_featured) === 1
+                                        ? "bi bi-star"
+                                        : "bi bi-star-fill"
+                                    }
+                                  />
+                                </span>
+
+                                <span>
+                                  {Number(post.is_featured) === 1
+                                    ? "Bỏ nổi bật"
+                                    : "Đánh dấu nổi bật"}
+                                </span>
+                              </button>
+
+                              <button
+                                type="button"
                                 className="post-action-menu-item post-action-menu-delete"
-                                onClick={() => handleOpenDeleteConfirm(post.id)}
+                                onClick={() => handleOpenDeleteConfirm(post)}
                               >
                                 <span className="post-action-menu-icon post-action-menu-icon-delete">
                                   <i className="bi bi-trash3" />

@@ -1,735 +1,852 @@
 const https = require("https");
 
-const GHN_ENV =
-    process.env.GHN_ENV || "test";
+// ============================================================
+// CONFIG
+// ============================================================
+
+const GHN_ENV = process.env.GHN_ENV || "test";
 
 const GHN_BASE_URL =
-    process.env.GHN_BASE_URL ||
-    "https://dev-online-gateway.ghn.vn/shiip/public-api";
+  process.env.GHN_BASE_URL ||
+  "https://dev-online-gateway.ghn.vn/shiip/public-api";
 
-const GHN_TOKEN =
-    process.env.GHN_TOKEN || "";
+const GHN_TOKEN = process.env.GHN_TOKEN || "";
 
-const GHN_SHOP_ID =
-    Number(process.env.GHN_SHOP_ID) || 0;
+const GHN_SHOP_ID = Number(process.env.GHN_SHOP_ID) || 0;
 
-const GHN_TIMEOUT_MS =
-    Number(process.env.GHN_TIMEOUT_MS) ||
-    15000;
+const GHN_TIMEOUT_MS = Number(process.env.GHN_TIMEOUT_MS) || 15000;
 
-const GHN_DEFAULT_WEIGHT =
-    Number(process.env.GHN_DEFAULT_WEIGHT);
+const GHN_DEFAULT_WEIGHT = Number(process.env.GHN_DEFAULT_WEIGHT);
 
-const GHN_DEFAULT_LENGTH =
-    Number(process.env.GHN_DEFAULT_LENGTH);
+const GHN_DEFAULT_LENGTH = Number(process.env.GHN_DEFAULT_LENGTH);
 
-const GHN_DEFAULT_WIDTH =
-    Number(process.env.GHN_DEFAULT_WIDTH);
+const GHN_DEFAULT_WIDTH = Number(process.env.GHN_DEFAULT_WIDTH);
 
-const GHN_DEFAULT_HEIGHT =
-    Number(process.env.GHN_DEFAULT_HEIGHT);
+const GHN_DEFAULT_HEIGHT = Number(process.env.GHN_DEFAULT_HEIGHT);
+
+/*
+ * GHN giới hạn insurance_value.
+ * Có thể override trong .env nếu cần.
+ */
+const GHN_MAX_INSURANCE_VALUE =
+  Number(process.env.GHN_MAX_INSURANCE_VALUE) || 5000000;
+
+const GHN_MAX_COD_VALUE = Number(process.env.GHN_MAX_COD_VALUE) || 50000000;
 
 const LIGHT_SERVICE_TYPE_ID = 2;
+
+// ============================================================
+// CACHE SHOP
+// ============================================================
 
 let cachedShop = null;
 let cachedShopAt = 0;
 
-const SHOP_CACHE_TTL =
-    10 * 60 * 1000;
+const SHOP_CACHE_TTL = 10 * 60 * 1000;
 
-const createError = (
-    message,
-    code = "GHN_ERROR",
-) => {
-    const error = new Error(message);
-    error.code = code;
+// ============================================================
+// HELPERS
+// ============================================================
 
-    return error;
+const createError = (message, code = "GHN_ERROR") => {
+  const error = new Error(message);
+
+  error.code = code;
+
+  return error;
 };
 
 const isPositiveNumber = (value) => {
-    return (
-        Number.isFinite(Number(value)) &&
-        Number(value) > 0
-    );
+  return Number.isFinite(Number(value)) && Number(value) > 0;
 };
+
+const clampMoney = (value, maximum) => {
+  const number = Number(value || 0);
+
+  if (!Number.isFinite(number)) {
+    return 0;
+  }
+
+  return Math.min(Math.max(Math.round(number), 0), maximum);
+};
+
+const isGhnItemActive = (item) => {
+  if (!item) {
+    return false;
+  }
+
+  if (item.Status !== undefined && Number(item.Status) !== 1) {
+    return false;
+  }
+
+  if (item.IsEnable !== undefined && Number(item.IsEnable) !== 1) {
+    return false;
+  }
+
+  return true;
+};
+
+// ============================================================
+// VALIDATE CONFIG
+// ============================================================
 
 const validateConfig = () => {
-    if (!GHN_TOKEN) {
-        throw createError(
-            "Chưa cấu hình GHN_TOKEN",
-            "GHN_TOKEN_MISSING",
-        );
-    }
+  if (!GHN_TOKEN) {
+    throw createError("Chưa cấu hình GHN_TOKEN", "GHN_TOKEN_MISSING");
+  }
 
-    if (!GHN_SHOP_ID) {
-        throw createError(
-            "Chưa cấu hình GHN_SHOP_ID",
-            "GHN_SHOP_ID_MISSING",
-        );
-    }
+  if (!GHN_SHOP_ID) {
+    throw createError("Chưa cấu hình GHN_SHOP_ID", "GHN_SHOP_ID_MISSING");
+  }
 };
+
+// ============================================================
+// PACKAGE
+// ============================================================
 
 const getDefaultPackage = () => {
-    const packageInfo = {
-        weight: GHN_DEFAULT_WEIGHT,
-        length: GHN_DEFAULT_LENGTH,
-        width: GHN_DEFAULT_WIDTH,
-        height: GHN_DEFAULT_HEIGHT,
-    };
+  const packageInfo = {
+    weight: GHN_DEFAULT_WEIGHT,
+    length: GHN_DEFAULT_LENGTH,
+    width: GHN_DEFAULT_WIDTH,
+    height: GHN_DEFAULT_HEIGHT,
+  };
 
-    const valid =
-        isPositiveNumber(
-            packageInfo.weight,
-        ) &&
-        isPositiveNumber(
-            packageInfo.length,
-        ) &&
-        isPositiveNumber(
-            packageInfo.width,
-        ) &&
-        isPositiveNumber(
-            packageInfo.height,
-        );
+  const valid =
+    isPositiveNumber(packageInfo.weight) &&
+    isPositiveNumber(packageInfo.length) &&
+    isPositiveNumber(packageInfo.width) &&
+    isPositiveNumber(packageInfo.height);
 
-    if (!valid) {
-        throw createError(
-            "Chưa cấu hình đầy đủ thông số kiện hàng GHN trong .env",
-            "GHN_PACKAGE_CONFIG_MISSING",
-        );
-    }
+  if (!valid) {
+    throw createError(
+      "Chưa cấu hình đầy đủ thông số kiện hàng GHN trong .env",
+      "GHN_PACKAGE_CONFIG_MISSING",
+    );
+  }
 
-    return {
-        weight: Math.round(
-            packageInfo.weight,
-        ),
+  return {
+    weight: Math.round(packageInfo.weight),
 
-        length: Math.round(
-            packageInfo.length,
-        ),
+    length: Math.round(packageInfo.length),
 
-        width: Math.round(
-            packageInfo.width,
-        ),
+    width: Math.round(packageInfo.width),
 
-        height: Math.round(
-            packageInfo.height,
-        ),
-    };
+    height: Math.round(packageInfo.height),
+  };
 };
+
+// ============================================================
+// REQUEST GHN
+// ============================================================
 
 const requestGhn = ({
-    path,
-    method = "POST",
-    body = {},
-    includeShopId = false,
+  path,
+  method = "POST",
+  body = {},
+  includeShopId = false,
 }) => {
-    validateConfig();
+  validateConfig();
 
-    return new Promise(
-        (resolve, reject) => {
-            try {
-                const url = new URL(
-                    `${GHN_BASE_URL}${path}`,
-                );
+  return new Promise((resolve, reject) => {
+    try {
+      const url = new URL(`${GHN_BASE_URL}${path}`);
 
-                const payload =
-                    body === undefined ||
-                        body === null
-                        ? ""
-                        : JSON.stringify(body);
+      const payload =
+        body === undefined || body === null ? "" : JSON.stringify(body);
 
-                const headers = {
-                    Token: GHN_TOKEN,
-                    "Content-Type":
-                        "application/json",
-                };
+      const headers = {
+        Token: GHN_TOKEN,
 
-                if (includeShopId) {
-                    headers.ShopId =
-                        String(GHN_SHOP_ID);
-                }
+        "Content-Type": "application/json",
+      };
 
-                if (payload) {
-                    headers["Content-Length"] =
-                        Buffer.byteLength(payload);
-                }
+      if (includeShopId) {
+        headers.ShopId = String(GHN_SHOP_ID);
+      }
 
-                const request =
-                    https.request(
-                        {
-                            protocol:
-                                url.protocol,
+      if (payload) {
+        headers["Content-Length"] = Buffer.byteLength(payload);
+      }
 
-                            hostname:
-                                url.hostname,
+      const request = https.request(
+        {
+          protocol: url.protocol,
 
-                            port:
-                                url.port || 443,
+          hostname: url.hostname,
 
-                            path:
-                                `${url.pathname}${url.search}`,
+          port: url.port || 443,
 
-                            method,
+          path: `${url.pathname}${url.search}`,
 
-                            headers,
-                        },
-                        (response) => {
-                            let rawData = "";
+          method,
 
-                            response.on(
-                                "data",
-                                (chunk) => {
-                                    rawData += chunk;
-                                },
-                            );
-
-                            response.on(
-                                "end",
-                                () => {
-                                    try {
-                                        const result =
-                                            rawData
-                                                ? JSON.parse(
-                                                    rawData,
-                                                )
-                                                : {};
-
-                                        if (
-                                            response.statusCode <
-                                            200 ||
-                                            response.statusCode >=
-                                            300
-                                        ) {
-                                            return reject(
-                                                createError(
-                                                    result?.message ||
-                                                    `GHN HTTP ${response.statusCode}`,
-                                                    result?.code ||
-                                                    "GHN_HTTP_ERROR",
-                                                ),
-                                            );
-                                        }
-
-                                        if (
-                                            Number(
-                                                result?.code,
-                                            ) !== 200
-                                        ) {
-                                            return reject(
-                                                createError(
-                                                    result?.message ||
-                                                    "GHN trả về lỗi",
-                                                    result?.code ||
-                                                    "GHN_API_ERROR",
-                                                ),
-                                            );
-                                        }
-
-                                        return resolve(
-                                            result,
-                                        );
-                                    } catch {
-                                        return reject(
-                                            createError(
-                                                "Không thể đọc dữ liệu phản hồi từ GHN",
-                                                "GHN_INVALID_RESPONSE",
-                                            ),
-                                        );
-                                    }
-                                },
-                            );
-                        },
-                    );
-
-                request.setTimeout(
-                    GHN_TIMEOUT_MS,
-                    () => {
-                        request.destroy(
-                            createError(
-                                "Kết nối GHN quá thời gian chờ",
-                                "GHN_TIMEOUT",
-                            ),
-                        );
-                    },
-                );
-
-                request.on(
-                    "error",
-                    (error) => {
-                        reject(error);
-                    },
-                );
-
-                if (payload) {
-                    request.write(payload);
-                }
-
-                request.end();
-            } catch (error) {
-                reject(error);
-            }
+          headers,
         },
-    );
+
+        (response) => {
+          let rawData = "";
+
+          response.on("data", (chunk) => {
+            rawData += chunk;
+          });
+
+          response.on("end", () => {
+            try {
+              const result = rawData ? JSON.parse(rawData) : {};
+
+              if (response.statusCode < 200 || response.statusCode >= 300) {
+                return reject(
+                  createError(
+                    result?.message || `GHN HTTP ${response.statusCode}`,
+
+                    result?.code || "GHN_HTTP_ERROR",
+                  ),
+                );
+              }
+
+              if (Number(result?.code) !== 200) {
+                return reject(
+                  createError(
+                    result?.message || "GHN trả về lỗi",
+
+                    result?.code || "GHN_API_ERROR",
+                  ),
+                );
+              }
+
+              return resolve(result);
+            } catch {
+              return reject(
+                createError(
+                  "Không thể đọc dữ liệu phản hồi từ GHN",
+
+                  "GHN_INVALID_RESPONSE",
+                ),
+              );
+            }
+          });
+        },
+      );
+
+      request.setTimeout(GHN_TIMEOUT_MS, () => {
+        request.destroy(
+          createError(
+            "Kết nối GHN quá thời gian chờ",
+
+            "GHN_TIMEOUT",
+          ),
+        );
+      });
+
+      request.on("error", (error) => {
+        reject(error);
+      });
+
+      if (payload) {
+        request.write(payload);
+      }
+
+      request.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
 };
+
+// ============================================================
+// PROVINCES
+// ============================================================
 
 const getProvinces = async () => {
-    const response =
-        await requestGhn({
-            path:
-                "/master-data/province",
+  const response = await requestGhn({
+    path: "/master-data/province",
 
-            body: {},
-        });
+    body: {},
+  });
 
-    return response.data || [];
+  return response.data || [];
 };
 
-const getDistricts = async (
-    provinceId,
-) => {
-    const id =
-        Number(provinceId);
+// ============================================================
+// DISTRICTS
+// ============================================================
 
-    if (!id) {
-        throw createError(
-            "province_id không hợp lệ",
-            "GHN_INVALID_PROVINCE",
-        );
-    }
+const getDistricts = async (provinceId) => {
+  const id = Number(provinceId);
 
-    const response =
-        await requestGhn({
-            path:
-                "/master-data/district",
+  if (!id) {
+    throw createError(
+      "province_id không hợp lệ",
 
-            body: {
-                province_id: id,
-            },
-        });
+      "GHN_INVALID_PROVINCE",
+    );
+  }
 
-    return response.data || [];
+  const response = await requestGhn({
+    path: "/master-data/district",
+
+    body: {
+      province_id: id,
+    },
+  });
+
+  return response.data || [];
 };
 
-const getWards = async (
-    districtId,
-) => {
-    const id =
-        Number(districtId);
+// ============================================================
+// WARDS
+// ============================================================
 
-    if (!id) {
-        throw createError(
-            "district_id không hợp lệ",
-            "GHN_INVALID_DISTRICT",
-        );
-    }
+const getWards = async (districtId) => {
+  const id = Number(districtId);
 
-    const response =
-        await requestGhn({
-            path:
-                "/master-data/ward",
+  if (!id) {
+    throw createError(
+      "district_id không hợp lệ",
 
-            body: {
-                district_id: id,
-            },
-        });
+      "GHN_INVALID_DISTRICT",
+    );
+  }
 
-    return response.data || [];
+  const response = await requestGhn({
+    path: "/master-data/ward",
+
+    body: {
+      district_id: id,
+    },
+  });
+
+  return response.data || [];
 };
+
+// ============================================================
+// VALIDATE / RESOLVE ADDRESS
+// ============================================================
+
+const resolveAddress = async ({ provinceId, districtId, wardCode }) => {
+  const normalizedProvinceId = Number(provinceId);
+
+  const normalizedDistrictId = Number(districtId);
+
+  const normalizedWardCode = String(wardCode || "").trim();
+
+  if (!normalizedProvinceId) {
+    throw createError(
+      "Tỉnh / thành phố không hợp lệ.",
+
+      "GHN_INVALID_PROVINCE",
+    );
+  }
+
+  if (!normalizedDistrictId) {
+    throw createError(
+      "Quận / huyện không hợp lệ.",
+
+      "GHN_INVALID_DISTRICT",
+    );
+  }
+
+  if (!normalizedWardCode) {
+    throw createError(
+      "Phường / xã không hợp lệ.",
+
+      "GHN_INVALID_WARD",
+    );
+  }
+
+  // ========================================================
+  // PROVINCE
+  // ========================================================
+
+  const provinces = await getProvinces();
+
+  const province = provinces.find(
+    (item) => Number(item?.ProvinceID) === normalizedProvinceId,
+  );
+
+  if (!province) {
+    throw createError(
+      "Không tìm thấy tỉnh / thành phố trên GHN.",
+
+      "GHN_PROVINCE_NOT_FOUND",
+    );
+  }
+
+  // ========================================================
+  // DISTRICT
+  // ========================================================
+
+  const districts = await getDistricts(normalizedProvinceId);
+
+  const district = districts.find(
+    (item) => Number(item?.DistrictID) === normalizedDistrictId,
+  );
+
+  if (!district) {
+    throw createError(
+      "Quận / huyện không thuộc tỉnh / thành phố đã chọn.",
+
+      "GHN_DISTRICT_NOT_FOUND",
+    );
+  }
+
+  if (!isGhnItemActive(district)) {
+    throw createError(
+      "Quận / huyện này hiện không được GHN hỗ trợ.",
+
+      "GHN_DISTRICT_DISABLED",
+    );
+  }
+
+  // ========================================================
+  // WARD
+  // ========================================================
+
+  const wards = await getWards(normalizedDistrictId);
+
+  const ward = wards.find(
+    (item) => String(item?.WardCode || "").trim() === normalizedWardCode,
+  );
+
+  if (!ward) {
+    throw createError(
+      "Phường / xã không thuộc quận / huyện đã chọn.",
+
+      "GHN_WARD_NOT_FOUND",
+    );
+  }
+
+  if (!isGhnItemActive(ward)) {
+    throw createError(
+      "Phường / xã này hiện không được GHN hỗ trợ.",
+
+      "GHN_WARD_DISABLED",
+    );
+  }
+
+  return {
+    province_id: normalizedProvinceId,
+
+    province_code: String(
+      province?.Code || province?.code || normalizedProvinceId,
+    ).trim(),
+
+    province_name: String(province?.ProvinceName || "").trim(),
+
+    district_id: normalizedDistrictId,
+
+    district_name: String(district?.DistrictName || "").trim(),
+
+    ward_code: normalizedWardCode,
+
+    ward_name: String(ward?.WardName || "").trim(),
+  };
+};
+
+// ============================================================
+// SHOPS
+// ============================================================
 
 const getShops = async () => {
-    const response =
-        await requestGhn({
-            path:
-                "/v2/shop/all",
+  const response = await requestGhn({
+    path: "/v2/shop/all",
 
-            body: {
-                offset: 0,
-                limit: 200,
-                client_phone: "",
-            },
-        });
+    body: {
+      offset: 0,
+      limit: 200,
+      client_phone: "",
+    },
+  });
 
-    return (
-        response.data?.shops ||
-        response.data ||
-        []
-    );
+  return response.data?.shops || response.data || [];
 };
 
-const getCurrentShop =
-    async () => {
-        const now =
-            Date.now();
+// ============================================================
+// CURRENT SHOP
+// ============================================================
 
-        if (
-            cachedShop &&
-            now - cachedShopAt <
-            SHOP_CACHE_TTL
-        ) {
-            return cachedShop;
-        }
+const getCurrentShop = async () => {
+  const now = Date.now();
 
-        const shops =
-            await getShops();
+  if (cachedShop && now - cachedShopAt < SHOP_CACHE_TTL) {
+    return cachedShop;
+  }
 
-        const shop =
-            shops.find(
-                (item) =>
-                    Number(
-                        item?._id,
-                    ) ===
-                    GHN_SHOP_ID,
-            );
+  const shops = await getShops();
 
-        if (!shop) {
-            throw createError(
-                `Không tìm thấy Shop GHN ${GHN_SHOP_ID}`,
-                "GHN_SHOP_NOT_FOUND",
-            );
-        }
+  const shop = shops.find((item) => Number(item?._id) === GHN_SHOP_ID);
 
-        cachedShop = shop;
-        cachedShopAt = now;
+  if (!shop) {
+    throw createError(
+      `Không tìm thấy Shop GHN ${GHN_SHOP_ID}`,
 
-        return shop;
-    };
+      "GHN_SHOP_NOT_FOUND",
+    );
+  }
 
-const getAvailableServices =
-    async ({
-        toDistrictId,
-    }) => {
-        const destination =
-            Number(
-                toDistrictId,
-            );
+  cachedShop = shop;
 
-        if (!destination) {
-            throw createError(
-                "to_district_id không hợp lệ",
-                "GHN_INVALID_TO_DISTRICT",
-            );
-        }
+  cachedShopAt = now;
 
-        const shop =
-            await getCurrentShop();
+  return shop;
+};
 
-        const fromDistrict =
-            Number(
-                shop?.district_id,
-            );
+// ============================================================
+// AVAILABLE SERVICES
+// ============================================================
 
-        if (!fromDistrict) {
-            throw createError(
-                "Shop GHN chưa có district_id hợp lệ",
-                "GHN_SHOP_DISTRICT_MISSING",
-            );
-        }
+const getAvailableServices = async ({ toDistrictId }) => {
+  const destination = Number(toDistrictId);
 
-        const response =
-            await requestGhn({
-                path:
-                    "/v2/shipping-order/available-services",
+  if (!destination) {
+    throw createError(
+      "to_district_id không hợp lệ",
 
-                body: {
-                    shop_id:
-                        GHN_SHOP_ID,
+      "GHN_INVALID_TO_DISTRICT",
+    );
+  }
 
-                    from_district:
-                        fromDistrict,
+  const shop = await getCurrentShop();
 
-                    to_district:
-                        destination,
-                },
-            });
+  const fromDistrict = Number(shop?.district_id);
 
-        return response.data || [];
-    };
+  if (!fromDistrict) {
+    throw createError(
+      "Shop GHN chưa có district_id hợp lệ",
 
-const getAutomaticService =
-    async ({
-        toDistrictId,
-    }) => {
-        const services =
-            await getAvailableServices({
-                toDistrictId,
-            });
+      "GHN_SHOP_DISTRICT_MISSING",
+    );
+  }
 
-        const lightService =
-            services.find(
-                (service) =>
-                    Number(
-                        service?.service_type_id,
-                    ) ===
-                    LIGHT_SERVICE_TYPE_ID,
-            );
+  const response = await requestGhn({
+    path: "/v2/shipping-order/available-services",
 
-        if (!lightService) {
-            throw createError(
-                "GHN không có dịch vụ Hàng nhẹ phù hợp cho địa chỉ này",
-                "GHN_LIGHT_SERVICE_NOT_FOUND",
-            );
-        }
+    body: {
+      shop_id: GHN_SHOP_ID,
 
-        return {
-            service_id:
-                Number(
-                    lightService.service_id,
-                ),
+      from_district: fromDistrict,
 
-            service_type_id:
-                Number(
-                    lightService.service_type_id,
-                ),
+      to_district: destination,
+    },
+  });
 
-            short_name:
-                lightService.short_name ||
-                "Hàng nhẹ",
-        };
-    };
+  return response.data || [];
+};
 
-const calculateFee =
-    async ({
-        toDistrictId,
-        toWardCode,
-        insuranceValue = 0,
-        codValue = 0,
-    }) => {
-        const districtId =
-            Number(
-                toDistrictId,
-            );
+// ============================================================
+// AUTOMATIC SERVICE
+// ============================================================
 
-        const wardCode =
-            String(
-                toWardCode || "",
-            ).trim();
+const getAutomaticService = async ({ toDistrictId }) => {
+  const services = await getAvailableServices({
+    toDistrictId,
+  });
 
-        if (!districtId) {
-            throw createError(
-                "to_district_id không hợp lệ",
-                "GHN_INVALID_TO_DISTRICT",
-            );
-        }
+  const lightService = services.find(
+    (service) => Number(service?.service_type_id) === LIGHT_SERVICE_TYPE_ID,
+  );
 
-        if (!wardCode) {
-            throw createError(
-                "to_ward_code không hợp lệ",
-                "GHN_INVALID_TO_WARD",
-            );
-        }
+  if (!lightService) {
+    throw createError(
+      "GHN không có dịch vụ Hàng nhẹ phù hợp cho địa chỉ này",
 
-        const packageInfo =
-            getDefaultPackage();
+      "GHN_LIGHT_SERVICE_NOT_FOUND",
+    );
+  }
 
-        const selectedService =
-            await getAutomaticService({
-                toDistrictId:
-                    districtId,
-            });
+  return {
+    service_id: Number(lightService.service_id),
 
-        const response =
-            await requestGhn({
-                path:
-                    "/v2/shipping-order/fee",
+    service_type_id: Number(lightService.service_type_id),
 
-                includeShopId: true,
+    short_name: lightService.short_name || "Hàng nhẹ",
+  };
+};
 
-                body: {
-                    to_district_id:
-                        districtId,
+// ============================================================
+// CALCULATE FEE
+// ============================================================
 
-                    to_ward_code:
-                        wardCode,
+const calculateFee = async ({
+  toDistrictId,
+  toWardCode,
+  insuranceValue = 0,
+  codValue = 0,
+}) => {
+  const districtId = Number(toDistrictId);
 
-                    service_id:
-                        selectedService.service_id,
+  const wardCode = String(toWardCode || "").trim();
 
-                    service_type_id:
-                        selectedService.service_type_id,
+  if (!districtId) {
+    throw createError(
+      "to_district_id không hợp lệ",
 
-                    weight:
-                        packageInfo.weight,
+      "GHN_INVALID_TO_DISTRICT",
+    );
+  }
 
-                    length:
-                        packageInfo.length,
+  if (!wardCode) {
+    throw createError(
+      "to_ward_code không hợp lệ",
 
-                    width:
-                        packageInfo.width,
+      "GHN_INVALID_TO_WARD",
+    );
+  }
 
-                    height:
-                        packageInfo.height,
+  const packageInfo = getDefaultPackage();
 
-                    insurance_value:
-                        Math.max(
-                            Number(
-                                insuranceValue,
-                            ) || 0,
-                            0,
-                        ),
+  const selectedService = await getAutomaticService({
+    toDistrictId: districtId,
+  });
 
-                    cod_value:
-                        Math.max(
-                            Number(
-                                codValue,
-                            ) || 0,
-                            0,
-                        ),
-                },
-            });
+  const safeInsuranceValue = clampMoney(
+    insuranceValue,
 
-        return {
-            ...(response.data || {}),
+    GHN_MAX_INSURANCE_VALUE,
+  );
 
-            selected_service:
-                selectedService,
-        };
-    };
+  const safeCodValue = clampMoney(
+    codValue,
 
-const calculateLeadTime =
-    async ({
-        toDistrictId,
-        toWardCode,
-    }) => {
-        const districtId =
-            Number(
-                toDistrictId,
-            );
+    GHN_MAX_COD_VALUE,
+  );
 
-        const wardCode =
-            String(
-                toWardCode || "",
-            ).trim();
+  const response = await requestGhn({
+    path: "/v2/shipping-order/fee",
 
-        if (!districtId) {
-            throw createError(
-                "to_district_id không hợp lệ",
-                "GHN_INVALID_TO_DISTRICT",
-            );
-        }
+    includeShopId: true,
 
-        if (!wardCode) {
-            throw createError(
-                "to_ward_code không hợp lệ",
-                "GHN_INVALID_TO_WARD",
-            );
-        }
+    body: {
+      to_district_id: districtId,
 
-        const shop =
-            await getCurrentShop();
+      to_ward_code: wardCode,
 
-        const fromDistrictId =
-            Number(
-                shop?.district_id,
-            );
+      service_id: selectedService.service_id,
 
-        const fromWardCode =
-            String(
-                shop?.ward_code || "",
-            ).trim();
+      service_type_id: selectedService.service_type_id,
 
-        if (!fromDistrictId) {
-            throw createError(
-                "Shop GHN chưa có district_id hợp lệ",
-                "GHN_SHOP_DISTRICT_MISSING",
-            );
-        }
+      weight: packageInfo.weight,
 
-        if (!fromWardCode) {
-            throw createError(
-                "Shop GHN chưa có ward_code hợp lệ",
-                "GHN_SHOP_WARD_MISSING",
-            );
-        }
+      length: packageInfo.length,
 
-        const selectedService =
-            await getAutomaticService({
-                toDistrictId:
-                    districtId,
-            });
+      width: packageInfo.width,
 
-        const response =
-            await requestGhn({
-                path:
-                    "/v2/shipping-order/leadtime",
+      height: packageInfo.height,
 
-                includeShopId: true,
+      insurance_value: safeInsuranceValue,
 
-                body: {
-                    from_district_id:
-                        fromDistrictId,
+      cod_value: safeCodValue,
+    },
+  });
 
-                    from_ward_code:
-                        fromWardCode,
+  return {
+    ...(response.data || {}),
 
-                    to_district_id:
-                        districtId,
+    selected_service: selectedService,
 
-                    to_ward_code:
-                        wardCode,
+    insurance_value: safeInsuranceValue,
 
-                    service_id:
-                        selectedService.service_id,
-                },
-            });
+    cod_value: safeCodValue,
+  };
+};
 
-        return {
-            ...(response.data || {}),
+// ============================================================
+// LEAD TIME
+// ============================================================
 
-            selected_service:
-                selectedService,
-        };
-    };
+const calculateLeadTime = async ({ toDistrictId, toWardCode }) => {
+  const districtId = Number(toDistrictId);
+
+  const wardCode = String(toWardCode || "").trim();
+
+  if (!districtId) {
+    throw createError(
+      "to_district_id không hợp lệ",
+
+      "GHN_INVALID_TO_DISTRICT",
+    );
+  }
+
+  if (!wardCode) {
+    throw createError(
+      "to_ward_code không hợp lệ",
+
+      "GHN_INVALID_TO_WARD",
+    );
+  }
+
+  const shop = await getCurrentShop();
+
+  const fromDistrictId = Number(shop?.district_id);
+
+  const fromWardCode = String(shop?.ward_code || "").trim();
+
+  if (!fromDistrictId) {
+    throw createError(
+      "Shop GHN chưa có district_id hợp lệ",
+
+      "GHN_SHOP_DISTRICT_MISSING",
+    );
+  }
+
+  if (!fromWardCode) {
+    throw createError(
+      "Shop GHN chưa có ward_code hợp lệ",
+
+      "GHN_SHOP_WARD_MISSING",
+    );
+  }
+
+  const selectedService = await getAutomaticService({
+    toDistrictId: districtId,
+  });
+
+  const response = await requestGhn({
+    path: "/v2/shipping-order/leadtime",
+
+    includeShopId: true,
+
+    body: {
+      from_district_id: fromDistrictId,
+
+      from_ward_code: fromWardCode,
+
+      to_district_id: districtId,
+
+      to_ward_code: wardCode,
+
+      service_id: selectedService.service_id,
+    },
+  });
+
+  return {
+    ...(response.data || {}),
+
+    selected_service: selectedService,
+  };
+};
+
+// ============================================================
+// FULL SHIPPING QUOTE
+// ============================================================
+
+const getShippingQuote = async ({
+  provinceId,
+  districtId,
+  wardCode,
+  insuranceValue = 0,
+  codValue = 0,
+}) => {
+  const address = await resolveAddress({
+    provinceId,
+    districtId,
+    wardCode,
+  });
+
+  const [feeResult, leadTimeResult] = await Promise.all([
+    calculateFee({
+      toDistrictId: address.district_id,
+
+      toWardCode: address.ward_code,
+
+      insuranceValue,
+
+      codValue,
+    }),
+
+    calculateLeadTime({
+      toDistrictId: address.district_id,
+
+      toWardCode: address.ward_code,
+    }),
+  ]);
+
+  const shippingFee = Number(feeResult?.total || 0);
+
+  if (!Number.isFinite(shippingFee) || shippingFee < 0) {
+    throw createError(
+      "GHN không trả về phí vận chuyển hợp lệ.",
+
+      "GHN_INVALID_FEE",
+    );
+  }
+
+  return {
+    ...address,
+
+    shipping_provider: "ghn",
+
+    shipping_fee: shippingFee,
+
+    shipping_base_fee: shippingFee,
+
+    selected_service: feeResult?.selected_service || null,
+
+    leadtime: leadTimeResult?.leadtime || null,
+
+    lead_time: leadTimeResult?.lead_time || null,
+
+    expected_delivery_time: leadTimeResult?.expected_delivery_time || null,
+
+    fee: feeResult,
+  };
+};
+
+// ============================================================
+// STATUS
+// ============================================================
 
 const getStatus = () => {
-    const packageConfigured =
-        isPositiveNumber(
-            GHN_DEFAULT_WEIGHT,
-        ) &&
-        isPositiveNumber(
-            GHN_DEFAULT_LENGTH,
-        ) &&
-        isPositiveNumber(
-            GHN_DEFAULT_WIDTH,
-        ) &&
-        isPositiveNumber(
-            GHN_DEFAULT_HEIGHT,
-        );
+  const packageConfigured =
+    isPositiveNumber(GHN_DEFAULT_WEIGHT) &&
+    isPositiveNumber(GHN_DEFAULT_LENGTH) &&
+    isPositiveNumber(GHN_DEFAULT_WIDTH) &&
+    isPositiveNumber(GHN_DEFAULT_HEIGHT);
 
-    return {
-        configured:
-            Boolean(
-                GHN_TOKEN &&
-                GHN_SHOP_ID,
-            ),
+  return {
+    configured: Boolean(GHN_TOKEN && GHN_SHOP_ID),
 
-        environment:
-            GHN_ENV,
+    environment: GHN_ENV,
 
-        base_url:
-            GHN_BASE_URL,
+    base_url: GHN_BASE_URL,
 
-        shop_id:
-            GHN_SHOP_ID,
+    shop_id: GHN_SHOP_ID,
 
-        package_configured:
-            packageConfigured,
+    package_configured: packageConfigured,
 
-        automatic_service_type:
-            LIGHT_SERVICE_TYPE_ID,
-    };
+    automatic_service_type: LIGHT_SERVICE_TYPE_ID,
+
+    max_insurance_value: GHN_MAX_INSURANCE_VALUE,
+
+    max_cod_value: GHN_MAX_COD_VALUE,
+  };
 };
 
 module.exports = {
-    getStatus,
-    getProvinces,
-    getDistricts,
-    getWards,
-    getShops,
-    getCurrentShop,
-    getAvailableServices,
-    getAutomaticService,
-    calculateFee,
-    calculateLeadTime,
-    getDefaultPackage,
+  getStatus,
+
+  getProvinces,
+
+  getDistricts,
+
+  getWards,
+
+  resolveAddress,
+
+  getShops,
+
+  getCurrentShop,
+
+  getAvailableServices,
+
+  getAutomaticService,
+
+  calculateFee,
+
+  calculateLeadTime,
+
+  getShippingQuote,
+
+  getDefaultPackage,
 };

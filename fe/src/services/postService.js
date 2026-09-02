@@ -1,23 +1,131 @@
 import api from "./api";
 
-/* ================= CLIENT ================= */
+/* ============================================================
+   CLIENT POST
+============================================================ */
 
-export const getBlogs = (params) => {
-  return api.get("/client/posts", { params });
+const CLIENT_API = "/client/posts";
+
+// ============================================================
+// CLIENT - LIST
+// ============================================================
+
+export const getBlogs = (params = {}) => {
+  return api.get(CLIENT_API, {
+    params,
+  });
 };
+
+// ============================================================
+// CLIENT - CATEGORIES
+// ============================================================
+
+export const getBlogCategories = () => {
+  return api.get(`${CLIENT_API}/categories`);
+};
+
+// ============================================================
+// CLIENT - DETAIL BY ID
+// ============================================================
 
 export const getBlogById = (id) => {
-  return api.get(`/client/posts/${id}`);
+  return api.get(`${CLIENT_API}/${id}`);
 };
 
-/* ================= ADMIN ================= */
+// ============================================================
+// CLIENT - DETAIL BY SLUG
+// ============================================================
+
+export const getBlogBySlug = (slug) => {
+  return api.get(`${CLIENT_API}/slug/${encodeURIComponent(slug)}`);
+};
+
+/* ============================================================
+   ADMIN POST
+============================================================ */
 
 const ADMIN_API = "/admin/posts";
 
 const postService = {
-  getPosts: (params) => api.get(ADMIN_API, { params }),
+  // ============================================================
+  // LIST
+  // ============================================================
 
-  getPost: (id) => api.get(`${ADMIN_API}/${id}`),
+  getPosts: (params = {}) => {
+    return api.get(ADMIN_API, {
+      params,
+    });
+  },
+
+  // ============================================================
+  // DETAIL
+  // ============================================================
+
+  getPost: (id) => {
+    return api.get(`${ADMIN_API}/${id}`);
+  },
+
+  // ============================================================
+  // CREATE
+  // ============================================================
+
+  createPost: (data) => {
+    return api.post(ADMIN_API, data);
+  },
+
+  // ============================================================
+  // UPDATE
+  // ============================================================
+
+  updatePost: (id, data) => {
+    return api.patch(`${ADMIN_API}/${id}`, data);
+  },
+
+  // ============================================================
+  // DELETE
+  // ============================================================
+
+  deletePost: (id) => {
+    return api.delete(`${ADMIN_API}/${id}`);
+  },
+
+  // ============================================================
+  // TRASH
+  // ============================================================
+
+  getTrash: (params = {}) => {
+    return api.get(`${ADMIN_API}/trash`, {
+      params,
+    });
+  },
+
+  // ============================================================
+  // RESTORE
+  // ============================================================
+
+  restorePost: (id) => {
+    return api.patch(`${ADMIN_API}/${id}/restore`);
+  },
+
+  // ============================================================
+  // TOGGLE STATUS
+  // ============================================================
+
+  toggleStatus: (id) => {
+    return api.patch(`${ADMIN_API}/${id}/toggle-status`);
+  },
+
+  // ============================================================
+  // TOGGLE FEATURED
+  // ============================================================
+
+  toggleFeatured: (id) => {
+    return api.patch(`${ADMIN_API}/${id}/toggle-featured`);
+  },
+
+  // ============================================================
+  // UPLOAD THUMBNAIL
+  // ============================================================
 
   uploadThumbnail: (file) => {
     const formData = new FormData();
@@ -31,11 +139,21 @@ const postService = {
     });
   },
 
-  createPost: (data) => api.post(ADMIN_API, data),
+  // ============================================================
+  // CKEDITOR IMAGE
+  // ============================================================
 
-  updatePost: (id, data) => api.patch(`${ADMIN_API}/${id}`, data),
+  uploadContentImage: (file) => {
+    const formData = new FormData();
 
-  deletePost: (id) => api.delete(`${ADMIN_API}/${id}`),
+    formData.append("image", file);
+
+    return api.post(`${ADMIN_API}/upload-image`, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
+  },
 };
 
 export default postService;

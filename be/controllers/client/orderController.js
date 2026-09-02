@@ -74,7 +74,7 @@ const normalizePaymentMethod = (value) => {
 
 const validateOrderData = (data) => {
   if (!data.user_id) {
-    return "Thiếu user_id";
+    return "Người dùng không hợp lệ";
   }
 
   if (!data.shipping_name) {
@@ -105,7 +105,7 @@ const validateOrderData = (data) => {
     return "Vui lòng nhập địa chỉ nhận hàng";
   }
 
-  if (!data.province_code) {
+  if (!data.shipping_ghn_province_id) {
     return "Vui lòng chọn tỉnh / thành phố nhận hàng";
   }
 
@@ -231,6 +231,9 @@ exports.createOrder = async (req, res, next) => {
 
   try {
     const data = {
+      /*
+       * Không tin user_id từ FE.
+       */
       user_id: req.auth?.userId,
 
       shipping_name: emptyToNull(req.body.shipping_name),
@@ -241,7 +244,10 @@ exports.createOrder = async (req, res, next) => {
 
       shipping_address: emptyToNull(req.body.shipping_address),
 
-      province_code: normalizeProvinceCode(req.body.province_code),
+      shipping_ghn_province_id: normalizePositiveInt(
+        req.body.shipping_ghn_province_id,
+        null,
+      ),
 
       shipping_district_id: normalizePositiveInt(
         req.body.shipping_district_id,
@@ -272,7 +278,15 @@ exports.createOrder = async (req, res, next) => {
     }
 
     // ========================================================
-    // CREATE
+    // CREATE FROM CART
+    //
+    // Backend tự:
+    // - lấy cart
+    // - resolve giá
+    // - stock
+    // - coupon
+    // - GHN
+    // - total
     // ========================================================
 
     createdOrder = await Order.createFromCart(data);
@@ -554,12 +568,26 @@ exports.getOrderById = async (req, res, next) => {
       });
     }
 
+    /*
+     * Bank info được lấy từ Backend,
+     * không hard-code FE.
+     */
+    let bankInfo = null;
+
+    if (order.payment_method === "bank") {
+      bankInfo = await getBankInfo(order.id);
+    }
+
     return res.json({
       success: true,
 
       message: "Lấy chi tiết đơn hàng thành công",
 
-      data: order,
+      data: {
+        ...order,
+
+        bank_info: bankInfo,
+      },
     });
   } catch (error) {
     return next(error);
@@ -739,7 +767,10 @@ exports.createReorderCheckout = async (req, res, next) => {
 
       shipping_address: emptyToNull(req.body.shipping_address),
 
-      province_code: normalizeProvinceCode(req.body.province_code),
+      shipping_ghn_province_id: normalizePositiveInt(
+        req.body.shipping_ghn_province_id,
+        null,
+      ),
 
       shipping_district_id: normalizePositiveInt(
         req.body.shipping_district_id,

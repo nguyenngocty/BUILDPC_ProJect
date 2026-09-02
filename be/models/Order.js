@@ -953,7 +953,7 @@ const resolveCouponForCheckout = async (
 const resolveShippingForCheckout = async (
   connection,
   {
-    provinceCode,
+    ghnProvinceId,
 
     districtId,
 
@@ -966,7 +966,7 @@ const resolveShippingForCheckout = async (
     paymentMethod = "cod",
   },
 ) => {
-  const normalizedProvinceCode = normalizeProvinceCode(provinceCode);
+  const normalizedProvinceId = normalizeNullableInt(ghnProvinceId);
 
   const normalizedDistrictId = normalizeNullableInt(districtId);
 
@@ -978,7 +978,7 @@ const resolveShippingForCheckout = async (
 
   const normalizedPaymentMethod = normalizePaymentMethod(paymentMethod);
 
-  if (!normalizedProvinceCode) {
+  if (!normalizedProvinceId) {
     throw new Error("Vui lòng chọn tỉnh / thành phố nhận hàng.");
   }
 
@@ -995,91 +995,7 @@ const resolveShippingForCheckout = async (
   }
 
   // ========================================================
-  // WEBSITE SHIPPING REGION
-  // ========================================================
-
-  const rows = await runQuery(
-    connection,
-    `
-          SELECT
-            id,
-
-            province_code,
-            province_name,
-
-            ghn_province_id,
-
-            shipping_fee,
-            free_shipping_min,
-
-            status
-
-          FROM shipping_rates
-
-          WHERE
-            province_code = ?
-            AND status = 1
-            AND deleted_at IS NULL
-
-          LIMIT 1
-
-          FOR UPDATE
-        `,
-    [normalizedProvinceCode],
-  );
-
-  const shippingRate = rows[0];
-
-  if (!shippingRate) {
-    throw new Error("Khu vực này hiện chưa được hỗ trợ vận chuyển.");
-  }
-
-  const ghnProvinceId = normalizeNullableInt(shippingRate.ghn_province_id);
-
-  if (!ghnProvinceId) {
-    throw new Error(
-      `Khu vực "${shippingRate.province_name}" chưa được ánh xạ với GHN.`,
-    );
-  }
-
-  // ========================================================
-  // DISTRICT
-  // ========================================================
-
-  const districts = await ghnService.getDistricts(ghnProvinceId);
-
-  const district = (Array.isArray(districts) ? districts : []).find(
-    (item) => Number(item?.DistrictID) === Number(normalizedDistrictId),
-  );
-
-  if (!district) {
-    throw new Error("Quận / huyện không thuộc tỉnh / thành phố đã chọn.");
-  }
-
-  if (!isGhnItemActive(district)) {
-    throw new Error("Quận / huyện này hiện không được GHN hỗ trợ giao hàng.");
-  }
-
-  // ========================================================
-  // WARD
-  // ========================================================
-
-  const wards = await ghnService.getWards(normalizedDistrictId);
-
-  const ward = (Array.isArray(wards) ? wards : []).find(
-    (item) => String(item?.WardCode || "").trim() === normalizedWardCode,
-  );
-
-  if (!ward) {
-    throw new Error("Phường / xã không thuộc quận / huyện đã chọn.");
-  }
-
-  if (!isGhnItemActive(ward)) {
-    throw new Error("Phường / xã này hiện không được GHN hỗ trợ giao hàng.");
-  }
-
-  // ========================================================
-  // COD VALUE
+  // GIÁ TRỊ HÀNG
   // ========================================================
 
   const merchandiseAmount = Math.max(
@@ -1090,102 +1006,76 @@ const resolveShippingForCheckout = async (
   const codValue = normalizedPaymentMethod === "cod" ? merchandiseAmount : 0;
 
   // ========================================================
-  // GHN FEE
+  // GHN LÀ NGUỒN SỰ THẬT
+  //
+  // Không còn shipping_rates.
   // ========================================================
 
-  const feeResult = await ghnService.calculateFee({
-    toDistrictId: normalizedDistrictId,
+  const quote = await ghnService.getShippingQuote({
+    provinceId: normalizedProvinceId,
 
-    toWardCode: normalizedWardCode,
+    districtId: normalizedDistrictId,
 
-    insuranceValue: 0,
+    wardCode: normalizedWardCode,
+
+    insuranceValue: merchandiseAmount,
 
     codValue,
   });
 
-  const ghnBaseFee = normalizeMoney(feeResult?.total);
+  const shippingFee = normalizeMoney(quote.shipping_fee);
 
-  if (ghnBaseFee <= 0) {
-    throw new Error("GHN không trả về phí vận chuyển hợp lệ.");
-  }
-
-  const selectedService = feeResult?.selected_service;
+  const selectedService = quote.selected_service;
 
   if (!selectedService || !Number(selectedService.service_id)) {
     throw new Error("Không xác định được dịch vụ vận chuyển GHN.");
   }
 
-  // ========================================================
-  // FREE SHIPPING
-  // ========================================================
-
-  const freeShippingMin =
-    shippingRate.free_shipping_min === null ||
-    shippingRate.free_shipping_min === undefined
-      ? null
-      : normalizeMoney(shippingRate.free_shipping_min);
-
-  const isFreeShipping =
-    freeShippingMin !== null && normalizedSubtotal >= freeShippingMin;
-
-  const shippingFee = isFreeShipping ? 0 : ghnBaseFee;
-
-  // ========================================================
-  // LEAD TIME
-  // ========================================================
-
   let estimatedDelivery = null;
 
   try {
-    const leadTimeResult = await ghnService.calculateLeadTime({
-      toDistrictId: normalizedDistrictId,
-
-      toWardCode: normalizedWardCode,
-    });
-
-    estimatedDelivery = normalizeGhnEstimatedDelivery(leadTimeResult?.leadtime);
-  } catch (error) {
-    console.warn(
-      "[ORDER][GHN] Không lấy được thời gian giao dự kiến:",
-      error?.message || error,
+    estimatedDelivery = normalizeGhnEstimatedDelivery(
+      quote.leadtime || quote.lead_time || quote.expected_delivery_time,
     );
+  } catch {
+    estimatedDelivery = null;
   }
 
   return {
-    shipping_rate_id: Number(shippingRate.id),
+    /*
+     * Không còn ShippingRate Admin.
+     */
+    shipping_rate_id: null,
 
     shipping_provider: "ghn",
 
-    shipping_ghn_province_id: Number(ghnProvinceId),
+    shipping_ghn_province_id: Number(quote.province_id),
 
-    shipping_province_code: shippingRate.province_code,
+    shipping_province_code: String(
+      quote.province_code || quote.province_id || "",
+    ),
 
-    shipping_province_name: shippingRate.province_name,
+    shipping_province_name: String(quote.province_name || ""),
 
-    shipping_district_id: Number(district.DistrictID),
+    shipping_district_id: Number(quote.district_id),
 
-    shipping_district_name: String(district.DistrictName || "").trim(),
+    shipping_district_name: String(quote.district_name || ""),
 
-    shipping_ward_code: String(ward.WardCode || "").trim(),
+    shipping_ward_code: String(quote.ward_code || ""),
 
-    shipping_ward_name: String(ward.WardName || "").trim(),
+    shipping_ward_name: String(quote.ward_name || ""),
 
     shipping_service_id: Number(selectedService.service_id),
 
-    shipping_service_type_id: Number(selectedService.service_type_id),
+    shipping_service_type_id: Number(selectedService.service_type_id || 0),
 
-    shipping_base_fee: ghnBaseFee,
+    shipping_base_fee: shippingFee,
 
     shipping_fee: shippingFee,
-
-    free_shipping_min: freeShippingMin,
-
-    is_free_shipping: isFreeShipping,
 
     shipping_estimated_delivery: estimatedDelivery,
   };
 };
-
 // ============================================================
 // DECREASE STOCK
 // ============================================================
@@ -2301,8 +2191,8 @@ const Order = {
       throw new Error("Người dùng không hợp lệ");
     }
 
-    const provinceCode = normalizeProvinceCode(
-      data.province_code || data.shipping_province_code,
+    const shippingGhnProvinceId = normalizeNullableInt(
+      data.shipping_ghn_province_id,
     );
 
     const shippingDistrictId = normalizeNullableInt(data.shipping_district_id);
@@ -2311,7 +2201,7 @@ const Order = {
 
     const couponCode = normalizeCouponCode(data.coupon_code);
 
-    if (!provinceCode) {
+    if (!shippingGhnProvinceId) {
       throw new Error("Vui lòng chọn tỉnh / thành phố nhận hàng.");
     }
 
@@ -2434,7 +2324,7 @@ const Order = {
       // ======================================================
 
       const shippingResult = await resolveShippingForCheckout(connection, {
-        provinceCode,
+        ghnProvinceId: shippingGhnProvinceId,
 
         districtId: shippingDistrictId,
 
@@ -4017,8 +3907,8 @@ const Order = {
 
     const sourceOrderId = normalizeInt(data.source_order_id);
 
-    const provinceCode = normalizeProvinceCode(
-      data.province_code || data.shipping_province_code,
+    const shippingGhnProvinceId = normalizeNullableInt(
+      data.shipping_ghn_province_id,
     );
 
     const shippingDistrictId = normalizeNullableInt(data.shipping_district_id);
@@ -4026,23 +3916,6 @@ const Order = {
     const shippingWardCode = normalizeWardCode(data.shipping_ward_code);
 
     const couponCode = normalizeCouponCode(data.coupon_code);
-
-    if (userId < 1 || sourceOrderId < 1) {
-      throw new Error("Thông tin mua lại không hợp lệ");
-    }
-
-    if (!provinceCode) {
-      throw new Error("Vui lòng chọn tỉnh / thành phố nhận hàng.");
-    }
-
-    if (!shippingDistrictId) {
-      throw new Error("Vui lòng chọn quận / huyện nhận hàng.");
-    }
-
-    if (!shippingWardCode) {
-      throw new Error("Vui lòng chọn phường / xã nhận hàng.");
-    }
-
     const preview = await this.getReorderCheckoutPreview({
       userId,
 
@@ -4128,7 +4001,7 @@ const Order = {
       const discountAmount = Number(couponResult.discount_amount || 0);
 
       const shippingResult = await resolveShippingForCheckout(connection, {
-        provinceCode,
+        ghnProvinceId: shippingGhnProvinceId,
 
         districtId: shippingDistrictId,
 

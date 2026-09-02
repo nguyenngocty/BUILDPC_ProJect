@@ -13,11 +13,6 @@ const menuItems = [
     icon: "bi-cart3",
   },
   {
-    label: "Quản lý vận chuyển",
-    to: "/admin/shipping",
-    icon: "bi-truck",
-  },
-  {
     label: "Banner / Slider",
     to: "/admin/banners",
     icon: "bi-images",

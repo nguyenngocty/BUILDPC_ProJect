@@ -1,23 +1,37 @@
 import { Route, Routes } from "react-router-dom";
 
 import ProtectedAdminRoute from "./ProtectedAdminRoute";
-import AdminLayout from "../views/Admin/layouts/AdminLayout";
-import AdminDashboard from "../views/Admin/pages/Dashboard/AdminDashboard";
-import ProductManagement from "../views/Admin/pages/Products/ProductManagement";
-import UserManagement from "../views/Admin/pages/Users/UserManagement";
-import PostManagement from "../views/Admin/pages/Post/PostManagement";
-import PostForm from "../views/Admin/pages/Post/PostForm";
-import BannerManagement from "../views/Admin/pages/Banners/BannerManagement";
-import OrderManagement from "../views/Admin/pages/Orders/OrderManagement";
-import PCBuilderAdmin from "../views/Admin/pages/Builds/PCBuilderAdmin";
-import CategoryManagement from "../views/Admin/pages/Categories/CategoryManagement";
-import Comments from "../views/Admin/pages/Comments/Comments";
-import CouponManagement from "../views/Admin/pages/Coupons/CouponManagement";
-import PcPartManagement from "../views/Admin/pages/PcParts/PcPartManagement";
-import ShippingManagement from "../views/Admin/pages/Shipping/ShippingManagement";
 
-// Hai trang tài khoản quản trị
+import AdminLayout from "../views/Admin/layouts/AdminLayout";
+
+import AdminDashboard from "../views/Admin/pages/Dashboard/AdminDashboard";
+
+import ProductManagement from "../views/Admin/pages/Products/ProductManagement";
+
+import UserManagement from "../views/Admin/pages/Users/UserManagement";
+
+import PostManagement from "../views/Admin/pages/Post/PostManagement";
+
+import PostForm from "../views/Admin/pages/Post/PostForm";
+
+import PostCategoryManagement from "../views/Admin/pages/Post/PostCategoryManagement";
+
+import BannerManagement from "../views/Admin/pages/Banners/BannerManagement";
+
+import OrderManagement from "../views/Admin/pages/Orders/OrderManagement";
+
+import PCBuilderAdmin from "../views/Admin/pages/Builds/PCBuilderAdmin";
+
+import CategoryManagement from "../views/Admin/pages/Categories/CategoryManagement";
+
+import Comments from "../views/Admin/pages/Comments/Comments";
+
+import CouponManagement from "../views/Admin/pages/Coupons/CouponManagement";
+
+import PcPartManagement from "../views/Admin/pages/PcParts/PcPartManagement";
+
 import AdminProfile from "../views/Admin/pages/Profile/AdminProfile";
+
 import AdminChangePassword from "../views/Admin/pages/Profile/AdminChangePassword";
 
 function AdminRoutes() {
@@ -25,40 +39,62 @@ function AdminRoutes() {
     <Routes>
       <Route element={<ProtectedAdminRoute />}>
         <Route element={<AdminLayout />}>
+          {/* DASHBOARD */}
+
           <Route index element={<AdminDashboard />} />
+
+          {/* PRODUCT CATEGORY */}
 
           <Route path="categories" element={<CategoryManagement />} />
 
+          {/* PRODUCTS */}
+
           <Route path="products" element={<ProductManagement />} />
+
+          {/* USERS */}
 
           <Route path="users" element={<UserManagement />} />
 
-          <Route path="posts" element={<PostManagement />} />
+          {/* =================================================
+              POSTS
+          ================================================= */}
 
-          <Route path="builds" element={<PCBuilderAdmin />} />
+          <Route path="posts" element={<PostManagement />} />
 
           <Route path="posts/create" element={<PostForm />} />
 
           <Route path="posts/edit/:id" element={<PostForm isEdit />} />
 
+          <Route path="post-categories" element={<PostCategoryManagement />} />
+
+          {/* BUILD PC */}
+
+          <Route path="builds" element={<PCBuilderAdmin />} />
+
+          {/* BANNERS */}
+
           <Route path="banners" element={<BannerManagement />} />
+
+          {/* ORDERS */}
 
           <Route path="orders" element={<OrderManagement />} />
 
+          {/* COMMENTS */}
+
           <Route path="comments" element={<Comments />} />
 
-          {/* /admin/coupons */}
+          {/* COUPONS */}
+
           <Route path="coupons" element={<CouponManagement />} />
-          {/* /admin/pc-parts */}
+
+          {/* PC PARTS */}
+
           <Route path="pc-parts" element={<PcPartManagement />} />
-          {/* /admin/shipping */}
-          <Route path="shipping" element={<ShippingManagement />} />
 
+          {/* PROFILE */}
 
-          {/* Thông tin tài khoản quản trị */}
           <Route path="profile" element={<AdminProfile />} />
 
-          {/* Đổi mật khẩu quản trị */}
           <Route path="change-password" element={<AdminChangePassword />} />
         </Route>
       </Route>

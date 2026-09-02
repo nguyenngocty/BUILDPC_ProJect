@@ -30,7 +30,7 @@ function CategorySidebar({
             >
               <span>{item}</span>
 
-              {item !== "Tất cả" && <small>{counts[item] || 0}</small>}
+              <small>{Number(counts[item] || 0)}</small>
             </button>
           </li>
         ))}

@@ -11,53 +11,95 @@ import ClassicEditor from "@ckeditor/ckeditor5-build-classic";
 import "./PostForm.css";
 
 import postService from "../../../../services/postService";
-import categoryService from "../../../../services/categoryService";
-import api from "../../../../services/api";
+import postCategoryService from "../../../../services/postCategoryService";
+
+// ============================================================
+// IMAGE
+// ============================================================
+
+const IMAGE_BASE_URL =
+  process.env.REACT_APP_API_URL?.replace(/\/api\/?$/, "") ||
+  "http://localhost:5000";
+
+function getImageUrl(image) {
+  if (!image) {
+    return "";
+  }
+
+  if (
+    image.startsWith("http://") ||
+    image.startsWith("https://") ||
+    image.startsWith("blob:") ||
+    image.startsWith("data:")
+  ) {
+    return image;
+  }
+
+  return `${IMAGE_BASE_URL}${image.startsWith("/") ? image : `/${image}`}`;
+}
+
+// ============================================================
+// SLUG
+// ============================================================
+
+function createSlug(value = "") {
+  return String(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+// ============================================================
+// CKEDITOR UPLOAD
+// ============================================================
 
 class MyUploadAdapter {
   constructor(loader) {
     this.loader = loader;
+
+    this.controller = new AbortController();
   }
 
   upload() {
-    return this.loader.file.then(
-      (file) =>
-        new Promise((resolve, reject) => {
-          const formData = new FormData();
+    return this.loader.file.then(async (file) => {
+      try {
+        const response = await postService.uploadContentImage(file);
 
-          formData.append("image", file);
+        const data = response?.data;
 
-          api
-            .post("/admin/posts/upload-image", formData, {
-              headers: {
-                "Content-Type": "multipart/form-data",
-              },
-            })
-            .then((response) => {
-              const data = response.data;
+        if (!data?.success || !(data.location || data.url)) {
+          throw new Error(data?.message || "Upload ảnh thất bại.");
+        }
 
-              if (data.success) {
-                resolve({
-                  default: data.location,
-                });
-
-                return;
-              }
-
-              reject(data.message);
-            })
-            .catch((error) => reject(error));
-        }),
-    );
+        return {
+          default: data.location || data.url,
+        };
+      } catch (error) {
+        throw error;
+      }
+    });
   }
 
-  abort() {}
+  abort() {
+    this.controller.abort();
+  }
 }
 
 function MyCustomUploadAdapterPlugin(editor) {
   editor.plugins.get("FileRepository").createUploadAdapter = (loader) =>
     new MyUploadAdapter(loader);
 }
+
+// ============================================================
+// COMPONENT
+// ============================================================
 
 function PostForm({ isEdit = false }) {
   const navigate = useNavigate();
@@ -66,7 +108,11 @@ function PostForm({ isEdit = false }) {
 
   const tagInputRef = useRef(null);
 
+  const previewObjectUrlRef = useRef(null);
+
   const [loading, setLoading] = useState(false);
+
+  const [initialLoading, setInitialLoading] = useState(Boolean(isEdit));
 
   const [preview, setPreview] = useState("");
 
@@ -74,117 +120,146 @@ function PostForm({ isEdit = false }) {
 
   const [categories, setCategories] = useState([]);
 
-  const [users, setUsers] = useState([]);
+  const [authorName, setAuthorName] = useState("");
 
   const [tagInput, setTagInput] = useState("");
 
   const [errors, setErrors] = useState({});
 
+  const [slugTouched, setSlugTouched] = useState(Boolean(isEdit));
+
   const [formData, setFormData] = useState({
-    user_id: "",
-    category_id: "",
+    post_category_id: "",
+
     title: "",
     slug: "",
+
     thumbnail: "",
     content: "",
     excerpt: "",
+
     meta_title: "",
     meta_description: "",
     meta_keywords: "",
+
     tags: [],
+
     is_featured: 0,
     status: 1,
   });
 
-  // =====================================================
-  // LOAD FORM DATA
-  // =====================================================
+  // ============================================================
+  // CLEAN OBJECT URL
+  // ============================================================
 
   useEffect(() => {
-    const fetchData = async () => {
+    return () => {
+      if (previewObjectUrlRef.current) {
+        URL.revokeObjectURL(previewObjectUrlRef.current);
+      }
+    };
+  }, []);
+
+  // ============================================================
+  // LOAD CATEGORIES
+  // ============================================================
+
+  useEffect(() => {
+    const fetchCategories = async () => {
       try {
-        const [catRes, userRes] = await Promise.all([
-          categoryService.getCategories({
-            status: 1,
-          }),
+        const response = await postCategoryService.getActiveCategories();
 
-          api.get("/admin/users"),
-        ]);
-
-        setCategories(catRes.data || []);
-
-        const nextUsers = userRes?.data?.data?.users || [];
-
-        setUsers(nextUsers);
-
-        if (!isEdit && nextUsers.length > 0) {
-          setFormData((previous) => ({
-            ...previous,
-            user_id: nextUsers[0].id,
-          }));
-        }
+        setCategories(response?.data?.data || []);
       } catch (error) {
-        console.error("Lỗi tải dữ liệu:", error);
+        console.error("Lỗi tải danh mục bài viết:", error);
+
+        toast.error("Không tải được danh mục bài viết.");
       }
     };
 
-    fetchData();
-  }, [isEdit]);
+    fetchCategories();
+  }, []);
 
-  // =====================================================
-  // LOAD POST EDIT
-  // =====================================================
+  // ============================================================
+  // LOAD POST
+  // ============================================================
 
   useEffect(() => {
-    if (isEdit && id) {
-      fetchPost();
+    if (!isEdit || !id) {
+      setInitialLoading(false);
+
+      return;
     }
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const fetchPost = async () => {
+      try {
+        setInitialLoading(true);
+
+        const response = await postService.getPost(id);
+
+        const post = response?.data?.data;
+
+        if (!post) {
+          throw new Error("Không tìm thấy dữ liệu bài viết.");
+        }
+
+        const tagsArray = post.tags
+          ? String(post.tags)
+              .split(",")
+              .map((tag) => tag.trim())
+              .filter(Boolean)
+          : [];
+
+        setFormData({
+          post_category_id: post.post_category_id ?? post.category_id ?? "",
+
+          title: post.title || "",
+
+          slug: post.slug || "",
+
+          thumbnail: post.thumbnail || "",
+
+          content: post.content || "",
+
+          excerpt: post.excerpt || "",
+
+          meta_title: post.meta_title || "",
+
+          meta_description: post.meta_description || "",
+
+          meta_keywords: post.meta_keywords || "",
+
+          tags: tagsArray,
+
+          is_featured: Number(post.is_featured || 0),
+
+          status: Number(post.status ?? 1),
+        });
+
+        setSlugTouched(true);
+
+        setAuthorName(post.author || post.author_name || "");
+
+        if (post.thumbnail) {
+          setPreview(getImageUrl(post.thumbnail));
+        }
+      } catch (error) {
+        console.error(error);
+
+        toast.error(
+          error?.response?.data?.message || "Không lấy được dữ liệu bài viết.",
+        );
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+
+    fetchPost();
   }, [id, isEdit]);
 
-  const fetchPost = async () => {
-    try {
-      const res = await postService.getPost(id);
-
-      const post = res.data.data;
-
-      const tagsArray = post.tags
-        ? post.tags
-            .split(",")
-            .map((tag) => tag.trim())
-            .filter(Boolean)
-        : [];
-
-      setFormData({
-        user_id: post.user_id,
-        category_id: post.category_id,
-        title: post.title || "",
-        slug: post.slug || "",
-        thumbnail: post.thumbnail || "",
-        content: post.content || "",
-        excerpt: post.excerpt || "",
-        meta_title: post.meta_title || "",
-        meta_description: post.meta_description || "",
-        meta_keywords: post.meta_keywords || "",
-        tags: tagsArray,
-        is_featured: Number(post.is_featured || 0),
-        status: Number(post.status ?? 1),
-      });
-
-      if (post.thumbnail) {
-        setPreview(`http://localhost:5000${post.thumbnail}`);
-      }
-    } catch (error) {
-      console.error(error);
-
-      toast.error("Không lấy được dữ liệu bài viết.");
-    }
-  };
-
-  // =====================================================
+  // ============================================================
   // VALIDATE
-  // =====================================================
+  // ============================================================
 
   const validateForm = () => {
     const newErrors = {};
@@ -197,12 +272,8 @@ function PostForm({ isEdit = false }) {
       newErrors.content = "Vui lòng nhập nội dung bài viết.";
     }
 
-    if (!formData.category_id) {
-      newErrors.category_id = "Vui lòng chọn danh mục.";
-    }
-
-    if (!formData.user_id) {
-      newErrors.user_id = "Vui lòng chọn tác giả.";
+    if (!formData.post_category_id) {
+      newErrors.post_category_id = "Vui lòng chọn danh mục bài viết.";
     }
 
     setErrors(newErrors);
@@ -210,14 +281,14 @@ function PostForm({ isEdit = false }) {
     return Object.keys(newErrors).length === 0;
   };
 
-  // =====================================================
-  // INPUT CHANGE
-  // =====================================================
+  // ============================================================
+  // INPUT
+  // ============================================================
 
   const handleChange = (event) => {
     const { name, value, type, checked } = event.target;
 
-    const nextValue = type === "checkbox" ? (checked ? 1 : 0) : value;
+    let nextValue = type === "checkbox" ? (checked ? 1 : 0) : value;
 
     if (errors[name]) {
       setErrors((previous) => ({
@@ -226,89 +297,124 @@ function PostForm({ isEdit = false }) {
       }));
     }
 
-    if (name === "title" && !formData.slug) {
-      const generatedSlug = value
-        .toLowerCase()
-        .trim()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/đ/g, "d")
-        .replace(/Đ/g, "D")
-        .replace(/[^a-z0-9\s-]/g, "")
-        .replace(/\s+/g, "-")
-        .replace(/-+/g, "-");
+    if (name === "slug") {
+      setSlugTouched(Boolean(value.trim()));
 
       setFormData((previous) => ({
         ...previous,
-        title: value,
-        slug: generatedSlug,
+        slug: createSlug(value),
       }));
 
       return;
     }
 
-    const numericFields = ["category_id", "status", "is_featured", "user_id"];
+    if (name === "title") {
+      setFormData((previous) => ({
+        ...previous,
+
+        title: value,
+
+        slug: slugTouched ? previous.slug : createSlug(value),
+      }));
+
+      return;
+    }
+
+    const numericFields = ["post_category_id", "status", "is_featured"];
+
+    if (numericFields.includes(name)) {
+      nextValue = value === "" ? "" : Number(nextValue);
+    }
 
     setFormData((previous) => ({
       ...previous,
-
-      [name]: numericFields.includes(name) ? Number(nextValue) : nextValue,
+      [name]: nextValue,
     }));
   };
 
-  // =====================================================
+  // ============================================================
   // THUMBNAIL
-  // =====================================================
+  // ============================================================
 
   const handleThumbnail = async (event) => {
     const file = event.target.files?.[0];
 
-    if (!file) return;
+    if (!file) {
+      return;
+    }
 
     const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
 
     if (!allowedTypes.includes(file.type)) {
       toast.error("Chỉ hỗ trợ JPG, PNG và WEBP.");
 
+      event.target.value = "";
+
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Ảnh không được vượt quá 5MB.");
+    /*
+     * Đồng bộ với BE uploadPost:
+     * max 2MB
+     */
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Ảnh không được vượt quá 2MB.");
+
+      event.target.value = "";
 
       return;
     }
 
     setThumbnailFile(file);
 
-    setPreview(URL.createObjectURL(file));
+    if (previewObjectUrlRef.current) {
+      URL.revokeObjectURL(previewObjectUrlRef.current);
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+
+    previewObjectUrlRef.current = objectUrl;
+
+    setPreview(objectUrl);
 
     try {
-      const res = await postService.uploadThumbnail(file);
+      const response = await postService.uploadThumbnail(file);
+
+      const thumbnail = response?.data?.thumbnail || response?.data?.url;
+
+      if (!thumbnail) {
+        throw new Error("Server không trả về đường dẫn ảnh.");
+      }
 
       setFormData((previous) => ({
         ...previous,
-        thumbnail: res.data.thumbnail,
+        thumbnail,
       }));
 
       toast.success("Upload ảnh thành công.");
     } catch (error) {
       console.error(error);
 
-      toast.error("Upload ảnh thất bại.");
+      toast.error(error?.response?.data?.message || "Upload ảnh thất bại.");
     }
   };
 
-  // =====================================================
-  // TAGS
-  // =====================================================
+  // ============================================================
+  // TAG
+  // ============================================================
 
   const addTag = () => {
     const tag = tagInput.trim();
 
-    if (!tag) return;
+    if (!tag) {
+      return;
+    }
 
-    if (formData.tags.includes(tag)) {
+    const existed = formData.tags.some(
+      (item) => item.toLowerCase() === tag.toLowerCase(),
+    );
+
+    if (existed) {
       toast.error("Tag đã tồn tại.");
 
       return;
@@ -316,7 +422,6 @@ function PostForm({ isEdit = false }) {
 
     setFormData((previous) => ({
       ...previous,
-
       tags: [...previous.tags, tag],
     }));
 
@@ -341,9 +446,9 @@ function PostForm({ isEdit = false }) {
     }
   };
 
-  // =====================================================
+  // ============================================================
   // SUBMIT
-  // =====================================================
+  // ============================================================
 
   const handleSubmit = async () => {
     if (!validateForm()) {
@@ -355,23 +460,35 @@ function PostForm({ isEdit = false }) {
     try {
       setLoading(true);
 
-      const slug =
-        formData.slug ||
-        formData.title
-          .toLowerCase()
-          .trim()
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .replace(/đ/g, "d")
-          .replace(/[^a-z0-9\s-]/g, "")
-          .replace(/\s+/g, "-")
-          .replace(/-+/g, "-");
-
       const data = {
-        ...formData,
-        slug,
+        post_category_id: Number(formData.post_category_id),
 
-        tags: formData.tags.join(", "),
+        title: formData.title.trim(),
+
+        /*
+         * BE vẫn kiểm tra unique slug.
+         */
+        slug: formData.slug
+          ? createSlug(formData.slug)
+          : createSlug(formData.title),
+
+        thumbnail: formData.thumbnail || null,
+
+        content: formData.content,
+
+        excerpt: formData.excerpt.trim() || null,
+
+        meta_title: formData.meta_title.trim() || null,
+
+        meta_description: formData.meta_description.trim() || null,
+
+        meta_keywords: formData.meta_keywords.trim() || null,
+
+        tags: formData.tags.length ? formData.tags.join(", ") : null,
+
+        is_featured: Number(formData.is_featured),
+
+        status: Number(formData.status),
       };
 
       if (isEdit) {
@@ -395,6 +512,24 @@ function PostForm({ isEdit = false }) {
       setLoading(false);
     }
   };
+
+  // ============================================================
+  // LOADING
+  // ============================================================
+
+  if (initialLoading) {
+    return (
+      <div className="post-editor-page">
+        <section className="post-editor-card">
+          <div className="post-loading-state">
+            <span className="post-editor-spinner" />
+
+            <strong>Đang tải bài viết...</strong>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="post-editor-page">
@@ -440,7 +575,11 @@ function PostForm({ isEdit = false }) {
               <>
                 <i className="bi bi-cloud-arrow-up-fill" />
 
-                {isEdit ? "Cập nhật" : "Xuất bản"}
+                {isEdit
+                  ? "Cập nhật"
+                  : Number(formData.status) === 1
+                    ? "Xuất bản"
+                    : "Lưu bản nháp"}
               </>
             )}
           </button>
@@ -457,8 +596,6 @@ function PostForm({ isEdit = false }) {
         ================================================= */}
 
         <main className="post-editor-main">
-          {/* TITLE */}
-
           <section className="post-editor-card">
             <div className="post-editor-card-heading">
               <div className="post-editor-card-icon">
@@ -494,6 +631,7 @@ function PostForm({ isEdit = false }) {
               {errors.title && (
                 <small className="post-editor-error">
                   <i className="bi bi-exclamation-circle" />
+
                   {errors.title}
                 </small>
               )}
@@ -582,7 +720,7 @@ function PostForm({ isEdit = false }) {
                       ],
 
                       upload: {
-                        types: ["jpeg", "png", "gif", "bmp", "webp"],
+                        types: ["jpeg", "png", "webp"],
                       },
                     },
 
@@ -596,6 +734,7 @@ function PostForm({ isEdit = false }) {
               {errors.content && (
                 <small className="post-editor-error">
                   <i className="bi bi-exclamation-circle" />
+
                   {errors.content}
                 </small>
               )}
@@ -686,8 +825,6 @@ function PostForm({ isEdit = false }) {
         ================================================= */}
 
         <aside className="post-editor-sidebar">
-          {/* PUBLISH */}
-
           <section className="post-sidebar-card">
             <div className="post-sidebar-heading">
               <div className="post-sidebar-heading-icon">
@@ -701,43 +838,25 @@ function PostForm({ isEdit = false }) {
               </div>
             </div>
 
-            <div className="post-editor-field">
-              <label>
-                Tác giả
-                <span>*</span>
-              </label>
+            {/* AUTHOR READONLY */}
 
-              <div className="post-editor-select-wrap">
-                <i className="bi bi-person" />
+            {isEdit && authorName && (
+              <div className="post-editor-field">
+                <label>Tác giả</label>
 
-                <select
-                  name="user_id"
-                  value={formData.user_id}
-                  onChange={handleChange}
-                  className={
-                    errors.user_id
-                      ? "post-editor-select post-editor-input-error"
-                      : "post-editor-select"
-                  }
-                >
-                  <option value="">Chọn tác giả</option>
+                <div className="post-slug-input">
+                  <span>
+                    <i className="bi bi-person-circle" />
+                  </span>
 
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.fullName || user.name || `User #${user.id}`}
-                    </option>
-                  ))}
-                </select>
+                  <input type="text" value={authorName} readOnly />
+                </div>
               </div>
-
-              {errors.user_id && (
-                <small className="post-editor-error">{errors.user_id}</small>
-              )}
-            </div>
+            )}
 
             <div className="post-editor-field">
               <label>
-                Danh mục
+                Danh mục bài viết
                 <span>*</span>
               </label>
 
@@ -745,28 +864,28 @@ function PostForm({ isEdit = false }) {
                 <i className="bi bi-folder2" />
 
                 <select
-                  name="category_id"
-                  value={formData.category_id}
+                  name="post_category_id"
+                  value={formData.post_category_id}
                   onChange={handleChange}
                   className={
-                    errors.category_id
+                    errors.post_category_id
                       ? "post-editor-select post-editor-input-error"
                       : "post-editor-select"
                   }
                 >
-                  <option value="">Chọn danh mục</option>
+                  <option value="">Chọn danh mục bài viết</option>
 
-                  {categories.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
                     </option>
                   ))}
                 </select>
               </div>
 
-              {errors.category_id && (
+              {errors.post_category_id && (
                 <small className="post-editor-error">
-                  {errors.category_id}
+                  {errors.post_category_id}
                 </small>
               )}
             </div>
@@ -832,6 +951,9 @@ function PostForm({ isEdit = false }) {
                     src={preview}
                     alt="Thumbnail"
                     className="post-thumbnail-preview"
+                    onError={(event) => {
+                      event.currentTarget.style.display = "none";
+                    }}
                   />
 
                   <div className="post-thumbnail-overlay">
@@ -846,7 +968,7 @@ function PostForm({ isEdit = false }) {
 
                   <strong>Chưa có ảnh</strong>
 
-                  <p>JPG, PNG hoặc WEBP.</p>
+                  <p>JPG, PNG hoặc WEBP. Tối đa 2MB.</p>
                 </div>
               )}
 
