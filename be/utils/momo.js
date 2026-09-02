@@ -444,31 +444,9 @@ const createMomoPayment = async ({ order }) => {
     hasPayUrl: Boolean(result.payUrl),
   });
 
-  // ========================================================
-  // VALIDATE RESPONSE
-  // ========================================================
+  console.log("MOMO CREATE RESPONSE:", response.data);
 
-  if (Number(result.resultCode) !== 0) {
-    throw createMomoError(
-      result.message || "MoMo từ chối khởi tạo giao dịch",
-
-      `MOMO_${result.resultCode ?? "CREATE_FAILED"}`,
-
-      result,
-    );
-  }
-
-  if (!result.payUrl) {
-    throw createMomoError(
-      "MoMo không trả về đường dẫn thanh toán",
-
-      "MOMO_PAY_URL_MISSING",
-
-      result,
-    );
-  }
-
-  return result;
+  return response.data;
 };
 
 // ============================================================

@@ -1101,7 +1101,96 @@
    CANCEL BOX
    ============================================================ */
 
-.adm-order-cancel-box {
+.adm-order-payment-method,
+.adm-order-payment-status {
+  display: inline-flex;
+  align-items: center;
+
+  gap: 6px;
+
+  max-width: 100%;
+
+  padding: 6px 9px;
+
+  border: 1px solid transparent;
+
+  border-radius: 999px;
+
+  font-size: 9.7px;
+  font-weight: 800;
+
+  white-space: nowrap;
+}
+
+.adm-order-payment-method--cod {
+  border-color: rgba(22, 163, 74, 0.17);
+
+  color: #15803d;
+
+  background: rgba(22, 163, 74, 0.09);
+}
+
+.adm-order-payment-method--bank {
+  border-color: rgba(37, 99, 235, 0.17);
+
+  color: #1d4ed8;
+
+  background: rgba(37, 99, 235, 0.09);
+}
+
+.adm-order-payment-method--momo {
+  border-color: rgba(165, 0, 100, 0.16);
+
+  color: #a50064;
+
+  background: rgba(165, 0, 100, 0.08);
+}
+
+.adm-order-payment-method--zalopay {
+  border-color: rgba(0, 104, 255, 0.18);
+
+  color: #0068ff;
+
+  background: rgba(0, 104, 255, 0.09);
+}
+
+.adm-order-payment-method--unknown {
+  border-color: #dbe2ea;
+
+  color: var(--adm-muted);
+
+  background: #f1f5f9;
+}
+
+/* =========================================================
+   PAYMENT STATUS
+   ========================================================= */
+
+.adm-order-payment-status--paid {
+  border-color: rgba(22, 163, 74, 0.17);
+
+  color: #15803d;
+
+  background: rgba(22, 163, 74, 0.09);
+}
+
+.adm-order-payment-status--pending {
+  border-color: rgba(245, 158, 11, 0.17);
+
+  color: #a16207;
+
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.adm-order-payment-status--unpaid {
+  border-color: rgba(239, 35, 60, 0.17);
+
+  color: var(--adm-primary);
+
+  background: var(--adm-primary-soft);
+}
+
+.adm-order-payment-note {
   display: flex;
   align-items: flex-start;
   gap: 12px;

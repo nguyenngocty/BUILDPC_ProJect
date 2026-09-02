@@ -481,7 +481,6 @@
   text-align: right;
 }
 
-/* Phí ship miễn phí */
 .ck-shipping-info-row:nth-child(2) strong {
   color: var(--secondary);
 }
@@ -571,7 +570,7 @@
 }
 
 /* ======================================================
-   AMOUNT TO FREE SHIPPING
+   SHIPPING MORE
 ====================================================== */
 
 .ck-shipping-more {
@@ -795,6 +794,17 @@
   color: #a50064;
 }
 
+.ck-pay-icon.zalopay {
+  border:
+    1px solid
+    rgba(0, 104, 255, 0.18);
+
+  background:
+    rgba(0, 104, 255, 0.12);
+
+  color: #0068ff;
+}
+
 .ck-pay-content {
   flex: 1;
   min-width: 0;
@@ -950,6 +960,13 @@
     rgba(165, 0, 100, 0.12);
 
   color: #a50064;
+}
+
+.ck-payment-helper-icon.zalopay {
+  background:
+    rgba(0, 104, 255, 0.12);
+
+  color: #0068ff;
 }
 
 .ck-payment-helper strong {

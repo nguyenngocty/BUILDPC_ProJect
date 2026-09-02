@@ -106,7 +106,7 @@ const getStatusMeta = (status) => {
 // =========================================================
 
 const getPaymentMethodMeta = (method) => {
-  switch (method) {
+  switch (String(method || "").toLowerCase()) {
     case "cod":
       return {
         type: "cod",
@@ -126,6 +126,13 @@ const getPaymentMethodMeta = (method) => {
         type: "momo",
         icon: "bi-wallet2",
         label: "MoMo",
+      };
+
+    case "zalopay":
+      return {
+        type: "zalopay",
+        icon: "bi-wallet2",
+        label: "ZaloPay",
       };
 
     default:
@@ -395,7 +402,7 @@ const OrderManagement = () => {
         totalPages: Number(nextPagination.totalPages || 0),
       });
 
-      setPage(Number(nextPagination.page || nextPage));
+      setPage(nextPage);
 
       setLimit(nextLimit);
     } catch (error) {
@@ -454,8 +461,11 @@ const OrderManagement = () => {
 
   const handleReset = () => {
     setKeyword("");
+
     setStatus("");
+
     setFromDate("");
+
     setToDate("");
 
     setSelectedOrder(null);
@@ -497,6 +507,7 @@ const OrderManagement = () => {
     const newLimit = Number(event.target.value);
 
     setLimit(newLimit);
+
     setPage(1);
 
     fetchOrders({
@@ -1160,10 +1171,6 @@ const OrderManagement = () => {
         </div>
       </section>
 
-      {/* ===================================================
-          FILTER
-          =================================================== */}
-
       <section className="adm-order-panel">
         <div className="adm-order-panel__header">
           <div className="adm-order-panel__heading">
@@ -1266,10 +1273,6 @@ const OrderManagement = () => {
           </div>
         </div>
       </section>
-
-      {/* ===================================================
-          ORDER LIST
-          =================================================== */}
 
       <section className="adm-order-panel">
         <div className="adm-order-panel__header">
@@ -1735,8 +1738,10 @@ const OrderManagement = () => {
                           <i className={`bi ${paymentMethod.icon}`} />
 
                           <span>
-                            {selectedOrder.payment_method_label ||
-                              paymentMethod.label}
+                            {paymentMethod.type !== "unknown"
+                              ? paymentMethod.label
+                              : selectedOrder.payment_method_label ||
+                                paymentMethod.label}
                           </span>
                         </span>
                       );

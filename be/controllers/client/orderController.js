@@ -1,8 +1,16 @@
 const Order = require("../../models/Order");
 
-const { createMomoPayment } = require("../../utils/momo");
+const {
+  createMomoPayment,
+} = require("../../utils/momo");
 
-const { sendOrderConfirmationMail } = require("../../utils/mailer");
+const {
+  createZaloPayPayment,
+} = require("../../utils/zalopay");
+
+const {
+  sendOrderConfirmationMail,
+} = require("../../utils/mailer");
 
 // ============================================================
 // CONSTANTS
@@ -16,14 +24,23 @@ const ORDER_STATUSES = [
   "CANCELLED",
 ];
 
-const PAYMENT_METHODS = ["cod", "bank", "momo"];
+const PAYMENT_METHODS = [
+  "cod",
+  "bank",
+  "momo",
+  "zalopay",
+];
 
-// ============================================================
-// HELPERS
-// ============================================================
+const ONLINE_PAYMENT_METHODS = [
+  "momo",
+  "zalopay",
+];
 
 const emptyToNull = (value) => {
-  if (value === undefined || value === null) {
+  if (
+    value === undefined ||
+    value === null
+  ) {
     return null;
   }
 
@@ -37,13 +54,22 @@ const normalizePositiveInt = (
   defaultValue,
   maximum = Number.MAX_SAFE_INTEGER,
 ) => {
-  const parsed = Number.parseInt(value, 10);
+  const parsed = Number.parseInt(
+    value,
+    10,
+  );
 
-  if (Number.isNaN(parsed) || parsed < 1) {
+  if (
+    Number.isNaN(parsed) ||
+    parsed < 1
+  ) {
     return defaultValue;
   }
 
-  return Math.min(parsed, maximum);
+  return Math.min(
+    parsed,
+    maximum,
+  );
 };
 
 const normalizeProvinceCode = (value) => {
@@ -95,9 +121,14 @@ const validateOrderData = (data) => {
     return "Vui lòng nhập email nhận thông báo đơn hàng";
   }
 
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const emailRegex =
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-  if (!emailRegex.test(data.shipping_email)) {
+  if (
+    !emailRegex.test(
+      data.shipping_email,
+    )
+  ) {
     return "Email không hợp lệ";
   }
 
@@ -121,381 +152,443 @@ const validateOrderData = (data) => {
     return "Vui lòng chọn phương thức thanh toán";
   }
 
-  if (!PAYMENT_METHODS.includes(data.payment_method)) {
+  if (
+    !PAYMENT_METHODS.includes(
+      data.payment_method,
+    )
+  ) {
     return "Phương thức thanh toán không hợp lệ";
   }
 
   return null;
 };
 
-// ============================================================
-// BANK
-// ============================================================
-
-const getBankInfo = async (orderId) => {
-  if (typeof Order.getBankInfo === "function") {
-    const result = await Order.getBankInfo(orderId);
+const getBankInfo = async (
+  orderId,
+) => {
+  if (
+    typeof Order.getBankInfo ===
+    "function"
+  ) {
+    const result =
+      await Order.getBankInfo(
+        orderId,
+      );
 
     return result?.bank || null;
   }
 
   return {
-    bank_name: process.env.BANK_NAME || "MB Bank",
+    bank_name:
+      process.env.BANK_NAME ||
+      "MB Bank",
 
-    account_number: process.env.BANK_ACCOUNT_NUMBER || "0123456789",
+    account_number:
+      process.env
+        .BANK_ACCOUNT_NUMBER ||
+      "0123456789",
 
-    account_name: process.env.BANK_ACCOUNT_NAME || "BUILDPC",
+    account_name:
+      process.env
+        .BANK_ACCOUNT_NAME ||
+      "BUILDPC",
 
-    branch: process.env.BANK_BRANCH || "Can Tho",
+    branch:
+      process.env.BANK_BRANCH ||
+      "Can Tho",
   };
 };
 
-// ============================================================
-// SEND MAIL SAFELY
-// ============================================================
-
-const sendConfirmationMailSafely = async (
-  order,
-  logPrefix = "Lỗi gửi mail xác nhận đơn hàng",
+const shouldSendMailImmediately = (
+  paymentMethod,
 ) => {
-  const email = String(order?.shipping_email || "").trim();
-
-  if (!email) {
-    return false;
-  }
-
-  try {
-    await sendOrderConfirmationMail(email, order);
-
-    return true;
-  } catch (mailError) {
-    console.error(`${logPrefix}:`, mailError?.message || mailError);
-
-    return false;
-  }
+  return !ONLINE_PAYMENT_METHODS.includes(
+    paymentMethod,
+  );
 };
 
-// ============================================================
-// MOMO ROLLBACK
-// ============================================================
+/* =========================
+   CREATE ORDER
+========================= */
 
-const rollbackMomoInitializedOrder = async (
-  order,
-  reason = "Không thể khởi tạo thanh toán MoMo",
+exports.createOrder = async (
+  req,
+  res,
+  next,
 ) => {
-  if (!order?.id) {
-    return null;
-  }
-
-  try {
-    return await Order.cancelAndRestoreStock({
-      orderId: order.id,
-
-      reason,
-
-      allowedStatuses: ["PENDING"],
-    });
-  } catch (cancelError) {
-    console.error(
-      `[ORDER][MOMO] Không thể rollback đơn ${order.order_code || order.id}:`,
-      cancelError,
-    );
-
-    return null;
-  }
-};
-
-// ============================================================
-// CREATE ORDER
-//
-// POST /api/client/orders
-//
-// Client KHÔNG được quyết định:
-//
-// - user_id
-// - shipping_fee
-// - shipping_base_fee
-// - shipping_provider
-// - shipping province/district/ward name
-// - GHN province id
-// - service id
-// - estimated delivery
-// - discount amount
-//
-// Client chỉ gửi ID/code địa chỉ.
-// Backend tự validate toàn bộ.
-// ============================================================
-
-exports.createOrder = async (req, res, next) => {
-  let createdOrder = null;
-
   try {
     const data = {
-      /*
-       * Không tin user_id từ FE.
-       */
-      user_id: req.auth?.userId,
+      user_id:
+        req.auth?.userId,
 
-      shipping_name: emptyToNull(req.body.shipping_name),
+      shipping_name:
+        emptyToNull(
+          req.body.shipping_name,
+        ),
 
-      shipping_phone: emptyToNull(req.body.shipping_phone),
+      shipping_phone:
+        emptyToNull(
+          req.body.shipping_phone,
+        ),
 
-      shipping_email: emptyToNull(req.body.shipping_email),
+      shipping_email:
+        emptyToNull(
+          req.body.shipping_email,
+        ),
 
-      shipping_address: emptyToNull(req.body.shipping_address),
+      shipping_address:
+        emptyToNull(
+          req.body.shipping_address,
+        ),
 
-      shipping_ghn_province_id: normalizePositiveInt(
-        req.body.shipping_ghn_province_id,
-        null,
-      ),
+      note:
+        emptyToNull(
+          req.body.note,
+        ),
 
-      shipping_district_id: normalizePositiveInt(
-        req.body.shipping_district_id,
-        null,
-      ),
+      payment_method:
+        emptyToNull(
+          req.body.payment_method,
+        ) || "cod",
 
-      shipping_ward_code: normalizeWardCode(req.body.shipping_ward_code),
+      shipping_fee:
+        Number(
+          req.body.shipping_fee ||
+          0,
+        ),
 
-      coupon_code: normalizeCouponCode(req.body.coupon_code),
-
-      payment_method: normalizePaymentMethod(req.body.payment_method || "cod"),
-
-      note: emptyToNull(req.body.note),
+      discount_amount:
+        Number(
+          req.body
+            .discount_amount || 0,
+        ),
     };
 
-    // ========================================================
-    // VALIDATE
-    // ========================================================
-
-    const errorMessage = validateOrderData(data);
+    const errorMessage =
+      validateOrderData(data);
 
     if (errorMessage) {
-      return res.status(400).json({
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: errorMessage,
+        });
+    }
+
+    const order =
+      await Order.createFromCart(
+        data,
+      );
+
+    /*
+      COD và Bank:
+      gửi mail ngay sau khi
+      tạo đơn.
+
+      MoMo và ZaloPay:
+      chỉ gửi mail sau khi
+      xác nhận thanh toán.
+    */
+    if (
+      shouldSendMailImmediately(
+        data.payment_method,
+      )
+    ) {
+      try {
+        await sendOrderConfirmationMail(
+          order.shipping_email,
+          order,
+        );
+      } catch (mailError) {
+        console.error(
+          "Lỗi gửi mail xác nhận đơn hàng:",
+          mailError.message,
+        );
+      }
+    }
+
+    /* =========================
+       MOMO
+    ========================= */
+
+    if (
+      data.payment_method ===
+      "momo"
+    ) {
+      const momoResult =
+        await createMomoPayment({
+          order,
+        });
+
+      if (
+        Number(
+          momoResult.resultCode,
+        ) !== 0 ||
+        !momoResult.payUrl
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+
+            message:
+              momoResult.message ||
+              "Không tạo được thanh toán MoMo",
+
+            data: momoResult,
+          });
+      }
+
+      return res
+        .status(201)
+        .json({
+          success: true,
+
+          message:
+            "Tạo đơn hàng và thanh toán MoMo thành công",
+
+          data: {
+            order,
+
+            payment_url:
+              momoResult.payUrl,
+
+            momo:
+              momoResult,
+          },
+        });
+    }
+
+    /* =========================
+       ZALOPAY
+    ========================= */
+
+    if (
+      data.payment_method ===
+      "zalopay"
+    ) {
+      const zaloPayResult =
+        await createZaloPayPayment({
+          order,
+        });
+
+      if (
+        !zaloPayResult ||
+        !zaloPayResult.payment_url
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+
+            message:
+              "Không tạo được thanh toán ZaloPay",
+
+            data:
+              zaloPayResult ||
+              null,
+          });
+      }
+
+      return res
+        .status(201)
+        .json({
+          success: true,
+
+          message:
+            "Tạo đơn hàng và thanh toán ZaloPay thành công",
+
+          data: {
+            order,
+
+            payment_url:
+              zaloPayResult.payment_url,
+
+            zalopay:
+              zaloPayResult,
+          },
+        });
+    }
+
+    /* =========================
+       BANK
+    ========================= */
+
+    if (
+      data.payment_method ===
+      "bank"
+    ) {
+      const bankInfo =
+        await getBankInfo(
+          order.id,
+        );
+
+      return res
+        .status(201)
+        .json({
+          success: true,
+
+          message:
+            "Đặt hàng thành công, vui lòng chuyển khoản ngân hàng",
+
+          data: {
+            order,
+
+            bank_info:
+              bankInfo,
+          },
+        });
+    }
+
+    /* =========================
+       COD
+    ========================= */
+
+    return res
+      .status(201)
+      .json({
+        success: true,
+
+        message:
+          "Đặt hàng thành công",
+
+        data: {
+          order,
+        },
+      });
+  } catch (error) {
+    console.error(
+      "Lỗi tạo đơn:",
+      error.response?.data ||
+      error.message,
+    );
+
+    return res
+      .status(400)
+      .json({
         success: false,
 
-        message: errorMessage,
+        message:
+          error.response?.data
+            ?.message ||
+          error.message ||
+          "Đặt hàng thất bại",
+
+        data:
+          error.response?.data ||
+          null,
       });
-    }
+  }
+};
 
-    // ========================================================
-    // CREATE FROM CART
-    //
-    // Backend tự:
-    // - lấy cart
-    // - resolve giá
-    // - stock
-    // - coupon
-    // - GHN
-    // - total
-    // ========================================================
+/* =========================
+   GET ORDERS
+========================= */
 
-    createdOrder = await Order.createFromCart(data);
+exports.getOrders = async (
+  req,
+  res,
+  next,
+) => {
+  try {
+    const userId =
+      Number.parseInt(
+        req.user?.id,
+        10,
+      );
 
-    if (!createdOrder) {
-      throw new Error("Không tạo được đơn hàng");
-    }
-
-    // ========================================================
-    // MOMO
-    // ========================================================
-
-    if (data.payment_method === "momo") {
-      let momoResult;
-
-      try {
-        momoResult = await createMomoPayment({
-          order: createdOrder,
-        });
-      } catch (momoError) {
-        console.error(
-          "[ORDER][MOMO] Lỗi khởi tạo MoMo:",
-          momoError?.response?.data || momoError,
-        );
-
-        const cancelledOrder = await rollbackMomoInitializedOrder(
-          createdOrder,
-          "Khởi tạo thanh toán MoMo thất bại",
-        );
-
-        return res.status(400).json({
+    if (
+      Number.isNaN(userId) ||
+      userId < 1
+    ) {
+      return res
+        .status(401)
+        .json({
           success: false,
 
           message:
-            momoError?.response?.data?.message ||
-            momoError?.message ||
-            "Không thể khởi tạo thanh toán MoMo",
-
-          data: {
-            order: cancelledOrder || createdOrder,
-
-            payment_url: null,
-          },
+            "Bạn cần đăng nhập để xem đơn hàng.",
         });
-      }
-
-      if (Number(momoResult?.resultCode) !== 0 || !momoResult?.payUrl) {
-        const reason = momoResult?.message || "Không tạo được thanh toán MoMo";
-
-        const cancelledOrder = await rollbackMomoInitializedOrder(
-          createdOrder,
-          reason,
-        );
-
-        return res.status(400).json({
-          success: false,
-
-          message: reason,
-
-          data: {
-            order: cancelledOrder || createdOrder,
-
-            payment_url: null,
-
-            momo: momoResult || null,
-          },
-        });
-      }
-
-      return res.status(201).json({
-        success: true,
-
-        message: "Tạo đơn hàng và khởi tạo thanh toán MoMo thành công",
-
-        data: {
-          order: createdOrder,
-
-          payment_url: momoResult.payUrl,
-
-          momo: momoResult,
-        },
-      });
     }
 
-    // ========================================================
-    // EMAIL
-    // ========================================================
+    const requestedPage =
+      normalizePositiveInt(
+        req.query.page,
+        1,
+      );
 
-    const mailSent = await sendConfirmationMailSafely(createdOrder);
+    const limit =
+      normalizePositiveInt(
+        req.query.limit,
+        10,
+        50,
+      );
 
-    // ========================================================
-    // BANK
-    // ========================================================
-
-    if (data.payment_method === "bank") {
-      const bankInfo = await getBankInfo(createdOrder.id);
-
-      return res.status(201).json({
-        success: true,
-
-        message: "Đặt hàng thành công, vui lòng chuyển khoản ngân hàng",
-
-        data: {
-          order: createdOrder,
-
-          bank_info: bankInfo,
-        },
-
-        mail: {
-          sent: mailSent,
-        },
-      });
-    }
-
-    // ========================================================
-    // COD
-    // ========================================================
-
-    return res.status(201).json({
-      success: true,
-
-      message: "Đặt hàng thành công",
-
-      data: {
-        order: createdOrder,
-      },
-
-      mail: {
-        sent: mailSent,
-      },
-    });
-  } catch (error) {
-    console.error("Lỗi tạo đơn:", error?.response?.data || error);
-
-    return res.status(400).json({
-      success: false,
-
-      message:
-        error?.response?.data?.message || error?.message || "Đặt hàng thất bại",
-
-      data: error?.response?.data || null,
-    });
-  }
-};
-
-// ============================================================
-// GET USER ORDERS
-// ============================================================
-
-exports.getOrders = async (req, res, next) => {
-  try {
-    const userId = Number.parseInt(req.auth?.userId || req.user?.id, 10);
-
-    if (!Number.isInteger(userId) || userId < 1) {
-      return res.status(401).json({
-        success: false,
-
-        message: "Bạn cần đăng nhập để xem đơn hàng.",
-      });
-    }
-
-    const requestedPage = normalizePositiveInt(req.query.page, 1);
-
-    const limit = normalizePositiveInt(req.query.limit, 10, 50);
-
-    const status = String(req.query.status || "")
+    const status = String(
+      req.query.status || "",
+    )
       .trim()
       .toUpperCase();
 
-    const search = String(req.query.search || "")
+    const search = String(
+      req.query.search || "",
+    )
       .trim()
       .slice(0, 100);
 
-    if (status && !ORDER_STATUSES.includes(status)) {
-      return res.status(422).json({
-        success: false,
+    if (
+      status &&
+      !ORDER_STATUSES.includes(
+        status,
+      )
+    ) {
+      return res
+        .status(422)
+        .json({
+          success: false,
 
-        message: "Trạng thái đơn hàng không hợp lệ.",
-      });
+          message:
+            "Trạng thái đơn hàng không hợp lệ.",
+        });
     }
 
-    const totalItems = await Order.countUserOrders({
-      userId,
+    const totalItems =
+      await Order.countUserOrders({
+        userId,
+        status,
+        search,
+      });
 
-      status,
+    const totalPages =
+      totalItems > 0
+        ? Math.ceil(
+          totalItems / limit,
+        )
+        : 0;
 
-      search,
-    });
+    const page =
+      totalPages > 0
+        ? Math.min(
+          requestedPage,
+          totalPages,
+        )
+        : 1;
 
-    const totalPages = totalItems > 0 ? Math.ceil(totalItems / limit) : 0;
-
-    const page = totalPages > 0 ? Math.min(requestedPage, totalPages) : 1;
-
-    const orders = await Order.getUserOrders({
-      userId,
-
-      page,
-
-      limit,
-
-      status,
-
-      search,
-    });
+    const orders =
+      await Order.getUserOrders({
+        userId,
+        page,
+        limit,
+        status,
+        search,
+      });
 
     return res.json({
       success: true,
 
-      message: "Lấy danh sách đơn hàng thành công",
+      message:
+        "Lấy danh sách đơn hàng thành công",
 
       data: {
         orders,
@@ -509,9 +602,12 @@ exports.getOrders = async (req, res, next) => {
 
           totalPages,
 
-          hasPreviousPage: page > 1,
+          hasPreviousPage:
+            page > 1,
 
-          hasNextPage: totalPages > 0 && page < totalPages,
+          hasNextPage:
+            totalPages > 0 &&
+            page < totalPages,
         },
 
         filters: {
@@ -520,7 +616,8 @@ exports.getOrders = async (req, res, next) => {
           search,
         },
 
-        statuses: ORDER_STATUSES,
+        statuses:
+          ORDER_STATUSES,
       },
     });
   } catch (error) {
@@ -528,44 +625,71 @@ exports.getOrders = async (req, res, next) => {
   }
 };
 
-// ============================================================
-// ORDER DETAIL
-// ============================================================
+/* =========================
+   GET ORDER BY ID
+========================= */
 
-exports.getOrderById = async (req, res, next) => {
+exports.getOrderById = async (
+  req,
+  res,
+  next,
+) => {
   try {
-    const userId = Number.parseInt(req.auth?.userId || req.user?.id, 10);
+    const userId =
+      Number.parseInt(
+        req.user?.id,
+        10,
+      );
 
-    const orderId = Number.parseInt(req.params.id, 10);
+    const orderId =
+      Number.parseInt(
+        req.params.id,
+        10,
+      );
 
-    if (!Number.isInteger(userId) || userId < 1) {
-      return res.status(401).json({
-        success: false,
+    if (
+      Number.isNaN(userId) ||
+      userId < 1
+    ) {
+      return res
+        .status(401)
+        .json({
+          success: false,
 
-        message: "Bạn cần đăng nhập để xem đơn hàng.",
-      });
+          message:
+            "Bạn cần đăng nhập để xem đơn hàng.",
+        });
     }
 
-    if (!Number.isInteger(orderId) || orderId < 1) {
-      return res.status(400).json({
-        success: false,
+    if (
+      Number.isNaN(orderId) ||
+      orderId < 1
+    ) {
+      return res
+        .status(400)
+        .json({
+          success: false,
 
-        message: "Mã đơn hàng không hợp lệ.",
-      });
+          message:
+            "Mã đơn hàng không hợp lệ.",
+        });
     }
 
-    const order = await Order.getUserOrderById({
-      userId,
-
-      orderId,
-    });
+    const order =
+      await Order.getUserOrderById({
+        userId,
+        orderId,
+      });
 
     if (!order) {
-      return res.status(404).json({
-        success: false,
+      return res
+        .status(404)
+        .json({
+          success: false,
 
-        message: "Không tìm thấy đơn hàng.",
-      });
+          message:
+            "Không tìm thấy đơn hàng.",
+        });
     }
 
     /*
@@ -594,352 +718,544 @@ exports.getOrderById = async (req, res, next) => {
   }
 };
 
-// ============================================================
-// CANCEL
-// ============================================================
+/* =========================
+   CANCEL ORDER
+========================= */
 
-exports.cancelOrder = async (req, res, next) => {
+exports.cancelOrder = async (
+  req,
+  res,
+  next,
+) => {
   try {
-    const userId = Number.parseInt(req.auth?.userId || req.user?.id, 10);
+    const userId =
+      Number.parseInt(
+        req.user?.id,
+        10,
+      );
 
-    const orderId = Number.parseInt(req.params.id, 10);
+    const orderId =
+      Number.parseInt(
+        req.params.id,
+        10,
+      );
 
-    const reason = String(req.body.reason || "")
+    const reason = String(
+      req.body.reason || "",
+    )
       .trim()
       .slice(0, 500);
 
-    if (!Number.isInteger(userId) || userId < 1) {
-      return res.status(401).json({
-        success: false,
+    if (
+      !Number.isInteger(
+        userId,
+      ) ||
+      userId < 1
+    ) {
+      return res
+        .status(401)
+        .json({
+          success: false,
 
-        message: "Bạn cần đăng nhập để hủy đơn hàng.",
-      });
+          message:
+            "Bạn cần đăng nhập để hủy đơn hàng.",
+        });
     }
 
-    if (!Number.isInteger(orderId) || orderId < 1) {
-      return res.status(400).json({
-        success: false,
+    if (
+      !Number.isInteger(
+        orderId,
+      ) ||
+      orderId < 1
+    ) {
+      return res
+        .status(400)
+        .json({
+          success: false,
 
-        message: "Mã đơn hàng không hợp lệ.",
-      });
+          message:
+            "Mã đơn hàng không hợp lệ.",
+        });
     }
 
     if (!reason) {
-      return res.status(400).json({
-        success: false,
+      return res
+        .status(400)
+        .json({
+          success: false,
 
-        message: "Vui lòng chọn lý do hủy đơn hàng.",
-      });
+          message:
+            "Vui lòng chọn lý do hủy đơn hàng.",
+        });
     }
 
-    const order = await Order.cancelByUser({
-      userId,
-
-      orderId,
-
-      reason,
-    });
+    const order =
+      await Order.cancelByUser({
+        userId,
+        orderId,
+        reason,
+      });
 
     return res.json({
       success: true,
 
-      message: "Hủy đơn hàng thành công.",
+      message:
+        "Hủy đơn hàng thành công.",
 
       data: order,
     });
   } catch (error) {
-    const message = error?.message || "Không thể hủy đơn hàng.";
+    const message =
+      error.message ||
+      "Không thể hủy đơn hàng.";
 
-    const statusCode = message === "Không tìm thấy đơn hàng" ? 404 : 400;
+    const statusCode =
+      message ===
+        "Không tìm thấy đơn hàng"
+        ? 404
+        : 400;
 
-    return res.status(statusCode).json({
-      success: false,
-
-      message,
-    });
+    return res
+      .status(statusCode)
+      .json({
+        success: false,
+        message,
+      });
   }
 };
 
-// ============================================================
-// REORDER PREVIEW
-// ============================================================
+/* =========================
+   REORDER PREVIEW
+========================= */
 
-exports.getReorderCheckout = async (req, res, next) => {
-  try {
-    const userId = Number.parseInt(req.auth?.userId || req.user?.id, 10);
+exports.getReorderCheckout =
+  async (
+    req,
+    res,
+    next,
+  ) => {
+    try {
+      const userId =
+        Number.parseInt(
+          req.user?.id,
+          10,
+        );
 
-    const orderId = Number.parseInt(req.params.id, 10);
+      const orderId =
+        Number.parseInt(
+          req.params.id,
+          10,
+        );
 
-    if (!Number.isInteger(userId) || userId < 1) {
-      return res.status(401).json({
-        success: false,
+      if (
+        !Number.isInteger(
+          userId,
+        ) ||
+        userId < 1
+      ) {
+        return res
+          .status(401)
+          .json({
+            success: false,
 
-        message: "Bạn cần đăng nhập để mua lại đơn hàng.",
-      });
-    }
+            message:
+              "Bạn cần đăng nhập để mua lại đơn hàng.",
+          });
+      }
 
-    if (!Number.isInteger(orderId) || orderId < 1) {
-      return res.status(400).json({
-        success: false,
+      if (
+        !Number.isInteger(
+          orderId,
+        ) ||
+        orderId < 1
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
 
-        message: "Mã đơn hàng không hợp lệ.",
-      });
-    }
+            message:
+              "Mã đơn hàng không hợp lệ.",
+          });
+      }
 
-    const preview = await Order.getReorderCheckoutPreview({
-      userId,
+      const preview =
+        await Order.getReorderCheckoutPreview(
+          {
+            userId,
+            orderId,
+          },
+        );
 
-      orderId,
-    });
+      if (!preview) {
+        return res
+          .status(404)
+          .json({
+            success: false,
 
-    if (!preview) {
-      return res.status(404).json({
-        success: false,
+            message:
+              "Không tìm thấy đơn hàng.",
+          });
+      }
 
-        message: "Không tìm thấy đơn hàng.",
-      });
-    }
+      if (
+        !Array.isArray(
+          preview.items,
+        ) ||
+        preview.items.length ===
+        0
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
 
-    if (!Array.isArray(preview.items) || preview.items.length === 0) {
-      return res.status(400).json({
-        success: false,
+            message:
+              "Không có sản phẩm nào còn khả dụng để mua lại.",
 
-        message: "Không có sản phẩm nào còn khả dụng để mua lại.",
+            data: preview,
+          });
+      }
+
+      return res.json({
+        success: true,
+
+        message:
+          "Lấy thông tin checkout mua lại thành công.",
 
         data: preview,
       });
-    }
-
-    return res.json({
-      success: true,
-
-      message: "Lấy thông tin checkout mua lại thành công.",
-
-      data: preview,
-    });
-  } catch (error) {
-    return res.status(400).json({
-      success: false,
-
-      message: error?.message || "Không thể tải thông tin mua lại.",
-    });
-  }
-};
-
-// ============================================================
-// CREATE REORDER
-// ============================================================
-
-exports.createReorderCheckout = async (req, res, next) => {
-  let createdOrder = null;
-
-  try {
-    const userId = Number.parseInt(req.auth?.userId || req.user?.id, 10);
-
-    const sourceOrderId = Number.parseInt(req.params.id, 10);
-
-    if (!Number.isInteger(userId) || userId < 1) {
-      return res.status(401).json({
-        success: false,
-
-        message: "Bạn cần đăng nhập để mua lại đơn hàng.",
-      });
-    }
-
-    if (!Number.isInteger(sourceOrderId) || sourceOrderId < 1) {
-      return res.status(400).json({
-        success: false,
-
-        message: "Mã đơn hàng không hợp lệ.",
-      });
-    }
-
-    const data = {
-      user_id: userId,
-
-      source_order_id: sourceOrderId,
-
-      shipping_name: emptyToNull(req.body.shipping_name),
-
-      shipping_phone: emptyToNull(req.body.shipping_phone),
-
-      shipping_email: emptyToNull(req.body.shipping_email),
-
-      shipping_address: emptyToNull(req.body.shipping_address),
-
-      shipping_ghn_province_id: normalizePositiveInt(
-        req.body.shipping_ghn_province_id,
-        null,
-      ),
-
-      shipping_district_id: normalizePositiveInt(
-        req.body.shipping_district_id,
-        null,
-      ),
-
-      shipping_ward_code: normalizeWardCode(req.body.shipping_ward_code),
-
-      coupon_code: normalizeCouponCode(req.body.coupon_code),
-
-      note: emptyToNull(req.body.note),
-
-      payment_method: normalizePaymentMethod(req.body.payment_method || "cod"),
-    };
-
-    const errorMessage = validateOrderData(data);
-
-    if (errorMessage) {
-      return res.status(400).json({
-        success: false,
-
-        message: errorMessage,
-      });
-    }
-
-    createdOrder = await Order.createFromReorder(data);
-
-    if (!createdOrder) {
-      throw new Error("Không tạo được đơn mua lại");
-    }
-
-    // ======================================================
-    // MOMO
-    // ======================================================
-
-    if (data.payment_method === "momo") {
-      let momoResult;
-
-      try {
-        momoResult = await createMomoPayment({
-          order: createdOrder,
-        });
-      } catch (momoError) {
-        console.error(
-          "[REORDER][MOMO] Lỗi khởi tạo MoMo:",
-          momoError?.response?.data || momoError,
-        );
-
-        const cancelledOrder = await rollbackMomoInitializedOrder(
-          createdOrder,
-          "Khởi tạo thanh toán MoMo cho đơn mua lại thất bại",
-        );
-
-        return res.status(400).json({
+    } catch (error) {
+      return res
+        .status(400)
+        .json({
           success: false,
 
           message:
-            momoError?.response?.data?.message ||
-            momoError?.message ||
-            "Không thể khởi tạo thanh toán MoMo",
-
-          data: {
-            order: cancelledOrder || createdOrder,
-
-            payment_url: null,
-          },
+            error.message ||
+            "Không thể tải thông tin mua lại.",
         });
-      }
+    }
+  };
 
-      if (Number(momoResult?.resultCode) !== 0 || !momoResult?.payUrl) {
-        const reason = momoResult?.message || "Không tạo được thanh toán MoMo";
+/* =========================
+   CREATE REORDER
+========================= */
 
-        const cancelledOrder = await rollbackMomoInitializedOrder(
-          createdOrder,
-          reason,
+exports.createReorderCheckout =
+  async (
+    req,
+    res,
+    next,
+  ) => {
+    try {
+      const userId =
+        Number.parseInt(
+          req.user?.id,
+          10,
         );
 
-        return res.status(400).json({
-          success: false,
+      const sourceOrderId =
+        Number.parseInt(
+          req.params.id,
+          10,
+        );
 
-          message: reason,
+      if (
+        !Number.isInteger(
+          userId,
+        ) ||
+        userId < 1
+      ) {
+        return res
+          .status(401)
+          .json({
+            success: false,
 
-          data: {
-            order: cancelledOrder || createdOrder,
-
-            payment_url: null,
-
-            momo: momoResult || null,
-          },
-        });
+            message:
+              "Bạn cần đăng nhập để mua lại đơn hàng.",
+          });
       }
 
-      return res.status(201).json({
-        success: true,
+      if (
+        !Number.isInteger(
+          sourceOrderId,
+        ) ||
+        sourceOrderId < 1
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
 
-        message: "Tạo đơn mua lại và khởi tạo thanh toán MoMo thành công",
+            message:
+              "Mã đơn hàng không hợp lệ.",
+          });
+      }
 
-        data: {
-          order: createdOrder,
+      const data = {
+        user_id:
+          userId,
 
-          payment_url: momoResult.payUrl,
+        source_order_id:
+          sourceOrderId,
 
-          momo: momoResult,
-        },
-      });
+        shipping_name:
+          emptyToNull(
+            req.body
+              .shipping_name,
+          ),
+
+        shipping_phone:
+          emptyToNull(
+            req.body
+              .shipping_phone,
+          ),
+
+        shipping_email:
+          emptyToNull(
+            req.body
+              .shipping_email,
+          ),
+
+        shipping_address:
+          emptyToNull(
+            req.body
+              .shipping_address,
+          ),
+
+        note:
+          emptyToNull(
+            req.body.note,
+          ),
+
+        payment_method:
+          emptyToNull(
+            req.body
+              .payment_method,
+          ) || "cod",
+
+        shipping_fee:
+          Number(
+            req.body
+              .shipping_fee || 0,
+          ),
+
+        discount_amount:
+          Number(
+            req.body
+              .discount_amount ||
+            0,
+          ),
+      };
+
+      const errorMessage =
+        validateOrderData(data);
+
+      if (errorMessage) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              errorMessage,
+          });
+      }
+
+      const order =
+        await Order.createFromReorder(
+          data,
+        );
+
+      if (
+        shouldSendMailImmediately(
+          data.payment_method,
+        )
+      ) {
+        try {
+          await sendOrderConfirmationMail(
+            order.shipping_email,
+            order,
+          );
+        } catch (mailError) {
+          console.error(
+            "Lỗi gửi mail xác nhận đơn mua lại:",
+            mailError.message,
+          );
+        }
+      }
+
+      /* =========================
+         MOMO REORDER
+      ========================= */
+
+      if (
+        data.payment_method ===
+        "momo"
+      ) {
+        const momoResult =
+          await createMomoPayment({
+            order,
+          });
+
+        if (
+          Number(
+            momoResult.resultCode,
+          ) !== 0 ||
+          !momoResult.payUrl
+        ) {
+          return res
+            .status(400)
+            .json({
+              success: false,
+
+              message:
+                momoResult.message ||
+                "Không tạo được thanh toán MoMo",
+
+              data:
+                momoResult,
+            });
+        }
+
+        return res
+          .status(201)
+          .json({
+            success: true,
+
+            message:
+              "Tạo đơn mua lại và thanh toán MoMo thành công",
+
+            data: {
+              order,
+
+              payment_url:
+                momoResult.payUrl,
+
+              momo:
+                momoResult,
+            },
+          });
+      }
+
+      /* =========================
+         ZALOPAY REORDER
+      ========================= */
+
+      if (
+        data.payment_method ===
+        "zalopay"
+      ) {
+        const zaloPayResult =
+          await createZaloPayPayment({
+            order,
+          });
+
+        if (
+          !zaloPayResult ||
+          !zaloPayResult.payment_url
+        ) {
+          return res
+            .status(400)
+            .json({
+              success: false,
+
+              message:
+                "Không tạo được thanh toán ZaloPay",
+
+              data:
+                zaloPayResult ||
+                null,
+            });
+        }
+
+        return res
+          .status(201)
+          .json({
+            success: true,
+
+            message:
+              "Tạo đơn mua lại và thanh toán ZaloPay thành công",
+
+            data: {
+              order,
+
+              payment_url:
+                zaloPayResult.payment_url,
+
+              zalopay:
+                zaloPayResult,
+            },
+          });
+      }
+
+      /* =========================
+         BANK REORDER
+      ========================= */
+
+      if (
+        data.payment_method ===
+        "bank"
+      ) {
+        const bankInfo =
+          await getBankInfo(
+            order.id,
+          );
+
+        return res
+          .status(201)
+          .json({
+            success: true,
+
+            message:
+              "Đặt lại đơn hàng thành công, vui lòng chuyển khoản ngân hàng",
+
+            data: {
+              order,
+
+              bank_info:
+                bankInfo,
+            },
+          });
+      }
+
+      /* =========================
+         COD REORDER
+      ========================= */
+
+      return res
+        .status(201)
+        .json({
+          success: true,
+
+          message:
+            "Đặt lại đơn hàng thành công",
+
+          data: {
+            order,
+          },
+        });
+    } catch (error) {
+      console.error(
+        "Lỗi tạo đơn mua lại:",
+        error.response?.data ||
+        error.message,
+      );
+
+      return res
+        .status(400)
+        .json({
+          success: false,
+
+          message:
+            error.response?.data
+              ?.message ||
+            error.message ||
+            "Đặt lại đơn hàng thất bại",
+
+          data:
+            error.response?.data ||
+            null,
+        });
     }
-
-    // ======================================================
-    // EMAIL
-    // ======================================================
-
-    const mailSent = await sendConfirmationMailSafely(
-      createdOrder,
-      "Lỗi gửi mail xác nhận đơn mua lại",
-    );
-
-    // ======================================================
-    // BANK
-    // ======================================================
-
-    if (data.payment_method === "bank") {
-      const bankInfo = await getBankInfo(createdOrder.id);
-
-      return res.status(201).json({
-        success: true,
-
-        message: "Đặt lại đơn hàng thành công, vui lòng chuyển khoản ngân hàng",
-
-        data: {
-          order: createdOrder,
-
-          bank_info: bankInfo,
-        },
-
-        mail: {
-          sent: mailSent,
-        },
-      });
-    }
-
-    // ======================================================
-    // COD
-    // ======================================================
-
-    return res.status(201).json({
-      success: true,
-
-      message: "Đặt lại đơn hàng thành công",
-
-      data: {
-        order: createdOrder,
-      },
-
-      mail: {
-        sent: mailSent,
-      },
-    });
-  } catch (error) {
-    console.error("Lỗi tạo đơn mua lại:", error?.response?.data || error);
-
-    return res.status(400).json({
-      success: false,
-
-      message:
-        error?.response?.data?.message ||
-        error?.message ||
-        "Đặt lại đơn hàng thất bại",
-
-      data: error?.response?.data || null,
-    });
-  }
-};
+  };
