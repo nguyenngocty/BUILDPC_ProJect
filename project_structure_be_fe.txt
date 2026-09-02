@@ -81,7 +81,6 @@ be/
 │   ├── PostCategory.js
 │   ├── Product.js
 │   ├── ProductVariant.js
-│   ├── ShippingRate.js
 │   └── User.js
 ├── routes/
 │   ├── admin/
@@ -150,7 +149,7 @@ be/
 └── server.js
 
 Backend folders: 13
-Backend files: 125
+Backend files: 124
 
 
 ==========================================================================================

@@ -2,26 +2,38 @@ const Comment = require("../../models/Comment");
 
 const { validateReviewData } = require("../../validations/commentValidation");
 
-// =====================================================
-// LẤY USER ID
-// =====================================================
+// ============================================================
+// AUTH USER
+// ============================================================
 
 const getAuthenticatedUserId = (req) => {
-  const userId = Number.parseInt(req.user?.id, 10);
+  const rawUserId =
+    req.auth?.userId ??
+    req.auth?.id ??
+    req.user?.id ??
+    req.user?.userId ??
+    null;
+
+  const userId = Number.parseInt(rawUserId, 10);
 
   return Number.isInteger(userId) && userId > 0 ? userId : null;
 };
 
-// =====================================================
-// GET
-// /api/client/comments/products/:productId
-// =====================================================
+const normalizePositiveInt = (value) => {
+  const parsed = Number.parseInt(value, 10);
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+// ============================================================
+// GET PRODUCT REVIEWS
+// ============================================================
 
 exports.getProductReviews = async (req, res, next) => {
   try {
-    const productId = Number.parseInt(req.params.productId, 10);
+    const productId = normalizePositiveInt(req.params.productId);
 
-    if (!Number.isInteger(productId) || productId < 1) {
+    if (!productId) {
       return res.status(400).json({
         success: false,
 
@@ -67,36 +79,31 @@ exports.getProductReviews = async (req, res, next) => {
   }
 };
 
-// =====================================================
-// POST
-// /api/client/comments/products/:productId
-// =====================================================
+// ============================================================
+// GET MY REVIEW ACCESS
+// ============================================================
 
-exports.createReview = async (req, res, next) => {
+exports.getMyProductReview = async (req, res, next) => {
   try {
     const userId = getAuthenticatedUserId(req);
 
-    const productId = Number.parseInt(req.params.productId, 10);
+    const productId = normalizePositiveInt(req.params.productId);
 
     if (!userId) {
       return res.status(401).json({
         success: false,
 
-        message: "Bạn cần đăng nhập để đánh giá sản phẩm.",
+        message: "Bạn cần đăng nhập.",
       });
     }
 
-    if (!Number.isInteger(productId) || productId < 1) {
+    if (!productId) {
       return res.status(400).json({
         success: false,
 
         message: "Sản phẩm không hợp lệ.",
       });
     }
-
-    // ========================
-    // Product
-    // ========================
 
     const product = await Comment.getProductById(productId);
 
@@ -108,9 +115,103 @@ exports.createReview = async (req, res, next) => {
       });
     }
 
-    // ========================
-    // Validate
-    // ========================
+    const access = await Comment.getReviewAccess(userId, productId);
+
+    return res.status(200).json({
+      success: true,
+
+      data: access,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+// ============================================================
+// ORDER REVIEW ITEMS
+//
+// GET /client/comments/orders/:orderId/items
+// ============================================================
+
+exports.getOrderReviewItems = async (req, res, next) => {
+  try {
+    const userId = getAuthenticatedUserId(req);
+
+    const orderId = normalizePositiveInt(req.params.orderId);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+
+        message: "Bạn cần đăng nhập.",
+      });
+    }
+
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+
+        message: "Đơn hàng không hợp lệ.",
+      });
+    }
+
+    const result = await Comment.getOrderReviewItems(userId, orderId);
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+
+        message: "Không tìm thấy đơn hàng.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+
+      message: "Lấy trạng thái đánh giá của đơn hàng thành công.",
+
+      data: result,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+// ============================================================
+// CREATE
+// ============================================================
+
+exports.createReview = async (req, res, next) => {
+  try {
+    const userId = getAuthenticatedUserId(req);
+
+    const productId = normalizePositiveInt(req.params.productId);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+
+        message: "Bạn cần đăng nhập để đánh giá sản phẩm.",
+      });
+    }
+
+    if (!productId) {
+      return res.status(400).json({
+        success: false,
+
+        message: "Sản phẩm không hợp lệ.",
+      });
+    }
+
+    const product = await Comment.getProductById(productId);
+
+    if (!product || Number(product.status) !== 1) {
+      return res.status(404).json({
+        success: false,
+
+        message: "Không tìm thấy sản phẩm.",
+      });
+    }
 
     const { errors, data } = validateReviewData(req.body);
 
@@ -124,10 +225,6 @@ exports.createReview = async (req, res, next) => {
       });
     }
 
-    // ========================
-    // Kiểm tra mua hàng
-    // ========================
-
     const purchased = await Comment.hasPurchasedProduct(userId, productId);
 
     if (!purchased) {
@@ -135,33 +232,26 @@ exports.createReview = async (req, res, next) => {
         success: false,
 
         message:
-          "Bạn chỉ có thể đánh giá sản phẩm sau khi đã mua và hoàn thành đơn hàng.",
+          "Bạn chỉ có thể đánh giá sau khi đã mua sản phẩm và đơn hàng đã hoàn tất.",
       });
     }
 
-    // ========================
-    // Mỗi user 1 review
-    // ========================
+    const existing = await Comment.getUserReview(userId, productId);
 
-    const existingReview = await Comment.getUserReview(userId, productId);
-
-    if (existingReview) {
+    if (existing) {
       return res.status(409).json({
         success: false,
 
         message:
-          "Bạn đã đánh giá sản phẩm này. Hãy chỉnh sửa đánh giá hiện tại nếu muốn thay đổi.",
+          "Bạn đã đánh giá sản phẩm này. Hãy sử dụng chức năng chỉnh sửa.",
 
-        data: existingReview,
+        data: existing,
       });
     }
 
-    // ========================
-    // Create
-    // ========================
-
     const review = await Comment.create({
       userId,
+
       productId,
 
       rating: data.rating,
@@ -177,20 +267,27 @@ exports.createReview = async (req, res, next) => {
       data: review,
     });
   } catch (error) {
+    if (error?.code === "COMMENT_ALREADY_EXISTS") {
+      return res.status(409).json({
+        success: false,
+
+        message: error.message,
+      });
+    }
+
     return next(error);
   }
 };
 
-// =====================================================
-// PATCH
-// /api/client/comments/:id
-// =====================================================
+// ============================================================
+// UPDATE
+// ============================================================
 
 exports.updateReview = async (req, res, next) => {
   try {
     const userId = getAuthenticatedUserId(req);
 
-    const reviewId = Number.parseInt(req.params.id, 10);
+    const reviewId = normalizePositiveInt(req.params.id);
 
     if (!userId) {
       return res.status(401).json({
@@ -200,7 +297,7 @@ exports.updateReview = async (req, res, next) => {
       });
     }
 
-    if (!Number.isInteger(reviewId) || reviewId < 1) {
+    if (!reviewId) {
       return res.status(400).json({
         success: false,
 
@@ -218,12 +315,24 @@ exports.updateReview = async (req, res, next) => {
       });
     }
 
-    // Không cho sửa review người khác.
     if (Number(review.user_id) !== userId) {
       return res.status(403).json({
         success: false,
 
         message: "Bạn không có quyền chỉnh sửa đánh giá này.",
+      });
+    }
+
+    const purchased = await Comment.hasPurchasedProduct(
+      userId,
+      review.product_id,
+    );
+
+    if (!purchased) {
+      return res.status(403).json({
+        success: false,
+
+        message: "Tài khoản không đủ điều kiện chỉnh sửa đánh giá này.",
       });
     }
 
@@ -245,6 +354,14 @@ exports.updateReview = async (req, res, next) => {
       content: data.content,
     });
 
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+
+        message: "Đánh giá không còn tồn tại.",
+      });
+    }
+
     return res.status(200).json({
       success: true,
 
@@ -257,16 +374,15 @@ exports.updateReview = async (req, res, next) => {
   }
 };
 
-// =====================================================
+// ============================================================
 // DELETE
-// /api/client/comments/:id
-// =====================================================
+// ============================================================
 
 exports.deleteReview = async (req, res, next) => {
   try {
     const userId = getAuthenticatedUserId(req);
 
-    const reviewId = Number.parseInt(req.params.id, 10);
+    const reviewId = normalizePositiveInt(req.params.id);
 
     if (!userId) {
       return res.status(401).json({
@@ -276,7 +392,7 @@ exports.deleteReview = async (req, res, next) => {
       });
     }
 
-    if (!Number.isInteger(reviewId) || reviewId < 1) {
+    if (!reviewId) {
       return res.status(400).json({
         success: false,
 
@@ -302,7 +418,18 @@ exports.deleteReview = async (req, res, next) => {
       });
     }
 
-    await Comment.softDelete(reviewId);
+    const deleted = await Comment.softDeleteUserProduct(
+      userId,
+      review.product_id,
+    );
+
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+
+        message: "Đánh giá không còn tồn tại.",
+      });
+    }
 
     return res.status(200).json({
       success: true,

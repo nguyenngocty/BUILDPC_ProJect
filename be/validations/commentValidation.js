@@ -11,9 +11,9 @@ const validateReviewData = (data = {}) => {
 
   const content = String(data.content || "").trim();
 
-  // =========================
-  // Rating
-  // =========================
+  // ==========================================================
+  // RATING
+  // ==========================================================
 
   if (rating === null) {
     errors.rating = "Vui lòng chọn số sao đánh giá.";
@@ -21,9 +21,9 @@ const validateReviewData = (data = {}) => {
     errors.rating = "Số sao đánh giá phải từ 1 đến 5.";
   }
 
-  // =========================
-  // Content
-  // =========================
+  // ==========================================================
+  // CONTENT
+  // ==========================================================
 
   if (!content) {
     errors.content = "Vui lòng nhập nội dung đánh giá.";

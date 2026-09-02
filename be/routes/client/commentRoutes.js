@@ -6,24 +6,74 @@ const { requireAuth } = require("../../middlewares/authMiddleware");
 
 const router = express.Router();
 
-// ======================================================
-// PUBLIC
-// ======================================================
+// ============================================================
+// ORDER REVIEW
+// ============================================================
 
-// Danh sách review sản phẩm
-router.get("/products/:productId", controller.getProductReviews);
+router.get(
+  "/orders/:orderId/items",
 
-// ======================================================
-// AUTHENTICATED
-// ======================================================
+  requireAuth,
 
-// Tạo review
-router.post("/products/:productId", requireAuth, controller.createReview);
+  controller.getOrderReviewItems,
+);
 
-// Sửa review của chính mình
-router.patch("/:id", requireAuth, controller.updateReview);
+// ============================================================
+// MY PRODUCT REVIEW
+// ============================================================
 
-// Xóa review của chính mình
-router.delete("/:id", requireAuth, controller.deleteReview);
+router.get(
+  "/products/:productId/me",
+
+  requireAuth,
+
+  controller.getMyProductReview,
+);
+
+// ============================================================
+// PUBLIC REVIEWS
+// ============================================================
+
+router.get(
+  "/products/:productId",
+
+  controller.getProductReviews,
+);
+
+// ============================================================
+// CREATE
+// ============================================================
+
+router.post(
+  "/products/:productId",
+
+  requireAuth,
+
+  controller.createReview,
+);
+
+// ============================================================
+// UPDATE
+// ============================================================
+
+router.patch(
+  "/:id",
+
+  requireAuth,
+
+  controller.updateReview,
+);
+
+// ============================================================
+// DELETE
+// ============================================================
+
+router.delete(
+  "/:id",
+
+  requireAuth,
+
+  controller.deleteReview,
+);
 
 module.exports = router;

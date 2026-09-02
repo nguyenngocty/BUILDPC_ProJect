@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import "./ProductDetail.css";
 
@@ -90,6 +90,17 @@ const isVariantMatch = (variant, selectedValues, optionCodes) => {
 
 function ProductDetail() {
   const navigate = useNavigate();
+
+  const [searchParams] = useSearchParams();
+
+  const requestedTab = searchParams.get("tab");
+
+  const initialProductTab =
+    requestedTab === "reviews"
+      ? "reviews"
+      : requestedTab === "specifications"
+        ? "specifications"
+        : "description";
 
   const {
     product,
@@ -771,6 +782,7 @@ function ProductDetail() {
                 reviews={reviews}
                 isAuthenticated={isAuthenticated}
                 onReviewSubmitted={refresh}
+                initialTab={initialProductTab}
               />
             </div>
           </div>

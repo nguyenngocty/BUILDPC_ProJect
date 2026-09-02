@@ -2,8 +2,6 @@ const express = require("express");
 
 const controller = require("../../controllers/client/productController");
 
-const { requireAuth } = require("../../middlewares/authMiddleware");
-
 const router = express.Router();
 
 // ============================================================
@@ -12,7 +10,8 @@ const router = express.Router();
 
 // ------------------------------------------------------------
 // GET /api/client/products
-// Danh sách sản phẩm
+//
+// Danh sách sản phẩm.
 // ------------------------------------------------------------
 
 router.get("/", controller.getAllProducts);
@@ -20,7 +19,6 @@ router.get("/", controller.getAllProducts);
 // ------------------------------------------------------------
 // GET /api/client/products/search-suggestions?q=...
 //
-// QUAN TRỌNG:
 // Route cố định phải đứng trước /:slug.
 // ------------------------------------------------------------
 
@@ -33,32 +31,16 @@ router.get("/search-suggestions", controller.getSearchSuggestions);
 router.get("/top-sellers", controller.getTopSellingProducts);
 
 // ============================================================
-// COMMENTS
-// ============================================================
-
-// ------------------------------------------------------------
-// GET /api/client/products/comments/:id
-// ------------------------------------------------------------
-
-router.get("/comments/:id(\\d+)", controller.getProductComments);
-
-// ------------------------------------------------------------
-// POST /api/client/products/comments
-// Yêu cầu đăng nhập.
-// ------------------------------------------------------------
-
-router.post("/comments", requireAuth, controller.createProductComment);
-
-// ============================================================
 // PRODUCT DETAIL
 //
 // PHẢI ĐỂ CUỐI.
-// Nếu đặt /:slug phía trên:
+//
+// Nếu đặt /:slug phía trên các route cố định:
 //
 // /search-suggestions
 // /top-sellers
 //
-// có thể bị hiểu thành slug.
+// Express có thể hiểu chúng thành slug.
 // ============================================================
 
 router.get("/:slug", controller.getProductBySlug);
