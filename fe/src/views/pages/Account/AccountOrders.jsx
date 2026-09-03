@@ -486,7 +486,7 @@ function AccountOrders() {
                         className="account-order-action-button reorder"
                         onClick={() => handleReorder(order)}
                       >
-                        <i className="bi bi-arrow-repeat" />
+                      
                         Mua lại
                       </button>
                     )}
